@@ -100,9 +100,8 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   
-  // Verify password: standard accounts will match 'password123'
-  // Let's allow 'password123' directly.
-  if (password !== 'password123') {
+  const expectedPassword = user.password || 'password123';
+  if (password !== expectedPassword) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   

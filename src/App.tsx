@@ -57,6 +57,7 @@ export default function App() {
   }
 
   const userRole = currentUser.role || 'manager';
+  const displayName = userRole === 'admin' ? 'Admin' : (currentUser.name || 'User');
 
   // Navigation Links
   const navItems = [
@@ -116,9 +117,9 @@ export default function App() {
                   className="flex items-center gap-2 bg-zinc-50 border hover:bg-zinc-100 px-3 py-1.5 rounded-xl cursor-pointer text-xs font-semibold text-zinc-800 transition-colors"
                 >
                   <div className="w-5 h-5 bg-zinc-250 text-zinc-800 border rounded-full flex items-center justify-center font-bold text-[10px]">
-                    {currentUser.name ? currentUser.name[0].toUpperCase() : 'U'}
+                    {displayName[0].toUpperCase()}
                   </div>
-                  <span className="max-w-[70px] sm:max-w-[120px] truncate">{currentUser.name}</span>
+                  <span className="max-w-[70px] sm:max-w-[120px] truncate">{displayName}</span>
                   <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
                 </button>
 

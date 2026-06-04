@@ -4,6 +4,7 @@
       "id": "usr_admin",
       "name": "Admin",
       "email": "admin@construction.com",
+      "password": "password123",
       "phone": "",
       "role": "admin",
       "status": "active"
