@@ -38,6 +38,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   
   // Specified Task focus overlay
   const [activeTask, setActiveTask] = useState<any | null>(null);
+  const [activeTaskTab, setActiveTaskTab] = useState<'expenses' | 'pay'>('expenses');
 
   // Sub-filters for Project Sub-tabs
   const [tasksSearch, setTasksSearch] = useState('');
@@ -80,7 +81,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   // Custom multi-staff picker in Task Editor
   const [taskAssignedStaffList, setTaskAssignedStaffList] = useState<string[]>([]);
   const [crewSuggestions, setCrewSuggestions] = useState<string[]>([
-    'Dave Cooper', 'Manny Ramirez', 'Samuel Jackson', 'Arnie S.'
+    ''
   ]);
   const [taskMemberInput, setTaskMemberInput] = useState('');
   const [showTaskSuggestions, setShowTaskSuggestions] = useState(false);
@@ -553,6 +554,20 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
     setIsPayoutFormOpen(true);
   };
 
+  const handleQuickPay = (workerName: string) => {
+    setPayoutEditId(null);
+    setPayoutTaskId(activeTask?.id || '');
+    setPayoutPayeeType('Worker');
+    setPayoutPayeeName(workerName);
+    setPayoutAmount(0);
+    setPayoutDate(new Date().toISOString().split('T')[0]);
+    setPayoutPaymentMethod('Bank Transfer');
+    setPayoutPaymentStatus('Paid');
+    setPayoutNotes('');
+    setPayoutSubmitError(null);
+    setIsPayoutFormOpen(true);
+  };
+
   const handlePayoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payoutTaskId || !payoutPayeeName || payoutAmount <= 0 || !payoutDate) {
@@ -587,7 +602,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   };
 
   const handleDeletePayout = async (id: string) => {
-    if (!window.confirm('Are states correct? Erase this subcontractor disbursement ledger?')) {
+    if (!window.confirm('Are states correct? Erase this Payment?')) {
       return;
     }
     try {
@@ -655,7 +670,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Projects Core</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Projects </h1>
               <p className="text-xs sm:text-sm text-zinc-500 font-medium">Coordinate construction projects, scopes, expenditures and disbursements</p>
             </div>
             {userRole === 'admin' && (
@@ -767,7 +782,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                           <span className="text-zinc-900">{formatCur(p.totalBudget || 0)}</span>
                         </div>
                         <div>
-                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Cumulative Costs</span>
+                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Total Expenses</span>
                           <span className="text-zinc-900">{formatCur(p.totalExpenses || 0)}</span>
                         </div>
                       </div>
@@ -870,7 +885,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalExpenses || 0)}</span>
               </div>
               <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Disbursed</span>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Paid</span>
                 <span className="text-base font-bold text-emerald-700 block">{formatCur(selectedProject.totalPaidAmount || 0)}</span>
               </div>
               <div>
@@ -896,7 +911,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
             {selectedProject.notes && (
               <div className="text-xs bg-zinc-50 border border-zinc-100 rounded-xl p-3 text-zinc-650">
-                <span className="font-bold text-zinc-800 uppercase text-[9px] block mb-1">Contractor Directives</span>
+                <span className="font-bold text-zinc-800 uppercase text-[9px] block mb-1">Notes</span>
                 {selectedProject.notes}
               </div>
             )}
@@ -911,7 +926,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               }`}
             >
               <Briefcase className="w-4 h-4" />
-              <span>Scopes & Tasks ({projectTasks.length})</span>
+              <span>Tasks ({projectTasks.length})</span>
             </button>
             <button 
               onClick={() => setViewTab('expenses')}
@@ -929,7 +944,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               }`}
             >
               <Coins className="w-4 h-4" />
-              <span>Disbursements & Payouts ({projectPayments.length})</span>
+              <span>Payments ({projectPayments.length})</span>
             </button>
           </div>
 
@@ -967,7 +982,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   onClick={handleOpenCreateTask}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Register Task Scope
+                  <Plus className="w-3.5 h-3.5" /> Register Task 
                 </button>
               </div>
 
@@ -977,7 +992,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
               ) : filteredTasksList.length === 0 ? (
                 <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
-                  <p className="text-xs text-zinc-500">No project tasks found. Click Register Task to add a scope.</p>
+                  <p className="text-xs text-zinc-500">No project tasks found. Click Register Task to add.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -995,7 +1010,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                               >
                                 {t.taskName}
                               </h3>
-                              <p className="text-[10px] text-zinc-400 font-medium">Crew assigned: {t.assignedStaff || 'None Assigned'}</p>
+                              <p className="text-[10px] text-zinc-400 font-medium">Workers assigned: {t.assignedStaff || 'None Assigned'}</p>
                             </div>
                             <select
                               value={t.status}
@@ -1053,7 +1068,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                           {/* Instant Slider */}
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-zinc-400 font-bold uppercase text-[9px]">Scope Progress</span>
+                              <span className="text-zinc-400 font-bold uppercase text-[9px]">Task Progress</span>
                               <span className="text-zinc-950 font-black block bg-zinc-150 px-1.5 py-0.5 rounded text-[10px]">{t.progress}%</span>
                             </div>
                             <div className="w-full flex items-center">
@@ -1254,7 +1269,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                     </span>
                     <input
                       type="text"
-                      placeholder="Search payouts..."
+                      placeholder="Search payments..."
                       value={payoutsSearch}
                       onChange={(e) => setPayoutsSearch(e.target.value)}
                       className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-zinc-200 rounded-xl focus:outline-none"
@@ -1306,7 +1321,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               {filteredPayoutsList.length === 0 ? (
                 <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
-                  <p className="text-xs text-zinc-500">No payouts currently recorded.</p>
+                  <p className="text-xs text-zinc-500">No payments recorded.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1386,7 +1401,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">{selectedProject.projectName}</span>
               <h2 className="text-lg sm:text-xl font-bold text-zinc-900 tracking-tight mt-0.5 flex items-center gap-1.5">
                 <Briefcase className="w-5 h-5 text-zinc-500" />
-                <span>Scope Assessment: {activeTask.taskName}</span>
+                <span>Task Assessment: {activeTask.taskName}</span>
               </h2>
               {activeTask.description && (
                 <p className="text-xs sm:text-sm text-zinc-500 mt-1.5 leading-relaxed">{activeTask.description}</p>
@@ -1396,7 +1411,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
             {/* Quick stats specific to this active task */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
               <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Scoped Budget</span>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Budget</span>
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.assignedBudget)}</span>
               </div>
               <div>
@@ -1404,7 +1419,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.totalExpenses || 0)}</span>
               </div>
               <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payout Disbursements</span>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments</span>
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.paymentsPaid || 0)}</span>
               </div>
               <div>
@@ -1435,25 +1450,41 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                     {activeTask.startDate} to {activeTask.endDate}
                   </span>
                 </div>
-                <span className="text-[10px] text-zinc-500 font-bold bg-white px-2 py-0.5 rounded border border-zinc-200/50">Crew: {activeTask.assignedStaff || 'Unassigned'}</span>
+                <span className="text-[10px] text-zinc-500 font-bold bg-white px-2 py-0.5 rounded border border-zinc-200/50">Workers: {activeTask.assignedStaff || 'Unassigned'}</span>
               </div>
             </div>
 
             {/* NESTED MANAGEMENT INSIDE SPECIFIED TASK */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-zinc-150 pt-4">
+            <div className="space-y-4 border-t border-zinc-150 pt-4">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setActiveTaskTab('expenses')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold ${activeTaskTab === 'expenses' ? 'bg-zinc-900 text-white' : 'bg-white border'}`}
+                >
+                  Expenses
+                </button>
+                <button
+                  onClick={() => setActiveTaskTab('pay')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold ${activeTaskTab === 'pay' ? 'bg-zinc-900 text-white' : 'bg-white border'}`}
+                >
+                  Pay Workers
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
-              {/* SPECIFIED TASK EXPENSES LIST */}
-              <div className="space-y-3">
+              {/* SPECIFIED TASK EXPENSES (merged) */}
+              {activeTaskTab === 'expenses' && (
+                <div className="space-y-3 md:col-span-2">
                 <div className="flex items-center justify-between border-b pb-2">
                   <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
                     <Receipt className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Hardware Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
+                    <span>Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
                   </span>
                   <button 
                     onClick={() => handleOpenCreateExpense(activeTask.id)}
                     className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
                   >
-                    <Plus className="w-3 h-3" /> Log
+                    <Plus className="w-3 h-3" /> Expense
                   </button>
                 </div>
 
@@ -1481,52 +1512,50 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                     ))
                   )}
                 </div>
-              </div>
-
-              {/* SPECIFIED TASK PAYOUTS LIST */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
-                    <Coins className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Disbursements ({projectPayments.filter(p => p.taskId === activeTask.id).length})</span>
-                  </span>
-                  <button 
-                    onClick={() => handleOpenCreatePayout(activeTask.id)}
-                    className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
-                  >
-                    <Plus className="w-3 h-3" /> Payout
-                  </button>
                 </div>
+              )}
 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {projectPayments.filter(p => p.taskId === activeTask.id).length === 0 ? (
-                    <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No worker or contractor payouts logged.</p>
-                  ) : (
-                    projectPayments.filter(p => p.taskId === activeTask.id).map(p => (
-                      <div key={p.id} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
-                        <div>
-                          <span className="font-bold text-zinc-800 block">{p.payeeName}</span>
-                          <span className="text-[9.5px] text-zinc-400">{p.payeeType} • {p.paymentDate}</span>
-                        </div>
-                        <div className="text-right flex items-center gap-1.5">
+              {activeTaskTab === 'pay' && (
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Assigned Crew</span>
+                    </span>
+                    <button
+                      onClick={() => handleOpenCreatePayout(activeTask.id)}
+                      className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
+                    >
+                      <Plus className="w-3 h-3" /> Pay
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {taskAssignedStaffList.length === 0 ? (
+                      <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No crew assigned to this task.</p>
+                    ) : (
+                      taskAssignedStaffList.map((m) => (
+                        <div key={m} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
                           <div>
-                            <span className="font-black text-zinc-950 block">{formatCur(p.amount)}</span>
-                            <span className="text-[8px] font-bold text-emerald-700 block uppercase">{p.paymentStatus}</span>
+                            <span className="font-bold text-zinc-800 block">{m}</span>
+                            <span className="text-[9.5px] text-zinc-400">Assigned</span>
                           </div>
-                          <button 
-                            onClick={() => handleOpenEditPayout(p)}
-                            className="p-0.5 hover:bg-zinc-200 rounded animate"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-3 h-3 text-zinc-500" />
-                          </button>
+                          <div className="text-right flex items-center gap-2">
+                            <button
+                              onClick={() => handleQuickPay(m)}
+                              className="px-2 py-1 bg-zinc-900 text-white rounded-xl text-xs font-bold"
+                            >
+                              Pay
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 border-t pt-4">
@@ -1534,7 +1563,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 onClick={() => { handleOpenEditTask(activeTask); }}
                 className="px-3 py-1.5 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 rounded-xl text-xs font-bold transition"
               >
-                Modify Task Config
+                Modify Task
               </button>
               <button 
                 onClick={() => setActiveTask(null)}
@@ -1574,11 +1603,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
             <form onSubmit={handleProjectSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Project Contract Name</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Project Name</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. New City Central Expressway"
+                  placeholder=""
                   value={projName}
                   onChange={(e) => setProjName(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
@@ -1587,11 +1616,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Contractor / Client Authority</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Client Name</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Highways and Infrastructure Ministry"
+                    placeholder=""
                     value={projClient}
                     onChange={(e) => setProjClient(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
@@ -1599,11 +1628,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Site Location Address</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Site Location</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Route 22, Junction A"
+                    placeholder=""
                     value={projLocation}
                     onChange={(e) => setProjLocation(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
@@ -1613,7 +1642,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Commencement Date</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Start Date</label>
                   <input
                     type="date"
                     required
@@ -1624,7 +1653,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Target End Date</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">End Date</label>
                   <input
                     type="date"
                     required
@@ -1637,7 +1666,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Current General Status</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Current Status</label>
                   <select
                     value={projStatus}
                     onChange={(e) => setProjStatus(e.target.value as ProjectStatus)}
@@ -1652,9 +1681,9 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Contract Directives / Notes</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Notes</label>
                 <textarea
-                  placeholder="Insert material specifications, contractor milestones, structural standards..."
+                  placeholder=""
                   value={projNotes}
                   onChange={(e) => setProjNotes(e.target.value)}
                   rows={3}
@@ -1702,7 +1731,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Civil Framing, Welding support, Site Drainage..."
+                  placeholder=""
                   value={taskFormName}
                   onChange={(e) => setTaskFormName(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900"
@@ -1710,7 +1739,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Target Budget Allocation (₹)</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Target Budget (₹)</label>
                 <input
                   type="number"
                   required
@@ -1724,7 +1753,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Assigned Site Crew Members</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Assigned Workers</label>
                   
                   {/* Crew Badges */}
                   <div className="flex flex-wrap gap-1 mb-2 bg-zinc-55 border border-zinc-200 p-1.5 rounded-xl min-h-[38px] items-center">
@@ -1744,7 +1773,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                       </span>
                     ))}
                     {taskAssignedStaffList.length === 0 && (
-                      <span className="text-[10px] text-zinc-400 italic font-medium pl-1">No site crew selected</span>
+                      <span className="text-[10px] text-zinc-400 italic font-medium pl-1">No Worker Selected</span>
                     )}
                   </div>
 
@@ -1884,7 +1913,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Instructions / Specifics</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Instructions</label>
                 <textarea
                   placeholder="Provide precise instructions, structural drawings references..."
                   value={taskFormDesc}
@@ -1965,7 +1994,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid To / Supplier / Payee</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid To</label>
                   <input
                     type="text"
                     required
@@ -1993,7 +2022,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Transaction date</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment date</label>
                   <input
                     type="date"
                     required
@@ -2004,7 +2033,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Disbursement Method</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Method</label>
                   <select
                     value={expensePaymentMethod}
                     onChange={(e) => setExpensePaymentMethod(e.target.value)}
@@ -2019,7 +2048,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Upload Invoice Doc / Receipt</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Upload Doc</label>
                 <div className="flex items-center gap-3">
                   <label className="flex-1 flex flex-col items-center justify-center border border-zinc-300 border-dashed rounded-xl px-2 py-3.5 cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition text-center text-xs text-zinc-600 font-bold gap-1 mt-1">
                     <UploadCloud className="w-5 h-5 text-zinc-400" />
@@ -2059,7 +2088,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 type="submit"
                 className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
               >
-                Incorporate Site Expense
+                Site Expense
               </button>
             </form>
           </div>
@@ -2108,7 +2137,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payee/Disbursement Type</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payee Type</label>
                   <select
                     value={payoutPayeeType}
                     onChange={(e) => setPayoutPayeeType(e.target.value as PayeeType)}
@@ -2125,7 +2154,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Voucher Legal Name</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Name</label>
                   <input
                     type="text"
                     required
@@ -2137,11 +2166,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Disbursed Amount (₹)</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid Amount (₹)</label>
                   <input
                     type="number"
                     required
-                    min={0.01}
+                    min={0}
                     placeholder="0.00"
                     value={payoutAmount || ''}
                     onChange={(e) => setPayoutAmount(Number(e.target.value))}
@@ -2152,7 +2181,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Transaction Payout status</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Status</label>
                   <select
                     value={payoutPaymentStatus}
                     onChange={(e) => setPayoutPaymentStatus(e.target.value as PaymentStatus)}
@@ -2165,7 +2194,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payout Date</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Date</label>
                   <input
                     type="date"
                     required
@@ -2178,7 +2207,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payout Method</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Method</label>
                   <select
                     value={payoutPaymentMethod}
                     onChange={(e) => setPayoutPaymentMethod(e.target.value)}
@@ -2193,9 +2222,9 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Voucher memo notes</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment notes</label>
                 <textarea
-                  placeholder="Enter specific retainers notes, weekly wage terms..."
+                  placeholder="Notes"
                   value={payoutNotes}
                   onChange={(e) => setPayoutNotes(e.target.value)}
                   rows={2}
@@ -2207,7 +2236,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 type="submit"
                 className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
               >
-                Incorporate Disbursement
+                Incorporate Payment
               </button>
             </form>
           </div>

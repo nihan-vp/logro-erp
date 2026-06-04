@@ -507,7 +507,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.labourCost || 0)}</span>
               </div>
               <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Disbursements</span>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments</span>
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.paymentsPaid || 0)}</span>
               </div>
             </div>

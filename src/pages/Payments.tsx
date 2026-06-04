@@ -17,6 +17,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
   const [payments, setPayments] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [crew, setCrew] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +36,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
   const [taskId, setTaskId] = useState('');
   const [payeeType, setPayeeType] = useState<PayeeType>('Worker');
   const [payeeName, setPayeeName] = useState('');
+  const [manualPayeeName, setManualPayeeName] = useState('');
   const [amount, setAmount] = useState<number>(0);
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
@@ -79,11 +81,31 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
     }
   }, [projectId]);
 
+  // Load crew (attendance) for selected task to offer as payee choices
+  useEffect(() => {
+    const loadCrew = async () => {
+      if (!projectId || !taskId) {
+        setCrew([]);
+        return;
+      }
+      try {
+        const res = await api.getAttendance(projectId, taskId);
+        const names = (res || []).map((a: any) => a.workerName).filter(Boolean);
+        const unique = Array.from(new Set(names));
+        setCrew(unique);
+      } catch (err) {
+        setCrew([]);
+      }
+    };
+    loadCrew();
+  }, [projectId, taskId]);
+
   const handleOpenCreate = () => {
     setEditId(null);
     setProjectId(projects[0]?.id || '');
     setPayeeType('Worker');
     setPayeeName('');
+    setManualPayeeName('');
     setAmount(0);
     setPaymentDate(new Date().toISOString().split('T')[0]);
     setPaymentMethod('Bank Transfer');
@@ -99,6 +121,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
     setTaskId(p.taskId);
     setPayeeType(p.payeeType);
     setPayeeName(p.payeeName);
+    setManualPayeeName('');
     setAmount(p.amount);
     setPaymentDate(p.paymentDate);
     setPaymentMethod(p.paymentMethod);
@@ -122,7 +145,9 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
 
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (!projectId || !taskId || !payeeType || !payeeName || amount <= 0 || !paymentDate || !paymentMethod || !paymentStatus) {
+    const finalPayeeName = payeeName === '__other' ? manualPayeeName.trim() : payeeName;
+
+    if (!projectId || !taskId || !payeeType || !finalPayeeName || amount <= 0 || !paymentDate || !paymentMethod || !paymentStatus) {
       setSubmitError('All fields are required.');
       return;
     }
@@ -131,7 +156,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
       projectId,
       taskId,
       payeeType,
-      payeeName,
+      payeeName: finalPayeeName,
       amount: Number(amount),
       paymentDate,
       paymentMethod,
@@ -183,8 +208,8 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
       {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Payouts Hub</h1>
-              <p className="text-xs sm:text-sm text-zinc-500">Track and authorize disbursements to employees, companies, and subcontractors</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Payments</h1>
+              <p className="text-xs sm:text-sm text-zinc-500">Track payments.</p>
             </div>
             
             <button
@@ -199,11 +224,11 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
           {/* Quick Metrics display */}
           <div className="grid grid-cols-2 gap-3.5">
             <div className="bg-zinc-900 text-white p-4 rounded-xl flex flex-col justify-between shadow-sm">
-              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Completed Payouts</span>
+              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Completed Payments</span>
               <span className="text-xl sm:text-2xl font-black block mt-1">{formatCur(totalPaid)}</span>
             </div>
             <div className="bg-white border rounded-xl p-4 flex flex-col justify-between shadow-sm">
-              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Pending Payouts / Retainers</span>
+              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Pending Payments</span>
               <span className="text-xl sm:text-2xl font-black text-rose-700 block mt-1">{formatCur(totalPending)}</span>
             </div>
           </div>
@@ -255,7 +280,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
               </div>
 
               <div>
-                <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5">Payout Status</label>
+                <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5">Payment Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
@@ -278,7 +303,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
           ) : filteredPayments.length === 0 ? (
             <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
               <Coins className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
-              <p className="text-xs text-zinc-500">No disbursements recorded yet under this filter set.</p>
+              <p className="text-xs text-zinc-500">No Payments recorded yet under this filter set.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -295,11 +320,11 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
                     </div>
 
                     <h3 className="text-xs sm:text-sm font-extrabold text-zinc-950">
-                      Disbursed to: <b>{p.payeeName}</b>
+                      Paid to: <b>{p.payeeName}</b>
                     </h3>
 
                     <p className="text-[11px] text-zinc-500">
-                      Scope: <b className="text-zinc-800 font-medium">{p.taskName}</b>
+                      Task: <b className="text-zinc-800 font-medium">{p.taskName}</b>
                     </p>
 
                     {p.notes && (
@@ -406,7 +431,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payee/Voucher Category</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payee</label>
                 <select
                   value={payeeType}
                   onChange={(e) => setPayeeType(e.target.value as PayeeType)}
@@ -421,26 +446,57 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payee Legal Name</label>
-                <input
-                  type="text"
-                  required
-                  value={payeeName}
-                  onChange={(e) => setPayeeName(e.target.value)}
-                  placeholder="Dave Cooper, Builders union inc..."
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
-                />
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payee Name</label>
+                {payeeType === 'Worker' && crew && crew.length > 0 ? (
+                  <>
+                    <select
+                      value={payeeName}
+                      onChange={(e) => {
+                        setPayeeName(e.target.value);
+                        setManualPayeeName('');
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                    >
+                      <option value="" disabled>Select crew member...</option>
+                      {crew.map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                      <option value="__other">Other (manual entry)</option>
+                    </select>
+                    {payeeName === '__other' && (
+                      <input
+                        type="text"
+                        required
+                        value={manualPayeeName}
+                        onChange={(e) => {
+                          setManualPayeeName(e.target.value);
+                        }}
+                        placeholder="Enter payee name"
+                        className="mt-2 w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <input
+                    type="text"
+                    required
+                    value={payeeName}
+                    onChange={(e) => setPayeeName(e.target.value)}
+                    placeholder="Name"
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  />
+                )}
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Disbursed amount (₹)</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid amount (₹)</label>
                 <input
                   type="number"
                   required
-                  min={0.01}
-                  placeholder="0.00"
+                  min={0}
+                  placeholder=""
                   value={amount || ''}
                   onChange={(e) => setAmount(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
@@ -448,7 +504,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payout status</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment status</label>
                 <select
                   value={paymentStatus}
                   onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus)}
@@ -463,7 +519,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Disbursed Date</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid Date</label>
                 <input
                   type="date"
                   required
@@ -474,7 +530,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Disbursement Method</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Method</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
@@ -489,11 +545,11 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payout Memo Notes</label>
+              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Notes</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Disbursement details, remaining balances agreements..."
+                placeholder="Payment details..."
                 rows={3}
                 className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-xs sm:text-sm"
               />
@@ -503,7 +559,7 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
               type="submit"
               className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
             >
-              Verify & Log Disbursed Payment
+              Log Payment
             </button>
           </form>
         </div>

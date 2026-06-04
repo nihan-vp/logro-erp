@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, Key, Mail, ShieldAlert, Briefcase, Wrench } from 'lucide-react';
+import { LogIn, Key, Mail, ShieldAlert } from 'lucide-react';
 import { api, setAuthToken, setCurrentUser } from '../api/client';
 
 interface LoginProps {
@@ -33,15 +33,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
   };
 
-  const fillCredentials = (role: 'admin' | 'manager') => {
-    if (role === 'admin') {
-      setEmail('admin@construction.com');
-      setPassword('password123');
-    } else {
-      setEmail('manager@construction.com');
-      setPassword('password123');
-    }
-  };
+
 
   return (
     <div className="min-h-screen flex flex-col justify-center items-center px-4 bg-zinc-50 font-sans">
@@ -123,35 +115,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           </button>
         </form>
 
-        {/* Scaffold credentials helper for testing */}
-        <div className="mt-8 border-t border-zinc-100 pt-6">
-          <p className="text-center text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
-            Demo Accounts
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => fillCredentials('admin')}
-              className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200/60 rounded-xl text-xs font-semibold text-zinc-700 transition-colors flex items-center justify-center gap-1.5 text-center"
-              type="button"
-            >
-              <Briefcase className="w-3.5 h-3.5" />
-              <span>Administrator</span>
-            </button>
-            <button
-              onClick={() => fillCredentials('manager')}
-              className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200/60 rounded-xl text-xs font-semibold text-zinc-700 transition-colors flex items-center justify-center gap-1.5 text-center"
-              type="button"
-            >
-              <Wrench className="w-3.5 h-3.5" />
-              <span>Site Manager</span>
-            </button>
-          </div>
-          <div className="mt-3 text-center">
-            <p className="text-[11px] text-zinc-400 italic">
-              Pre-filled credential passwords: <code className="font-mono font-bold bg-zinc-50 px-1 py-0.5 rounded text-zinc-600">password123</code>
-            </p>
-          </div>
-        </div>
+        
 
       </div>
       <div className="mt-6 text-center text-xs text-zinc-400 max-w-sm px-4">
