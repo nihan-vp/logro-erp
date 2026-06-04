@@ -81,8 +81,8 @@ export default function App() {
                   <Landmark className="w-4.5 h-4.5" />
                 </div>
                 <div className="text-left leading-none">
-                  <span className="text-sm font-black text-zinc-950 block tracking-tight">CONSTRUCT</span>
-                  <span className="text-[9px] text-zinc-400 font-semibold block uppercase tracking-wider">Site Portal</span>
+                  <span className="text-sm font-black text-zinc-950 block tracking-tight">LOGRO ERP</span>
+                  <span className="text-[9px] text-zinc-400 font-semibold block uppercase tracking-wider"></span>
                 </div>
               </div>
 

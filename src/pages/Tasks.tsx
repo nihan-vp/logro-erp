@@ -515,7 +515,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-3 bg-zinc-900 text-white rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Scope Profit / Loss</span>
+                  <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Task Profit / Loss</span>
                   <span className="text-sm sm:text-base font-bold">
                     {formatCur(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0)))}
                   </span>
