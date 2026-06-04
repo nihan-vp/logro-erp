@@ -1,0 +1,6 @@
+{
+  "name": "Construction Project Management ERP",
+  "description": "A task-based construction and project management system for tracking task progress, budget, expenses, labour attendance, payments, and profit/loss.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
