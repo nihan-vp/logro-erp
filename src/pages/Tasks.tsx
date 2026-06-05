@@ -419,7 +419,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                       {/* Progress controller - directly slidable slider for instant progress adjustment */}
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-zinc-400 font-semibold uppercase text-[9px]">Scope Progress</span>
+                          <span className="text-zinc-400 font-semibold uppercase text-[9px]">Task Progress</span>
                           <span className="text-zinc-900 font-bold block bg-zinc-100 px-1.5 py-0.5 rounded text-[10px]">{t.progress}%</span>
                         </div>
                         <div className="w-full flex items-center">
@@ -481,7 +481,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             onClick={() => { setIsViewOpen(false); setSelectedTask(null); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to Scopes
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to Tasks
           </button>
 
           <div className="bg-white border border-zinc-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">

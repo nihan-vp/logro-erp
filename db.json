@@ -1,12 +1,74 @@
 {
-  "users": [
+  "users": [],
+  "projects": [
     {
-      "id": "usr_admin",
-      "name": "Admin",
-      "email": "admin@construction.com",
-      "password": "password123",
-      "phone": "",
-      "role": "admin",
-      "status": "active"
+      "id": "prj_1780624088284",
+      "projectName": "eq",
+      "clientName": "wwq",
+      "location": "wqwew",
+      "startDate": "2026-06-05",
+      "expectedEndDate": "2026-09-03",
+      "status": "Pending",
+      "notes": "w",
+      "createdBy": "usr_admin",
+      "createdAt": "2026-06-05T01:48:08.284Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "tsk_1780624413854",
+      "projectId": "prj_1780624088284",
+      "taskName": "SITE CLEARANCE",
+      "description": "",
+      "assignedBudget": 10000,
+      "assignedStaff": "SANUL, SAYOOJ, BABURAJ",
+      "startDate": "2026-06-05",
+      "endDate": "2026-07-05",
+      "progress": 80,
+      "status": "In Progress",
+      "notes": ""
+    }
+  ],
+  "expenses": [
+    {
+      "id": "exp_1780624745326",
+      "projectId": "prj_1780624088284",
+      "taskId": "tsk_1780624413854",
+      "category": "Material",
+      "amount": 10000,
+      "paidTo": "sTEEL",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-05",
+      "notes": "",
+      "billImage": "",
+      "createdBy": "usr_admin"
+    }
+  ],
+  "attendance": [
+    {
+      "id": "att_1780624722013_t1i40",
+      "projectId": "prj_1780624088284",
+      "taskId": "tsk_1780624413854",
+      "workerName": "jcb",
+      "date": "2026-06-05",
+      "status": "Present",
+      "dailyWage": 2500,
+      "overtimeAmount": 0,
+      "paymentStatus": "Pending"
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay_1780624540905",
+      "projectId": "prj_1780624088284",
+      "taskId": "tsk_1780624413854",
+      "payeeType": "Worker",
+      "payeeName": "SAYOOJ",
+      "amount": 2000,
+      "paymentDate": "2026-06-05",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": ""
     }
   ]
+}

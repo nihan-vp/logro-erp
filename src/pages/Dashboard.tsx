@@ -168,7 +168,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             </span>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isProfit ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
               {isProfit ? <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> : <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />}
-              {isProfit ? 'Surplus' : 'Deficit'}
+              {isProfit ? '' : ''}
             </span>
           </div>
           <div className="text-xs text-zinc-400 leading-relaxed font-normal">
@@ -183,20 +183,20 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-500 flex items-center gap-1.5 font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                Disbursed
+                Paid 
               </span>
               <span className="font-semibold text-zinc-950">{formatCur(stats?.totalPaidAmount || 0)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-500 flex items-center gap-1.5 font-medium">
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                Unpaid / Retainers
+                Unpaid
               </span>
               <span className="font-semibold text-zinc-950">{formatCur(stats?.pendingPayments || 0)}</span>
             </div>
           </div>
           <div className="text-[11px] text-zinc-400 bg-zinc-50 p-2 rounded-lg">
-            Tracks formal purchase orders and company, subcontractor, and vendor payments status.
+            Tracks Formal payments status.
           </div>
         </div>
 
@@ -229,7 +229,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         {/* Task progress cards */}
         <div className="bg-white border border-zinc-200/80 rounded-xl p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-900 tracking-tight">Active Task Scopes & Budgets</h2>
+            <h2 className="text-sm font-semibold text-zinc-900 tracking-tight">Active Tasks</h2>
             <button 
               onClick={() => onNavigate('tasks')}
               className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 transition-colors"
@@ -326,13 +326,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-zinc-900 tracking-tight flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-zinc-500" />
-                <span>Recent Disbursements</span>
+                <span>Recent Payments</span>
               </h2>
               <button 
                 onClick={() => onNavigate('payments')}
                 className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 transition-colors"
               >
-                Disburse
+                Pay
               </button>
             </div>
 

@@ -935,7 +935,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               }`}
             >
               <Receipt className="w-4 h-4" />
-              <span>Material & Site Expenditures ({projectExpenses.length})</span>
+              <span>Expenses ({projectExpenses.length})</span>
             </button>
             <button 
               onClick={() => setViewTab('payouts')}
@@ -982,7 +982,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   onClick={handleOpenCreateTask}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Register Task 
+                  <Plus className="w-3.5 h-3.5" /> Add Task 
                 </button>
               </div>
 
@@ -992,7 +992,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
               ) : filteredTasksList.length === 0 ? (
                 <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
-                  <p className="text-xs text-zinc-500">No project tasks found. Click Register Task to add.</p>
+                  <p className="text-xs text-zinc-500">No project tasks found. Click Add Task to add.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1094,7 +1094,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                               onClick={() => setActiveTask(t)}
                               className="text-xs font-black text-zinc-900 hover:underline cursor-pointer flex items-center gap-0.5"
                             >
-                              <span>Specified Task details</span>
+                              <span>Details</span>
                               <ChevronRight className="w-3.5 h-3.5" />
                             </button>
                             <button 
@@ -2108,7 +2108,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
             </button>
             <div className="border-b pb-3 border-zinc-100">
               <h2 className="text-base sm:text-lg font-bold text-zinc-900">
-                {payoutEditId ? 'Configure Disbursed Payout' : 'Authorize Disbursement'}
+                {payoutEditId ? 'Configure Disbursed Payout' : 'Authorize Payment'}
               </h2>
               <span className="text-[10px] text-zinc-400 block font-bold mt-0.5">Project: {selectedProject.projectName}</span>
             </div>
