@@ -12,6 +12,7 @@ import Expenses from './pages/Expenses';
 import AttendancePage from './pages/Attendance';
 import PaymentsPage from './pages/Payments';
 import ReportsPage from './pages/Reports';
+import OfflineScreen from './pages/OfflineScreen';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -209,6 +210,7 @@ export default function App() {
         })}
       </div>
 
+      <OfflineScreen />
     </div>
   );
 }

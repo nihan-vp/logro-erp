@@ -1,20 +1,54 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Project README
 
-# Run and deploy your AI Studio app
+## Overview
+This is a project based on the LOGRO framework.
 
-This contains everything you need to run your app locally.
+## Folder Structure
+```
+.
+├── .env
+├── .gitignore
+├── db.json
+├── index.html
+├── metadata.json
+├── package-lock.json
+├── package.json
+├── README.md
+├── server.ts
+├── tsconfig.json
+├── vite.config.ts
+├── .git/
+├── assets/
+│   ├── images/
+│   └── styles/
+├── dist/
+└── src/
+    ├── App.tsx
+    ├── index.css
+    ├── main.tsx
+    └── types.ts
 
-View your app in AI Studio: https://ai.studio/apps/e8a710a2-c5e8-47f3-8aea-5d0359506bf9
+## Installation
+1. Clone the repository: `git clone https://github.com/nihan-vp/logro-erp.git`
+2. Navigate to the project directory: `cd logro-erp`
+3. Install dependencies: `npm install`
 
-## Run Locally
+## Running the Project
+1. Start the development server: `npm run dev`
 
-**Prerequisites:**  Node.js
+## Contributing
+Contributions are welcome! Please follow these steps:
+1. Fork the repository.
+2. Create a new branch for your feature or fix.
+3. Commit your changes and push them to your forked repository.
+4. Open a pull request.
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```
+<task_progress>
+- [x] List root folders only
+- [x] Identify and list the root files in the workspace
+- [ ] Generate a README.md with full details of the project along with the complete folder structure
+</task_progress>
+</write_to_file>
