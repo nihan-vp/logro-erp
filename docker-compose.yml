@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  logro:
+    build: .
+    container_name: logro-app
+    restart: always
+    ports:
+      - "9098:5000"
+    env_file:
+      - .env

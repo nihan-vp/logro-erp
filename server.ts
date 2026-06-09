@@ -10,7 +10,7 @@ import { Project, Task, Expense, Attendance, Payment, UserRole, ProjectStatus, T
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 5000;
 
 // Set up server-side JSON and Form data limit (generous for base-64 bill images)
 app.use(express.json({ limit: '10mb' }));
@@ -43,14 +43,14 @@ function verifyToken(token: string): { userId: string; role: UserRole; name: str
   try {
     const [header, body, signature] = token.split('.');
     if (!header || !body || !signature) return null;
-    
+
     const expectedSignature = crypto
       .createHmac('sha256', JWT_SECRET)
       .update(`${header}.${body}`)
       .digest('base64url');
-      
+
     if (signature !== expectedSignature) return null;
-    
+
     return JSON.parse(Buffer.from(body, 'base64url').toString('utf-8'));
   } catch (err) {
     return null;
@@ -67,12 +67,12 @@ function requireAuth(req: any, res: any, next: any) {
   if (!token) {
     return res.status(401).json({ error: 'Bearer token format invalid' });
   }
-  
+
   const payload = verifyToken(token);
   if (!payload) {
     return res.status(401).json({ error: 'Token is invalid or expired' });
   }
-  
+
   req.user = payload;
   next();
 }
@@ -93,24 +93,24 @@ app.post('/api/auth/login', (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: 'Please provide email and password' });
   }
-  
+
   const db = readDb();
   const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
   if (!user) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
-  
+
   const expectedPassword = user.password || 'password123';
   if (password !== expectedPassword) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
-  
+
   const token = signToken({
     userId: user.id,
     role: user.role,
     name: user.name
   });
-  
+
   res.json({
     token,
     user: {
@@ -144,12 +144,12 @@ app.post('/api/users', requireAuth, requireAdmin, (req, res) => {
   if (!name || !email || !role) {
     return res.status(400).json({ error: 'Name, email, and role are required' });
   }
-  
+
   const db = readDb();
   if (db.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
     return res.status(400).json({ error: 'A user with this email already exists' });
   }
-  
+
   const newUser = {
     id: 'usr_' + Date.now(),
     name,
@@ -158,7 +158,7 @@ app.post('/api/users', requireAuth, requireAdmin, (req, res) => {
     phone,
     status: 'active' as const
   };
-  
+
   db.users.push(newUser);
   writeDb(db);
   res.status(201).json(newUser);
@@ -170,13 +170,13 @@ app.patch('/api/users/:id/status', requireAuth, requireAdmin, (req, res) => {
   if (status !== 'active' && status !== 'inactive') {
     return res.status(400).json({ error: 'Invalid status value' });
   }
-  
+
   const db = readDb();
   const userIndex = db.users.findIndex(u => u.id === req.params.id);
   if (userIndex === -1) {
     return res.status(404).json({ error: 'User not found' });
   }
-  
+
   db.users[userIndex].status = status;
   writeDb(db);
   res.json(db.users[userIndex]);
@@ -188,16 +188,16 @@ app.put('/api/users/profile', requireAuth, (req: any, res) => {
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
-  
+
   const db = readDb();
   const userIndex = db.users.findIndex(u => u.id === req.user.userId);
   if (userIndex === -1) {
     return res.status(404).json({ error: 'User not found' });
   }
-  
+
   db.users[userIndex].name = name;
   if (phone !== undefined) db.users[userIndex].phone = phone;
-  
+
   writeDb(db);
   res.json(db.users[userIndex]);
 });
@@ -205,7 +205,7 @@ app.put('/api/users/profile', requireAuth, (req: any, res) => {
 // Helper for Calculations
 function calculateMetrics() {
   const db = readDb();
-  
+
   // Calculate Task-level and Project-level expenses, budgets, workers, wages
   // 1. Task wages from labor attendance: status 'Present' or 'Half Day'
   // Present = 1.0 * wage, Half Day = 0.5 * wage. Add overtime.
@@ -246,33 +246,33 @@ function calculateMetrics() {
 app.get('/api/projects', requireAuth, (req, res) => {
   const db = readDb();
   const { taskToLabourCost, taskToExpensesCost, taskToPaymentsMade } = calculateMetrics();
-  
+
   // Calculate project statistics on-the-fly
   const projectsWithStats = db.projects.map(prj => {
     const projectTasks = db.tasks.filter(t => t.projectId === prj.id);
     const totalBudget = projectTasks.reduce((acc, t) => acc + t.assignedBudget, 0);
-    
+
     // Total expenses of this project layout
     const projectExpenses = db.expenses.filter(e => e.projectId === prj.id);
     const regularExpenseAmt = projectExpenses.reduce((acc, e) => acc + e.amount, 0);
-    
+
     // Project labour cost
     const projectAttendance = db.attendance.filter(a => a.projectId === prj.id);
     const labourCostAmt = projectAttendance.reduce((acc, att) => {
       let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
       return acc + (att.dailyWage * portion) + (att.overtimeAmount || 0);
     }, 0);
-    
+
     const totalActualExpense = regularExpenseAmt + labourCostAmt;
-    
+
     // Total payments of this project
     const projectPayments = db.payments.filter(p => p.projectId === prj.id);
     const totalPaidAmount = projectPayments.filter(p => p.paymentStatus === 'Paid').reduce((acc, p) => acc + p.amount, 0);
     const pendingPaymentsAmt = projectPayments.filter(p => p.paymentStatus === 'Pending').reduce((acc, p) => acc + p.amount, 0);
-    
+
     const profitLoss = totalBudget - totalActualExpense;
     const profitPercentage = totalBudget > 0 ? (profitLoss / totalBudget) * 100 : 0;
-    
+
     return {
       ...prj,
       totalBudget,
@@ -284,7 +284,7 @@ app.get('/api/projects', requireAuth, (req, res) => {
       taskCount: projectTasks.length
     };
   });
-  
+
   res.json({ projects: projectsWithStats });
 });
 
@@ -293,7 +293,7 @@ app.post('/api/projects', requireAuth, (req: any, res) => {
   if (!projectName || !clientName || !location || !startDate || !expectedEndDate) {
     return res.status(400).json({ error: 'All core project fields are required' });
   }
-  
+
   const db = readDb();
   const newProject: Project = {
     id: 'prj_' + Date.now(),
@@ -307,7 +307,7 @@ app.post('/api/projects', requireAuth, (req: any, res) => {
     createdBy: req.user.userId,
     createdAt: new Date().toISOString()
   };
-  
+
   db.projects.push(newProject);
   writeDb(db);
   res.status(201).json(newProject);
@@ -318,13 +318,13 @@ app.put('/api/projects/:id', requireAuth, (req, res) => {
   if (!projectName || !clientName || !location || !startDate || !expectedEndDate) {
     return res.status(400).json({ error: 'All core project fields are required' });
   }
-  
+
   const db = readDb();
   const prjIdx = db.projects.findIndex(p => p.id === req.params.id);
   if (prjIdx === -1) {
     return res.status(404).json({ error: 'Project not found' });
   }
-  
+
   db.projects[prjIdx] = {
     ...db.projects[prjIdx],
     projectName,
@@ -335,7 +335,7 @@ app.put('/api/projects/:id', requireAuth, (req, res) => {
     status: status as ProjectStatus,
     notes
   };
-  
+
   writeDb(db);
   res.json(db.projects[prjIdx]);
 });
@@ -346,14 +346,14 @@ app.delete('/api/projects/:id', requireAuth, (req, res) => {
   if (prjIdx === -1) {
     return res.status(404).json({ error: 'Project not found' });
   }
-  
+
   // Do cascade delete of tasks, expenses, payments, attendance
   db.projects.splice(prjIdx, 1);
   db.tasks = db.tasks.filter(t => t.projectId !== req.params.id);
   db.expenses = db.expenses.filter(e => e.projectId !== req.params.id);
   db.payments = db.payments.filter(p => p.projectId !== req.params.id);
   db.attendance = db.attendance.filter(a => a.projectId !== req.params.id);
-  
+
   writeDb(db);
   res.json({ success: true, message: 'Project and all related data deleted successfully' });
 });
@@ -362,15 +362,15 @@ app.delete('/api/projects/:id', requireAuth, (req, res) => {
 app.get('/api/tasks', requireAuth, (req, res) => {
   const db = readDb();
   const { projectId } = req.query;
-  
+
   let tasks = db.tasks;
   if (projectId) {
     tasks = tasks.filter(t => t.projectId === projectId);
   }
-  
+
   // Calculate task statistics
   const { taskToLabourCost, taskToExpensesCost, taskToPaymentsMade } = calculateMetrics();
-  
+
   const tasksWithStats = tasks.map(tsk => {
     const labourCost = taskToLabourCost[tsk.id] || 0;
     const directExpenses = taskToExpensesCost[tsk.id] || 0;
@@ -379,10 +379,10 @@ app.get('/api/tasks', requireAuth, (req, res) => {
     const remainingBudget = tsk.assignedBudget - totalExpenses;
     const profitLoss = tsk.assignedBudget - totalExpenses;
     const isOverBudget = totalExpenses > tsk.assignedBudget;
-    
+
     // Find matching project details
     const prj = db.projects.find(p => p.id === tsk.projectId);
-    
+
     return {
       ...tsk,
       projectName: prj ? prj.projectName : 'Unknown Project',
@@ -395,7 +395,7 @@ app.get('/api/tasks', requireAuth, (req, res) => {
       isOverBudget
     };
   });
-  
+
   res.json({ tasks: tasksWithStats });
 });
 
@@ -404,7 +404,7 @@ app.post('/api/tasks', requireAuth, (req, res) => {
   if (!projectId || !taskName || assignedBudget === undefined || !startDate || !endDate) {
     return res.status(400).json({ error: 'Project, Task Name, Budget, Start Date, and End Date are required' });
   }
-  
+
   const db = readDb();
   const newTask: Task = {
     id: 'tsk_' + Date.now(),
@@ -419,7 +419,7 @@ app.post('/api/tasks', requireAuth, (req, res) => {
     status: (status || 'Pending') as TaskStatus,
     notes
   };
-  
+
   db.tasks.push(newTask);
   writeDb(db);
   res.status(201).json(newTask);
@@ -430,13 +430,13 @@ app.put('/api/tasks/:id', requireAuth, (req, res) => {
   if (!taskName || assignedBudget === undefined || !startDate || !endDate) {
     return res.status(400).json({ error: 'Task Name, Budget, Start and End dates are required' });
   }
-  
+
   const db = readDb();
   const tskIdx = db.tasks.findIndex(t => t.id === req.params.id);
   if (tskIdx === -1) {
     return res.status(404).json({ error: 'Task not found' });
   }
-  
+
   db.tasks[tskIdx] = {
     ...db.tasks[tskIdx],
     taskName,
@@ -449,7 +449,7 @@ app.put('/api/tasks/:id', requireAuth, (req, res) => {
     status: status as TaskStatus,
     notes
   };
-  
+
   writeDb(db);
   res.json(db.tasks[tskIdx]);
 });
@@ -460,12 +460,12 @@ app.delete('/api/tasks/:id', requireAuth, (req, res) => {
   if (tskIdx === -1) {
     return res.status(404).json({ error: 'Task not found' });
   }
-  
+
   db.tasks.splice(tskIdx, 1);
   db.expenses = db.expenses.filter(e => e.taskId !== req.params.id);
   db.payments = db.payments.filter(p => p.taskId !== req.params.id);
   db.attendance = db.attendance.filter(a => a.taskId !== req.params.id);
-  
+
   writeDb(db);
   res.json({ success: true, message: 'Task and related entries deleted' });
 });
@@ -474,7 +474,7 @@ app.delete('/api/tasks/:id', requireAuth, (req, res) => {
 app.get('/api/expenses', requireAuth, (req, res) => {
   const db = readDb();
   const { projectId, taskId } = req.query;
-  
+
   let expenses = db.expenses;
   if (projectId) {
     expenses = expenses.filter(e => e.projectId === projectId);
@@ -482,7 +482,7 @@ app.get('/api/expenses', requireAuth, (req, res) => {
   if (taskId) {
     expenses = expenses.filter(e => e.taskId === taskId);
   }
-  
+
   // Hydrate expense values
   const hydrated = expenses.map(e => {
     const prj = db.projects.find(p => p.id === e.projectId);
@@ -493,7 +493,7 @@ app.get('/api/expenses', requireAuth, (req, res) => {
       taskName: tsk ? tsk.taskName : 'Unknown Task'
     };
   });
-  
+
   res.json({ expenses: hydrated.reverse() }); // Latest first
 });
 
@@ -502,7 +502,7 @@ app.post('/api/expenses', requireAuth, (req: any, res) => {
   if (!projectId || !taskId || !category || amount === undefined || !paidTo || !paymentMethod || !date) {
     return res.status(400).json({ error: 'All core expense fields are required' });
   }
-  
+
   const db = readDb();
   const newExpense: Expense = {
     id: 'exp_' + Date.now(),
@@ -517,7 +517,7 @@ app.post('/api/expenses', requireAuth, (req: any, res) => {
     billImage, // Store direct base 64 string
     createdBy: req.user.userId
   };
-  
+
   db.expenses.push(newExpense);
   writeDb(db);
   res.status(201).json(newExpense);
@@ -528,13 +528,13 @@ app.put('/api/expenses/:id', requireAuth, (req, res) => {
   if (!category || amount === undefined || !paidTo || !paymentMethod || !date) {
     return res.status(400).json({ error: 'All core fields are required' });
   }
-  
+
   const db = readDb();
   const expIdx = db.expenses.findIndex(e => e.id === req.params.id);
   if (expIdx === -1) {
     return res.status(404).json({ error: 'Expense not found' });
   }
-  
+
   db.expenses[expIdx] = {
     ...db.expenses[expIdx],
     category: category as ExpenseCategory,
@@ -545,7 +545,7 @@ app.put('/api/expenses/:id', requireAuth, (req, res) => {
     notes,
     billImage: billImage !== undefined ? billImage : db.expenses[expIdx].billImage
   };
-  
+
   writeDb(db);
   res.json(db.expenses[expIdx]);
 });
@@ -565,7 +565,7 @@ app.delete('/api/expenses/:id', requireAuth, (req, res) => {
 app.get('/api/attendance', requireAuth, (req, res) => {
   const db = readDb();
   const { projectId, taskId, date } = req.query;
-  
+
   let attendance = db.attendance;
   if (projectId) {
     attendance = attendance.filter(a => a.projectId === projectId);
@@ -576,7 +576,7 @@ app.get('/api/attendance', requireAuth, (req, res) => {
   if (date) {
     attendance = attendance.filter(a => a.date === date);
   }
-  
+
   const hydrated = attendance.map(a => {
     const prj = db.projects.find(p => p.id === a.projectId);
     const tsk = db.tasks.find(t => t.id === a.taskId);
@@ -586,7 +586,7 @@ app.get('/api/attendance', requireAuth, (req, res) => {
       taskName: tsk ? tsk.taskName : 'Unknown Task'
     };
   });
-  
+
   res.json({ attendance: hydrated });
 });
 
@@ -595,7 +595,7 @@ app.post('/api/attendance', requireAuth, (req, res) => {
   if (!projectId || !taskId || !workerName || !date || !status || dailyWage === undefined) {
     return res.status(400).json({ error: 'Project, Task, Worker Name, Date, Status and Daily Wage are required' });
   }
-  
+
   const db = readDb();
   const newAttendance: Attendance = {
     id: 'att_' + Date.now(),
@@ -609,7 +609,7 @@ app.post('/api/attendance', requireAuth, (req, res) => {
     paymentStatus: (paymentStatus || 'Pending') as 'Paid' | 'Pending',
     notes
   };
-  
+
   db.attendance.push(newAttendance);
   writeDb(db);
   res.status(201).json(newAttendance);
@@ -621,18 +621,18 @@ app.post('/api/attendance/bulk', requireAuth, (req, res) => {
   if (!projectId || !taskId || !date || !Array.isArray(workers)) {
     return res.status(400).json({ error: 'Valid Project, Task, Date and workers array are required' });
   }
-  
+
   const db = readDb();
   const addedRecords: Attendance[] = [];
-  
+
   workers.forEach((w: any) => {
     if (!w.workerName || !w.status || w.dailyWage === undefined) return;
-    
+
     // Remove if there's an existing record for same worker, same task, same date to prevent duplicates
-    db.attendance = db.attendance.filter(a => 
+    db.attendance = db.attendance.filter(a =>
       !(a.workerName === w.workerName && a.taskId === taskId && a.date === date)
     );
-    
+
     const newAtt: Attendance = {
       id: 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       projectId,
@@ -645,11 +645,11 @@ app.post('/api/attendance/bulk', requireAuth, (req, res) => {
       paymentStatus: (w.paymentStatus || 'Pending') as 'Paid' | 'Pending',
       notes: w.notes
     };
-    
+
     db.attendance.push(newAtt);
     addedRecords.push(newAtt);
   });
-  
+
   writeDb(db);
   res.status(201).json({ success: true, count: addedRecords.length, records: addedRecords });
 });
@@ -659,13 +659,13 @@ app.put('/api/attendance/:id', requireAuth, (req, res) => {
   if (!status || dailyWage === undefined) {
     return res.status(400).json({ error: 'Status and daily wage are required' });
   }
-  
+
   const db = readDb();
   const attIdx = db.attendance.findIndex(a => a.id === req.params.id);
   if (attIdx === -1) {
     return res.status(404).json({ error: 'Attendance record not found' });
   }
-  
+
   db.attendance[attIdx] = {
     ...db.attendance[attIdx],
     workerName: workerName || db.attendance[attIdx].workerName,
@@ -675,7 +675,7 @@ app.put('/api/attendance/:id', requireAuth, (req, res) => {
     paymentStatus: (paymentStatus || db.attendance[attIdx].paymentStatus) as 'Paid' | 'Pending',
     notes
   };
-  
+
   writeDb(db);
   res.json(db.attendance[attIdx]);
 });
@@ -695,7 +695,7 @@ app.delete('/api/attendance/:id', requireAuth, (req, res) => {
 app.get('/api/payments', requireAuth, (req, res) => {
   const db = readDb();
   const { projectId, taskId } = req.query;
-  
+
   let payments = db.payments;
   if (projectId) {
     payments = payments.filter(p => p.projectId === projectId);
@@ -703,7 +703,7 @@ app.get('/api/payments', requireAuth, (req, res) => {
   if (taskId) {
     payments = payments.filter(p => p.taskId === taskId);
   }
-  
+
   const hydrated = payments.map(p => {
     const prj = db.projects.find(pr => pr.id === p.projectId);
     const tsk = db.tasks.find(ts => ts.id === p.taskId);
@@ -713,7 +713,7 @@ app.get('/api/payments', requireAuth, (req, res) => {
       taskName: tsk ? tsk.taskName : 'Unknown Task'
     };
   });
-  
+
   res.json({ payments: hydrated.reverse() });
 });
 
@@ -722,7 +722,7 @@ app.post('/api/payments', requireAuth, (req, res) => {
   if (!projectId || !taskId || !payeeType || !payeeName || amount === undefined || !paymentDate || !paymentMethod || !paymentStatus) {
     return res.status(400).json({ error: 'All core payment fields are required' });
   }
-  
+
   const db = readDb();
   const newPayment: Payment = {
     id: 'pay_' + Date.now(),
@@ -736,7 +736,7 @@ app.post('/api/payments', requireAuth, (req, res) => {
     paymentStatus: paymentStatus as PaymentStatus,
     notes
   };
-  
+
   db.payments.push(newPayment);
   writeDb(db);
   res.status(201).json(newPayment);
@@ -747,13 +747,13 @@ app.put('/api/payments/:id', requireAuth, (req, res) => {
   if (!payeeType || !payeeName || amount === undefined || !paymentDate || !paymentMethod || !paymentStatus) {
     return res.status(400).json({ error: 'All core fields are required' });
   }
-  
+
   const db = readDb();
   const payIdx = db.payments.findIndex(p => p.id === req.params.id);
   if (payIdx === -1) {
     return res.status(404).json({ error: 'Payment not found' });
   }
-  
+
   db.payments[payIdx] = {
     ...db.payments[payIdx],
     payeeType: payeeType as PayeeType,
@@ -764,7 +764,7 @@ app.put('/api/payments/:id', requireAuth, (req, res) => {
     paymentStatus: paymentStatus as PaymentStatus,
     notes
   };
-  
+
   writeDb(db);
   res.json(db.payments[payIdx]);
 });
@@ -783,16 +783,16 @@ app.delete('/api/payments/:id', requireAuth, (req, res) => {
 // 7. General ERP reports and stats endpoint
 app.get('/api/reports/summary', requireAuth, (reqRes, res) => {
   const db = readDb();
-  
+
   // Calculate aggregate metrics across everything
   const { taskToLabourCost, taskToExpensesCost } = calculateMetrics();
-  
+
   const totalProjects = db.projects.length;
   const activeTasks = db.tasks.filter(t => t.status === 'In Progress').length;
   const completedTasks = db.tasks.filter(t => t.status === 'Completed').length;
-  
+
   const totalAssignedBudget = db.tasks.reduce((sum, t) => sum + t.assignedBudget, 0);
-  
+
   // Direct materials/equipment/etc
   const directExpensesSum = db.expenses.reduce((sum, e) => sum + e.amount, 0);
   // Wages attendance sum
@@ -800,14 +800,14 @@ app.get('/api/reports/summary', requireAuth, (reqRes, res) => {
     let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
     return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
   }, 0);
-  
+
   const totalExpenses = directExpensesSum + labourWagesSum;
-  
+
   const totalPaidAmount = db.payments.filter(p => p.paymentStatus === 'Paid').reduce((sum, p) => sum + p.amount, 0);
   const pendingPayments = db.payments.filter(p => p.paymentStatus === 'Pending' || p.paymentStatus === 'Partial').reduce((sum, p) => sum + p.amount, 0);
-  
+
   const overallProfitLoss = totalAssignedBudget - totalExpenses;
-  
+
   // Task level details
   const taskSummary = db.tasks.map(t => {
     const dExp = db.expenses.filter(e => e.taskId === t.id).reduce((sum, e) => sum + e.amount, 0);
