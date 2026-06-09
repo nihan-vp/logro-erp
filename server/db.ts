@@ -23,8 +23,8 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
   const seededAdmin: User = {
     id: 'usr_admin',
     name: 'Admin',
-    email: 'admin@construction.com',
-    password: 'password123',
+    email: 'admin@logro.com',
+    password: 'admin.Logro@9098',
     phone: '',
     role: 'admin',
     status: 'active'
@@ -41,7 +41,7 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
   };
 
   let changed = false;
-  const adminIndex = nextData.users.findIndex(user => user.email.toLowerCase() === seededAdmin.email.toLowerCase());
+  const adminIndex = nextData.users.findIndex(user => user.id === seededAdmin.id);
 
   if (adminIndex === -1) {
     nextData.users.unshift(seededAdmin);
@@ -50,8 +50,8 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
     const currentAdmin = nextData.users[adminIndex];
     const mergedAdmin = {
       ...currentAdmin,
-      name: seededAdmin.name,
-      email: seededAdmin.email,
+      name: currentAdmin.name || seededAdmin.name,
+      email: currentAdmin.email || seededAdmin.email,
       password: currentAdmin.password || seededAdmin.password,
       role: 'admin' as const,
       status: 'active' as const
@@ -262,8 +262,8 @@ function generateSeedData(): DatabaseSchema {
     {
       id: 'usr_admin',
       name: 'Admin',
-      email: 'admin@construction.com',
-      password: 'password123',
+      email: 'admin@logro.com',
+      password: 'admin.Logro@9098',
       phone: '',
       role: 'admin',
       status: 'active'

@@ -87,6 +87,15 @@ function requireAdmin(req: any, res: any, next: any) {
 
 // REST APIs
 
+// Rate limiting failed login attempts
+interface LoginAttempt {
+  attempts: number;
+  lockoutUntil: number;
+}
+const loginAttempts: Record<string, LoginAttempt> = {};
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+
 // 1. Auth API
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
@@ -94,16 +103,52 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: 'Please provide email and password' });
   }
 
+  const emailKey = email.toLowerCase().trim();
+
+  // Check if locked out
+  const attempt = loginAttempts[emailKey];
+  if (attempt && attempt.lockoutUntil > Date.now()) {
+    const minutesLeft = Math.ceil((attempt.lockoutUntil - Date.now()) / (60 * 1000));
+    return res.status(429).json({
+      error: `Too many login attempts. Please try again after ${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}.`
+    });
+  }
+
   const db = readDb();
-  const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  const user = db.users.find(u => u.email.toLowerCase() === emailKey);
   if (!user) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
   const expectedPassword = user.password || 'password123';
   if (password !== expectedPassword) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+    // Record failed attempt
+    const currentAttempt = loginAttempts[emailKey] || { attempts: 0, lockoutUntil: 0 };
+    
+    // If lockout expired, reset
+    if (currentAttempt.lockoutUntil > 0 && currentAttempt.lockoutUntil <= Date.now()) {
+      currentAttempt.attempts = 0;
+      currentAttempt.lockoutUntil = 0;
+    }
+
+    currentAttempt.attempts += 1;
+    if (currentAttempt.attempts >= MAX_ATTEMPTS) {
+      currentAttempt.lockoutUntil = Date.now() + LOCKOUT_TIME;
+      loginAttempts[emailKey] = currentAttempt;
+      return res.status(429).json({
+        error: `Too many login attempts. Account is temporarily locked. Please try again after 15 minutes.`
+      });
+    }
+
+    loginAttempts[emailKey] = currentAttempt;
+    const remaining = MAX_ATTEMPTS - currentAttempt.attempts;
+    return res.status(401).json({
+      error: `Invalid email or password. ${remaining} attempt${remaining > 1 ? 's' : ''} remaining.`
+    });
   }
+
+  // Successful login: reset attempts
+  delete loginAttempts[emailKey];
 
   const token = signToken({
     userId: user.id,

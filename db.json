@@ -3,11 +3,16 @@
     {
       "id": "usr_admin",
       "name": "Admin",
-      "email": "admin@construction.com",
-      "password": "anasLogro@321",
+      "email": "admin@logro.com",
+      "password": "admin.Logro@9098",
       "phone": "",
       "role": "admin",
       "status": "active"
     }
-  ]
+  ],
+  "projects": [],
+  "tasks": [],
+  "expenses": [],
+  "attendance": [],
+  "payments": []
 }
