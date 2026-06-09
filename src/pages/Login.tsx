@@ -113,6 +113,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               </>
             )}
           </button>
+          <div className="text-center mt-3 text-[10px] text-zinc-400">
+            Security policy: Max 5 failed attempts before a 15-minute lockout.
+          </div>
         </form>
 
         
