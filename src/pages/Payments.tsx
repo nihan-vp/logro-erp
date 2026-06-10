@@ -212,13 +212,16 @@ export default function PaymentsPage({ initialProjectId, initialTaskId, userRole
           <p className="text-xs sm:text-sm text-zinc-500">Track payments.</p>
         </div>
 
-        <button
-          onClick={handleOpenCreate}
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Record Payment</span>
-        </button>
+           {(userRole === 'admin' || userRole === 'accountant') && (
+             <button
+               onClick={handleOpenCreate}
+               className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
+             >
+               <Plus className="w-4 h-4" />
+               <span>Record Payment</span>
+             </button>
+           )}
+
       </div>
 
       {/* Quick Metrics display */}
