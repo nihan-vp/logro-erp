@@ -126,6 +126,12 @@ export const api = {
   updatePayment: (id: string, p: any) => request(`/payments/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
   deletePayment: (id: string) => request(`/payments/${id}`, { method: 'DELETE' }),
 
+  // Accountant
+  getOfficeFunds: () => request('/office/funds'),
+  postOfficeFund: (data: any) => request('/office/funds', { method: 'POST', body: JSON.stringify(data) }),
+  getPaymentRequests: () => request('/payment-requests'),
+  createPaymentRequest: (data: any) => request('/payment-requests', { method: 'POST', body: JSON.stringify(data) }),
+
   // Reports Summary
   getReportSummary: () => request('/reports/summary')
 };

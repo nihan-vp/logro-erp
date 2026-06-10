@@ -26,6 +26,7 @@ export default function AttendancePage({ initialProjectId, initialTaskId }: Atte
   // Form states
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Field states (Bulk markup)
   const [projectId, setProjectId] = useState('');
@@ -106,6 +107,36 @@ export default function AttendancePage({ initialProjectId, initialTaskId }: Atte
 
   const handleRemoveWorkerRow = (idx: number) => {
     setBulkWorkers(bulkWorkers.filter((_, i) => i !== idx));
+  };
+
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      
+      // Assume CSV format: Worker Name, Daily Wage, Overtime, Status
+      // Skip header if it exists
+      const startIdx = (lines[0].toLowerCase().includes('name')) ? 1 : 0;
+      
+      const importedWorkers = lines.slice(startIdx).map(line => {
+        const [name, wage, overtime, status] = line.split(',').map(s => s.trim());
+        return {
+          workerName: name || '',
+          dailyWage: Number(wage) || 200,
+          overtimeAmount: Number(overtime) || 0,
+          status: (status === 'Absent' || status === 'Half Day') ? status : 'Present'
+        };
+      });
+
+      setBulkWorkers([...bulkWorkers, ...importedWorkers]);
+      setIsImporting(false);
+    };
+    reader.readAsText(file);
   };
 
   const handleWorkerFieldChange = (idx: number, field: string, val: any) => {
@@ -519,24 +550,39 @@ export default function AttendancePage({ initialProjectId, initialTaskId }: Atte
               </div>
             </div>
 
-            <div className="flex justify-between items-center">
-              <button
-                type="button"
-                onClick={handleAddWorkerRow}
-                className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                <PlusCircle className="w-4 h-4 text-zinc-600" />
-                <span>Add On-Site Laborer</span>
-              </button>
+             <div className="flex justify-between items-center">
+               <button
+                 type="button"
+                 onClick={handleAddWorkerRow}
+                 className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
+               >
+                 <PlusCircle className="w-4 h-4 text-zinc-600" />
+                 <span>Add On-Site Laborer</span>
+               </button>
 
-              <button
-                type="submit"
-                className="px-5 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-zinc-800"
-              >
-                <BookmarkCheck className="w-4 h-4" />
-                <span>Synchronize Attendances</span>
-              </button>
-            </div>
+               <div className="flex items-center gap-2">
+                 <label className="cursor-pointer px-3 py-1.5 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 border border-zinc-200">
+                   <Users className="w-4 h-4" />
+                   <span>{isImporting ? 'Importing...' : 'Import CSV'}</span>
+                   <input 
+                     type="file" 
+                     accept=".csv" 
+                     className="hidden" 
+                     onChange={handleImportCSV} 
+                     disabled={isImporting}
+                   />
+                 </label>
+                 
+                 <button
+                   type="submit"
+                   className="px-5 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-zinc-800"
+                 >
+                   <BookmarkCheck className="w-4 h-4" />
+                   <span>Synchronize Attendances</span>
+                 </button>
+               </div>
+             </div>
+
           </form>
         </div>
       )}

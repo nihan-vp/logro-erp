@@ -3,25 +3,381 @@
     {
       "id": "usr_admin",
       "name": "Admin",
-      "email": "admin@construction.com",
-      "password": "admin.Logro@321",
-      "phone": "",
-      "role": "admin",
-      "status": "active"
-    },
-    {
-      "id": "usr_admin",
-      "name": "Admin",
       "email": "admin@logro.com",
       "password": "admin.Logro@9098",
       "phone": "",
       "role": "admin",
       "status": "active"
+    },
+    {
+      "id": "usr_accountant",
+      "name": "Accountant",
+      "email": "accountant@logro.com",
+      "password": "password123",
+      "phone": "",
+      "role": "accountant",
+      "status": "active"
     }
   ],
-  "projects": [],
-  "tasks": [],
-  "expenses": [],
-  "attendance": [],
-  "payments": []
+  "projects": [
+    {
+      "id": "prj_1781058922141",
+      "projectName": "Villa",
+      "clientName": "Safeer",
+      "location": "WYD",
+      "startDate": "2026-06-10",
+      "expectedEndDate": "2026-09-08",
+      "status": "Pending",
+      "notes": "",
+      "createdBy": "usr_admin",
+      "createdAt": "2026-06-10T02:35:22.141Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "tsk_1781058952015",
+      "projectId": "prj_1781058922141",
+      "taskName": "Site Clearance",
+      "description": "",
+      "assignedBudget": 20000,
+      "assignedStaff": "eee",
+      "startDate": "2026-06-10",
+      "endDate": "2026-07-10",
+      "progress": 20,
+      "status": "Pending",
+      "notes": ""
+    }
+  ],
+  "expenses": [
+    {
+      "id": "exp_1781058979370",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 2000,
+      "paidTo": "Steel",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-10",
+      "notes": "",
+      "billImage": "",
+      "createdBy": "usr_admin"
+    },
+    {
+      "id": "exp_1781059845277",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 28000,
+      "paidTo": "Steel",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-10",
+      "notes": "",
+      "billImage": "",
+      "createdBy": "usr_admin"
+    },
+    {
+      "id": "exp_1781061483553",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Labour",
+      "amount": 200,
+      "paidTo": "Labour",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-10",
+      "notes": "",
+      "billImage": "",
+      "createdBy": "usr_admin"
+    },
+    {
+      "id": "exp_1781091591545",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 20000,
+      "paidTo": "ff",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-10",
+      "notes": "",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781094695994",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 200,
+      "paidTo": "00",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-10",
+      "notes": "",
+      "createdBy": "usr_accountant"
+    }
+  ],
+  "attendance": [
+    {
+      "id": "att_1781094601125_jhgwv",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "workerName": "Dave Cooper",
+      "date": "2026-06-10",
+      "status": "Present",
+      "dailyWage": 250,
+      "overtimeAmount": 0,
+      "paymentStatus": "Paid"
+    },
+    {
+      "id": "att_1781094601125_86r81",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "workerName": "Manny Ramirez",
+      "date": "2026-06-10",
+      "status": "Present",
+      "dailyWage": 200,
+      "overtimeAmount": 0,
+      "paymentStatus": "Paid"
+    },
+    {
+      "id": "att_1781094601125_zfgjf",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "workerName": "Samuel Jackson",
+      "date": "2026-06-10",
+      "status": "Present",
+      "dailyWage": 220,
+      "overtimeAmount": 0,
+      "paymentStatus": "Paid"
+    },
+    {
+      "id": "att_1781094601125_ktrr1",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "workerName": "Arnie S.",
+      "date": "2026-06-10",
+      "status": "Present",
+      "dailyWage": 300,
+      "overtimeAmount": 0,
+      "paymentStatus": "Pending"
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay_1781091591545",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Supplier",
+      "payeeName": "ff",
+      "amount": 20000,
+      "paymentDate": "2026-06-10",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": ""
+    },
+    {
+      "id": "pay_1781092689964",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Worker",
+      "payeeName": "Nihan",
+      "amount": 19000,
+      "paymentDate": "2026-06-10",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": ""
+    },
+    {
+      "id": "pay_1781094695994",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Supplier",
+      "payeeName": "00",
+      "amount": 200,
+      "paymentDate": "2026-06-10",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": ""
+    },
+    {
+      "id": "pay_1781094915417",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Company",
+      "payeeName": "JSW",
+      "amount": 200,
+      "paymentDate": "2026-06-10",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": ""
+    }
+  ],
+  "officeFunds": [
+    {
+      "id": "fund_main",
+      "balance": 30600,
+      "updatedAt": "2026-06-10T12:44:17.122Z"
+    }
+  ],
+  "officeTransactions": [
+    {
+      "id": "tx_1781091585834",
+      "type": "Cash In",
+      "amount": 20000,
+      "description": "IN",
+      "date": "2026-06-10T11:39",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781091591545",
+      "type": "Cash Out",
+      "amount": 20000,
+      "description": "Payment to ff for tsk_1781058952015",
+      "date": "2026-06-10T11:39:51.545Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781092637197",
+      "type": "Cash In",
+      "amount": 20000,
+      "description": "Ff",
+      "date": "2026-06-10T11:57",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781092689964",
+      "type": "Cash Out",
+      "amount": 19000,
+      "description": "Payment to Nihan for tsk_1781058952015",
+      "date": "2026-06-10T11:58:09.964Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781094695994",
+      "type": "Cash Out",
+      "amount": 200,
+      "description": "Payment to 00 for tsk_1781058952015",
+      "date": "2026-06-10T12:31:35.994Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781094915417",
+      "type": "Cash Out",
+      "amount": 200,
+      "description": "Payment to JSW for tsk_1781058952015",
+      "date": "2026-06-10T12:35:15.417Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781095457122",
+      "type": "Cash In",
+      "amount": 30000,
+      "description": "..",
+      "date": "2026-06-10T12:43",
+      "createdBy": "usr_accountant"
+    }
+  ],
+  "paymentRequests": [
+    {
+      "id": "pr_1781062694556",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "ff",
+      "category": "Vendor",
+      "amount": 20000,
+      "description": "",
+      "dueDate": "2026-06-10",
+      "priority": "Medium",
+      "status": "Paid",
+      "createdAt": "2026-06-10T03:38:14.556Z"
+    },
+    {
+      "id": "pr_1781094680283",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "00",
+      "category": "Vendor",
+      "amount": 200,
+      "description": "",
+      "dueDate": "2026-06-10",
+      "priority": "Medium",
+      "status": "Paid",
+      "createdAt": "2026-06-10T12:31:20.283Z"
+    },
+    {
+      "id": "pr_1781095407169",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "KAIRALI",
+      "category": "Other",
+      "amount": 20000,
+      "description": "",
+      "dueDate": "2026-06-10",
+      "priority": "Medium",
+      "status": "Pending",
+      "createdAt": "2026-06-10T12:43:27.169Z"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "audit_1781091585834",
+      "action": "Transaction",
+      "entity": "OfficeFund",
+      "entityId": "tx_1781091585834",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T11:39:45.834Z",
+      "details": "Cash In of 20000 for project prj_1781058922141"
+    },
+    {
+      "id": "audit_1781091591545",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781091591545",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T11:39:51.545Z",
+      "details": "Processed payment of 20000 to ff"
+    },
+    {
+      "id": "audit_1781092637197",
+      "action": "Transaction",
+      "entity": "OfficeFund",
+      "entityId": "tx_1781092637197",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T11:57:17.197Z",
+      "details": "Cash In of 20000 for project prj_1781058922141"
+    },
+    {
+      "id": "audit_1781092689964",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781092689964",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T11:58:09.964Z",
+      "details": "Processed payment of 19000 to Nihan"
+    },
+    {
+      "id": "audit_1781094695994",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781094695994",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T12:31:35.994Z",
+      "details": "Processed payment of 200 to 00"
+    },
+    {
+      "id": "audit_1781094915417",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781094915417",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T12:35:15.417Z",
+      "details": "Processed payment of 200 to JSW"
+    },
+    {
+      "id": "audit_1781095457122",
+      "action": "Transaction",
+      "entity": "OfficeFund",
+      "entityId": "tx_1781095457122",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T12:44:17.122Z",
+      "details": "Cash In of 30000 for project prj_1781058922141"
+    }
+  ]
 }

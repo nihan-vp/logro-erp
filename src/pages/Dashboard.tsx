@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Building2, Briefcase, CheckCircle2, TrendingUp, DollarSign, 
-  ArrowUpRight, ArrowDownRight, Users, Clock, Receipt, RefreshCw 
+  ArrowUpRight, ArrowDownRight, Users, Clock, Receipt, RefreshCw, Landmark 
 } from 'lucide-react';
 import { api } from '../api/client';
 import { DashboardStats } from '../types';
@@ -93,7 +93,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       </div>
 
       {/* Main KPI Summary widgets */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
         {/* Total Projects */}
         <div className="bg-white border border-zinc-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
@@ -152,6 +152,19 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <span className="text-[10px] text-amber-600 font-medium block mt-0.5">
               {(stats?.totalAssignedBudget && stats.totalExpenses) ? Math.round((stats.totalExpenses / stats.totalAssignedBudget) * 100) : 0}% of budget utilized
             </span>
+          </div>
+        </div>
+        
+        {/* Office Balance */}
+        <div className="bg-white border border-zinc-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Office Balance</span>
+            <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-700">
+              <Landmark className="w-4 h-4" />
+            </span>
+          </div>
+          <div>
+            <span className="text-xl sm:text-2xl font-bold text-zinc-950 block">{formatCur(stats?.officeBalance || 0)}</span>
           </div>
         </div>
       </div>

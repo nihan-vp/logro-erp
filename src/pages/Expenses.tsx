@@ -41,6 +41,8 @@ export default function Expenses({ initialProjectId, initialTaskId, userRole }: 
   const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [fromLocation, setFromLocation] = useState('');
+  const [toLocation, setToLocation] = useState('');
   const [billImage, setBillImage] = useState<string>(''); // Base64 representation
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -91,6 +93,8 @@ export default function Expenses({ initialProjectId, initialTaskId, userRole }: 
     setPaymentMethod('Bank Transfer');
     setDate(new Date().toISOString().split('T')[0]);
     setNotes('');
+    setFromLocation('');
+    setToLocation('');
     setBillImage('');
     setSubmitError(null);
     setIsFormOpen(true);
@@ -106,6 +110,8 @@ export default function Expenses({ initialProjectId, initialTaskId, userRole }: 
     setPaymentMethod(e.paymentMethod);
     setDate(e.date);
     setNotes(e.notes || '');
+    setFromLocation(e.fromLocation || '');
+    setToLocation(e.toLocation || '');
     setBillImage(e.billImage || '');
     setSubmitError(null);
     setIsFormOpen(true);
@@ -138,24 +144,23 @@ export default function Expenses({ initialProjectId, initialTaskId, userRole }: 
     const payload = {
       projectId,
       taskId,
-      category,
+      payeeName: paidTo,
+      category: category === 'Material' ? 'Vendor' : category === 'Labour' ? 'Worker' : 'Other',
       amount: Number(amount),
-      paidTo,
-      paymentMethod,
-      date,
-      notes,
-      billImage
+      description: notes,
+      fromLocation,
+      toLocation,
+      dueDate: date,
+      priority: 'Medium'
     };
+    console.log("Submitting expense request payload:", payload);
 
     try {
       setSubmitError(null);
-      if (editId) {
-        await api.updateExpense(editId, payload);
-      } else {
-        await api.createExpense(payload);
-      }
+      await api.createPaymentRequest(payload);
       setIsFormOpen(false);
       fetchInitialData();
+      alert('Expense request submitted to accountant.');
     } catch (err: any) {
       setSubmitError(err?.message || 'Error logging on-site expense');
     }
@@ -382,7 +387,7 @@ export default function Expenses({ initialProjectId, initialTaskId, userRole }: 
                         >
                           <Edit2 className="w-3 h-3" />
                         </button>
-                        {userRole === 'admin' && (
+                        {(userRole === 'admin' || userRole === 'accountant') && (
                           <button 
                             onClick={() => handleDelete(e.id)}
                             className="p-1 bg-zinc-50 text-rose-500 hover:text-rose-900 border rounded"
@@ -528,42 +533,70 @@ export default function Expenses({ initialProjectId, initialTaskId, userRole }: 
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                  Paid To / Recipient
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Alliance Steel, Local Supplier"
-                  value={paidTo}
-                  onChange={(e) => setPaidTo(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900"
-                />
-              </div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+               <div>
+                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                   Paid To / Recipient
+                 </label>
+                 <input
+                   type="text"
+                   required
+                   placeholder="e.g. Alliance Steel, Local Supplier"
+                   value={paidTo}
+                   onChange={(e) => setPaidTo(e.target.value)}
+                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                 />
+               </div>
+               <div>
+                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                   Disburse Method
+                 </label>
+                 <select
+                   value={paymentMethod}
+                   onChange={(e) => setPaymentMethod(e.target.value)}
+                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1"
+                 >
+                   <option value="Bank Transfer">Bank Transfer</option>
+                   <option value="Cheque">Cheque</option>
+                   <option value="Cash">Cash</option>
+                   <option value="Other">Other</option>
+                 </select>
+               </div>
+             </div>
+             {category === 'Transport' && (
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-zinc-50 p-3 rounded-xl border border-zinc-200">
+                 <div>
+                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                     Origin / From
+                   </label>
+                   <input
+                     type="text"
+                     placeholder="Start location"
+                     value={fromLocation}
+                     onChange={(e) => setFromLocation(e.target.value)}
+                     className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                     Destination / To
+                   </label>
+                   <input
+                     type="text"
+                     placeholder="End location"
+                     value={toLocation}
+                     onChange={(e) => setToLocation(e.target.value)}
+                     className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                   />
+                 </div>
+               </div>
+              )}
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                    Payment Date
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                  Disburse Method
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1"
-                >
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Cash">Cash</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                  Payment Date
                 </label>
                 <input
                   type="date"

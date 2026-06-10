@@ -77,6 +77,14 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+// REST Middleware: Role checker for Admin or Accountant
+function requireAdminOrAccountant(req: any, res: any, next: any) {
+  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'accountant')) {
+    return res.status(403).json({ error: 'Forbidden: Access restricted' });
+  }
+  next();
+}
+
 // REST Middleware: Role checker for Admin only
 function requireAdmin(req: any, res: any, next: any) {
   if (!req.user || req.user.role !== 'admin') {
@@ -167,15 +175,6 @@ app.post('/api/auth/login', (req, res) => {
       status: user.status
     }
   });
-});
-
-app.get('/api/auth/me', requireAuth, (req: any, res) => {
-  const db = readDb();
-  const user = db.users.find(u => u.id === req.user.userId);
-  if (!user) {
-    return res.status(404).json({ error: 'User profile not found' });
-  }
-  res.json({ user });
 });
 
 // User/Roles screen - List and Manage Users for Admin
@@ -543,29 +542,36 @@ app.get('/api/expenses', requireAuth, (req, res) => {
 });
 
 app.post('/api/expenses', requireAuth, (req: any, res) => {
-  const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage } = req.body;
-  if (!projectId || !taskId || !category || amount === undefined || !paidTo || !paymentMethod || !date) {
-    return res.status(400).json({ error: 'All core expense fields are required' });
+  console.log("POST /api/expenses received. Body:", JSON.stringify(req.body));
+  try {
+    const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage } = req.body;
+    if (!projectId || !taskId || !category || amount === undefined || !paidTo || !paymentMethod || !date) {
+      console.log("Validation failed");
+      return res.status(400).json({ error: 'All core expense fields are required' });
+    }
+
+    const db = readDb();
+    const newExpense: Expense = {
+      id: 'exp_' + Date.now(),
+      projectId,
+      taskId,
+      category: category as ExpenseCategory,
+      amount: Number(amount),
+      paidTo,
+      paymentMethod,
+      date,
+      notes,
+      billImage, // Store direct base 64 string
+      createdBy: req.user.userId
+    };
+
+    db.expenses.push(newExpense);
+    writeDb(db);
+    res.status(201).json(newExpense);
+  } catch (err) {
+    console.error("Error in POST /api/expenses:", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
-
-  const db = readDb();
-  const newExpense: Expense = {
-    id: 'exp_' + Date.now(),
-    projectId,
-    taskId,
-    category: category as ExpenseCategory,
-    amount: Number(amount),
-    paidTo,
-    paymentMethod,
-    date,
-    notes,
-    billImage, // Store direct base 64 string
-    createdBy: req.user.userId
-  };
-
-  db.expenses.push(newExpense);
-  writeDb(db);
-  res.status(201).json(newExpense);
 });
 
 app.put('/api/expenses/:id', requireAuth, (req, res) => {
@@ -762,13 +768,21 @@ app.get('/api/payments', requireAuth, (req, res) => {
   res.json({ payments: hydrated.reverse() });
 });
 
-app.post('/api/payments', requireAuth, (req, res) => {
-  const { projectId, taskId, payeeType, payeeName, amount, paymentDate, paymentMethod, paymentStatus, notes } = req.body;
+app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any, res) => {
+  const { projectId, taskId, payeeType, payeeName, amount, paymentDate, paymentMethod, paymentStatus, notes, requestId } = req.body;
   if (!projectId || !taskId || !payeeType || !payeeName || amount === undefined || !paymentDate || !paymentMethod || !paymentStatus) {
     return res.status(400).json({ error: 'All core payment fields are required' });
   }
 
   const db = readDb();
+  
+  // 1. Balance Validation
+  const currentFund = db.officeFunds[0] || { id: 'fund_main', balance: 0, updatedAt: '' };
+  if (paymentStatus === 'Paid' && currentFund.balance < Number(amount)) {
+    return res.status(400).json({ error: 'Insufficient office balance for this payment.' });
+  }
+
+  // 2. Perform Payment and Update Balance
   const newPayment: Payment = {
     id: 'pay_' + Date.now(),
     projectId,
@@ -783,11 +797,72 @@ app.post('/api/payments', requireAuth, (req, res) => {
   };
 
   db.payments.push(newPayment);
+
+  // If Paid, deduct from Office Balance
+  if (paymentStatus === 'Paid') {
+    currentFund.balance -= Number(amount);
+    currentFund.updatedAt = new Date().toISOString();
+    db.officeFunds[0] = currentFund;
+
+    // Add Transaction Record
+    db.officeTransactions.push({
+        id: 'tx_' + Date.now(),
+        type: 'Cash Out',
+        amount: Number(amount),
+        description: `Payment to ${payeeName} for ${taskId}`,
+        date: new Date().toISOString(),
+        createdBy: req.user.userId
+    });
+  }
+
+  // 3. Update Request Status if linked
+  if (requestId) {
+      const reqIdx = db.paymentRequests.findIndex(r => r.id === requestId);
+      if (reqIdx !== -1) {
+          const pr = db.paymentRequests[reqIdx];
+          pr.status = paymentStatus === 'Paid' ? 'Paid' : 'Partially Paid';
+          
+          // Auto-create Expense
+          const categoryMap: Record<string, ExpenseCategory> = {
+            'Worker': 'Labour',
+            'Vendor': 'Material',
+            'Transportation': 'Transport',
+            'Other': 'Other'
+          };
+          
+           db.expenses.push({
+             id: 'exp_' + Date.now(),
+             projectId: pr.projectId,
+             taskId: pr.taskId,
+             category: categoryMap[pr.category] || 'Other',
+             amount: pr.amount,
+             paidTo: pr.payeeName,
+             paymentMethod: paymentMethod,
+             date: paymentDate,
+             fromLocation: pr.fromLocation,
+             toLocation: pr.toLocation,
+             notes: pr.description,
+             createdBy: req.user.userId
+           });
+      }
+  }
+
+  // 4. Audit Trail
+  db.auditLogs.push({
+      id: 'audit_' + Date.now(),
+      action: 'Create',
+      entity: 'Payment',
+      entityId: newPayment.id,
+      performedBy: req.user.userId,
+      timestamp: new Date().toISOString(),
+      details: `Processed payment of ${amount} to ${payeeName}`
+  });
+
   writeDb(db);
   res.status(201).json(newPayment);
 });
 
-app.put('/api/payments/:id', requireAuth, (req, res) => {
+app.put('/api/payments/:id', requireAuth, requireAdminOrAccountant, (req, res) => {
   const { payeeType, payeeName, amount, paymentDate, paymentMethod, paymentStatus, notes } = req.body;
   if (!payeeType || !payeeName || amount === undefined || !paymentDate || !paymentMethod || !paymentStatus) {
     return res.status(400).json({ error: 'All core fields are required' });
@@ -825,8 +900,79 @@ app.delete('/api/payments/:id', requireAuth, (req, res) => {
   res.json({ success: true, message: 'Payment deleted' });
 });
 
+// 8. Accountant Module Routes
+app.get('/api/office/funds', requireAuth, (req, res) => {
+    const db = readDb();
+    res.json({ officeFunds: db.officeFunds, officeTransactions: db.officeTransactions });
+});
+
+app.post('/api/office/funds', requireAuth, requireAdminOrAccountant, (req: any, res) => {
+    const { type, amount, description, date, projectId, source, paymentMethod, reference } = req.body;
+    const db = readDb();
+    const newTransaction: OfficeTransaction = {
+        id: 'tx_' + Date.now(),
+        type,
+        amount,
+        description,
+        date: date || new Date().toISOString(),
+        createdBy: req.user.userId,
+        source,
+        paymentMethod,
+        reference
+    };
+    db.officeTransactions.push(newTransaction);
+    
+    // Update balance
+    const currentFund = db.officeFunds[0] || { id: 'fund_main', balance: 0, updatedAt: '' };
+    if (type === 'Cash In') currentFund.balance += Number(amount);
+    else currentFund.balance -= Number(amount);
+    currentFund.updatedAt = new Date().toISOString();
+    db.officeFunds[0] = currentFund;
+    
+    // Log Audit
+    db.auditLogs.push({
+        id: 'audit_' + Date.now(),
+        action: 'Transaction',
+        entity: 'OfficeFund',
+        entityId: newTransaction.id,
+        performedBy: req.user.userId,
+        timestamp: new Date().toISOString(),
+        details: `${type} of ${amount} from ${source || 'unknown'} for project ${projectId || 'General'}`
+    });
+    
+    writeDb(db);
+    res.status(201).json(newTransaction);
+});
+
+app.get('/api/payment-requests', requireAuth, (req, res) => {
+    const db = readDb();
+    res.json({ paymentRequests: db.paymentRequests });
+});
+
+app.post('/api/payment-requests', requireAuth, (req: any, res) => {
+    console.log("POST /api/payment-requests received:", req.body);
+    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority } = req.body;
+    const db = readDb();
+    const newRequest: PaymentRequest = {
+        id: 'pr_' + Date.now(),
+        projectId,
+        taskId,
+        payeeName,
+        category,
+        amount,
+        description,
+        dueDate,
+        priority,
+        status: 'Pending',
+        createdAt: new Date().toISOString()
+    };
+    db.paymentRequests.push(newRequest);
+    writeDb(db);
+    res.status(201).json(newRequest);
+});
+
 // 7. General ERP reports and stats endpoint
-app.get('/api/reports/summary', requireAuth, (reqRes, res) => {
+app.get('/api/reports/summary', requireAuth, (req, res) => {
   const db = readDb();
 
   // Calculate aggregate metrics across everything
@@ -896,6 +1042,8 @@ app.get('/api/reports/summary', requireAuth, (reqRes, res) => {
     return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
   }, 0);
 
+  const officeBalance = db.officeFunds[0]?.balance || 0;
+
   res.json({
     stats: {
       totalProjects,
@@ -907,7 +1055,8 @@ app.get('/api/reports/summary', requireAuth, (reqRes, res) => {
       pendingPayments,
       overallProfitLoss,
       todaysAttendanceCount,
-      todaysLabourCost
+      todaysLabourCost,
+      officeBalance
     },
     taskSummary,
     recentExpenses,

@@ -12,6 +12,8 @@ import Expenses from './pages/Expenses';
 import AttendancePage from './pages/Attendance';
 import PaymentsPage from './pages/Payments';
 import ReportsPage from './pages/Reports';
+import AccountantDashboard from './pages/AccountantDashboard';
+import AdminExpensesPage from './pages/AdminExpenses';
 import OfflineScreen from './pages/OfflineScreen';
 
 export default function App() {
@@ -30,7 +32,11 @@ export default function App() {
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);
-    setActiveTab('dashboard');
+    if (user.role === 'accountant') {
+      setActiveTab('accountant');
+    } else {
+      setActiveTab('dashboard');
+    }
   };
 
   const handleLogout = () => {
@@ -41,16 +47,8 @@ export default function App() {
   };
 
   const navigateTo = (tab: string, params: any = null) => {
-    if (tab === 'tasks' || tab === 'expenses' || tab === 'payments') {
-      setActiveTab('projects');
-      setTabParams({
-        ...params,
-        openSubTab: tab === 'payments' ? 'payouts' : tab
-      });
-    } else {
-      setActiveTab(tab);
-      setTabParams(params);
-    }
+    setActiveTab(tab);
+    setTabParams(params);
   };
 
   if (!currentUser) {
@@ -62,11 +60,46 @@ export default function App() {
 
   // Navigation Links
   const navItems = [
-    { id: 'dashboard', label: 'Overview', icon: BarChart3 },
-    { id: 'projects', label: 'Projects', icon: Building2 },
-    { id: 'attendance', label: 'Crew', icon: Users },
-    { id: 'reports', label: 'Audits', icon: FileText }
+    ...(userRole === 'accountant' ? [{ id: 'dashboard', label: 'Overview', icon: BarChart3 }] : [
+        { id: 'dashboard', label: 'Overview', icon: BarChart3 },
+        { id: 'projects', label: 'Projects', icon: Building2 },
+        { id: 'attendance', label: 'Crew', icon: Users },
+        { id: 'reports', label: 'Audits', icon: FileText }
+    ]),
+    ...(userRole === 'accountant' || userRole === 'admin' ? [
+      { id: 'accountant', label: 'Accountant', icon: Landmark },
+      { id: 'expenses', label: 'Expenses', icon: Receipt },
+      { id: 'payments', label: 'Payments', icon: DollarSign }
+    ] : []),
+    ...(userRole === 'admin' ? [{ id: 'adminExpenses', label: 'Admin Expenses', icon: Receipt }] : [])
   ];
+
+  // Helper to determine allowed content
+  const renderContent = () => {
+    switch (activeTab) {
+        case 'dashboard': return <Dashboard onNavigate={navigateTo} />;
+        case 'projects': return (
+            <Projects 
+              onNavigate={navigateTo} 
+              userRole={userRole} 
+              initialParams={tabParams}
+              clearParams={() => setTabParams(null)}
+            />
+        );
+        case 'attendance': return (
+            <AttendancePage 
+              initialProjectId={tabParams?.projectId} 
+              initialTaskId={tabParams?.taskId} 
+            />
+        );
+        case 'reports': return <ReportsPage />;
+        case 'accountant': return <AccountantDashboard onNavigate={navigateTo} />;
+        case 'expenses': return <Expenses userRole={userRole} />;
+        case 'payments': return <PaymentsPage userRole={userRole} />;
+        case 'adminExpenses': return <AdminExpensesPage />;
+        default: return <Dashboard onNavigate={navigateTo} />;
+    }
+  };
 
   return (
     <div id="app-root" className="min-h-screen bg-zinc-50 flex flex-col font-sans">
@@ -160,22 +193,7 @@ export default function App() {
         )}
 
         <div className="bg-transparent">
-          {activeTab === 'dashboard' && <Dashboard onNavigate={navigateTo} />}
-          {activeTab === 'projects' && (
-            <Projects 
-              onNavigate={navigateTo} 
-              userRole={userRole} 
-              initialParams={tabParams}
-              clearParams={() => setTabParams(null)}
-            />
-          )}
-          {activeTab === 'attendance' && (
-            <AttendancePage 
-              initialProjectId={tabParams?.projectId} 
-              initialTaskId={tabParams?.taskId} 
-            />
-          )}
-          {activeTab === 'reports' && <ReportsPage />}
+          {renderContent()}
         </div>
       </main>
 

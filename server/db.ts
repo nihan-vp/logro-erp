@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { MongoClient, Db } from 'mongodb';
-import { User, Project, Task, Expense, Attendance, Payment } from '../src/types';
+import { User, Project, Task, Expense, Attendance, Payment, OfficeFund, OfficeTransaction, PaymentRequest, AuditLog } from '../src/types';
 
 // Initialize environment variables from .env
 dotenv.config();
@@ -17,18 +17,33 @@ interface DatabaseSchema {
   expenses: Expense[];
   attendance: Attendance[];
   payments: Payment[];
+  officeFunds: OfficeFund[];
+  officeTransactions: OfficeTransaction[];
+  paymentRequests: PaymentRequest[];
+  auditLogs: AuditLog[];
 }
 
 function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; changed: boolean } {
-  const seededAdmin: User = {
-    id: 'usr_admin',
-    name: 'Admin',
-    email: 'admin@logro.com',
-    password: 'admin.Logro@9098',
-    phone: '',
-    role: 'admin',
-    status: 'active'
-  };
+  const seededUsers: User[] = [
+    {
+      id: 'usr_admin',
+      name: 'Admin',
+      email: 'admin@logro.com',
+      password: 'admin.Logro@9098',
+      phone: '',
+      role: 'admin',
+      status: 'active'
+    },
+    {
+      id: 'usr_accountant',
+      name: 'Accountant',
+      email: 'accountant@logro.com',
+      password: 'password123',
+      phone: '',
+      role: 'accountant',
+      status: 'active'
+    }
+  ];
 
   const nextData: DatabaseSchema = {
     ...data,
@@ -37,35 +52,36 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
     tasks: Array.isArray(data.tasks) ? [...data.tasks] : [],
     expenses: Array.isArray(data.expenses) ? [...data.expenses] : [],
     attendance: Array.isArray(data.attendance) ? [...data.attendance] : [],
-    payments: Array.isArray(data.payments) ? [...data.payments] : []
+    payments: Array.isArray(data.payments) ? [...data.payments] : [],
+    officeFunds: Array.isArray(data.officeFunds) ? [...data.officeFunds] : [],
+    officeTransactions: Array.isArray(data.officeTransactions) ? [...data.officeTransactions] : [],
+    paymentRequests: Array.isArray(data.paymentRequests) ? [...data.paymentRequests] : [],
+    auditLogs: Array.isArray(data.auditLogs) ? [...data.auditLogs] : []
   };
 
   let changed = false;
-  const adminIndex = nextData.users.findIndex(user => user.id === seededAdmin.id);
 
-  if (adminIndex === -1) {
-    nextData.users.unshift(seededAdmin);
-    changed = true;
-  } else {
-    const currentAdmin = nextData.users[adminIndex];
-    const mergedAdmin = {
-      ...currentAdmin,
-      name: currentAdmin.name || seededAdmin.name,
-      email: currentAdmin.email || seededAdmin.email,
-      password: currentAdmin.password || seededAdmin.password,
-      role: 'admin' as const,
-      status: 'active' as const
-    };
+  for (const seededUser of seededUsers) {
+    const userIndex = nextData.users.findIndex(user => user.id === seededUser.id);
 
-    if (
-      mergedAdmin.name !== currentAdmin.name ||
-      mergedAdmin.email !== currentAdmin.email ||
-      mergedAdmin.password !== currentAdmin.password ||
-      mergedAdmin.role !== currentAdmin.role ||
-      mergedAdmin.status !== currentAdmin.status
-    ) {
-      nextData.users[adminIndex] = mergedAdmin;
+    if (userIndex === -1) {
+      nextData.users.unshift(seededUser);
       changed = true;
+    } else {
+      const current = nextData.users[userIndex];
+      // Update role/status if necessary, but keep existing password if set
+      const merged = {
+        ...current,
+        name: current.name || seededUser.name,
+        email: current.email || seededUser.email,
+        role: seededUser.role, // Force role
+        status: current.status || 'active'
+      };
+
+      if (JSON.stringify(current) !== JSON.stringify(merged)) {
+        nextData.users[userIndex] = merged;
+        changed = true;
+      }
     }
   }
 
@@ -78,7 +94,11 @@ const collectionsList: (keyof DatabaseSchema)[] = [
   'tasks',
   'expenses',
   'attendance',
-  'payments'
+  'payments',
+  'officeFunds',
+  'officeTransactions',
+  'paymentRequests',
+  'auditLogs'
 ];
 
 let mongoClient: MongoClient | null = null;
@@ -152,6 +172,10 @@ async function loadDataFromMongo() {
       tempDb.expenses = [];
       tempDb.attendance = [];
       tempDb.payments = [];
+      tempDb.officeFunds = [];
+      tempDb.officeTransactions = [];
+      tempDb.paymentRequests = [];
+      tempDb.auditLogs = [];
       await syncToMongo(tempDb as DatabaseSchema);
     }
 
@@ -267,6 +291,15 @@ function generateSeedData(): DatabaseSchema {
       phone: '',
       role: 'admin',
       status: 'active'
+    },
+    {
+      id: 'usr_accountant',
+      name: 'Accountant',
+      email: 'accountant@logro.com',
+      password: 'password123',
+      phone: '',
+      role: 'accountant',
+      status: 'active'
     }
   ];
 
@@ -276,6 +309,10 @@ function generateSeedData(): DatabaseSchema {
     tasks: [],
     expenses: [],
     attendance: [],
-    payments: []
+    payments: [],
+    officeFunds: [],
+    officeTransactions: [],
+    paymentRequests: [],
+    auditLogs: []
   };
 }

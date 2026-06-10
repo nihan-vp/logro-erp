@@ -1,4 +1,46 @@
-export type UserRole = 'admin' | 'manager' | 'worker';
+export type UserRole = 'admin' | 'manager' | 'worker' | 'accountant';
+
+export interface OfficeFund {
+    id: string;
+    balance: number;
+    updatedAt: string;
+}
+export interface OfficeTransaction {
+    id: string;
+    type: 'Cash In' | 'Cash Out';
+    amount: number;
+    description: string;
+    date: string;
+    createdBy: string;
+    source?: string;
+    paymentMethod?: string;
+    reference?: string;
+}
+export interface PaymentRequest {
+    id: string;
+    projectId: string;
+    taskId: string;
+    payeeName: string;
+    category: 'Worker' | 'Vendor' | 'Transportation' | 'Other';
+    amount: number;
+    description: string;
+    fromLocation?: string;
+    toLocation?: string;
+    dueDate: string;
+    priority: 'Low' | 'Medium' | 'High';
+    status: 'Pending' | 'Paid' | 'Partially Paid' | 'Cancelled';
+    createdAt: string;
+}
+export interface AuditLog {
+    id: string;
+    action: string;
+    entity: string;
+    entityId: string;
+    performedBy: string;
+    timestamp: string;
+    details: string;
+}
+
 
 export interface User {
   id: string;
@@ -52,6 +94,8 @@ export interface Expense {
   paidTo: string;
   paymentMethod: string;
   date: string;
+  fromLocation?: string;
+  toLocation?: string;
   notes?: string;
   billImage?: string; // base64 or URL
   createdBy: string;

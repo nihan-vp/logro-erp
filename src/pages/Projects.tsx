@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Search, Edit2, Trash2, Calendar, MapPin, Building, 
+import {
+  Plus, Search, Edit2, Trash2, Calendar, MapPin, Building,
   ChevronRight, ArrowLeft, RefreshCw, AlertTriangle, Briefcase,
-  Receipt, Coins, TrendingUp, PlusCircle, DollarSign, Eye, 
+  Receipt, Coins, TrendingUp, PlusCircle, DollarSign, Eye,
   UploadCloud, X, ChevronDown, CheckCircle2, FileText, Trash,
   Image as ImageIcon, Users
 } from 'lucide-react';
@@ -21,7 +21,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Dashboard overall filter/search
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -30,12 +30,12 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [viewTab, setViewTab] = useState<'tasks' | 'expenses' | 'payouts'>('tasks');
-  
+
   // Parallel child states of selected project
   const [projectTasks, setProjectTasks] = useState<any[]>([]);
   const [projectExpenses, setProjectExpenses] = useState<any[]>([]);
   const [projectPayments, setProjectPayments] = useState<any[]>([]);
-  
+
   // Specified Task focus overlay
   const [activeTask, setActiveTask] = useState<any | null>(null);
   const [activeTaskTab, setActiveTaskTab] = useState<'expenses' | 'pay'>('expenses');
@@ -43,11 +43,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   // Sub-filters for Project Sub-tabs
   const [tasksSearch, setTasksSearch] = useState('');
   const [tasksStatus, setTasksStatus] = useState('All');
-  
+
   const [expensesSearch, setExpensesSearch] = useState('');
   const [expensesCategory, setExpensesCategory] = useState('All');
   const [expensesPayMethod, setExpensesPayMethod] = useState('All');
-  
+
   const [payoutsSearch, setPayoutsSearch] = useState('');
   const [payoutsPayee, setPayoutsPayee] = useState('All');
   const [payoutsStatus, setPayoutsStatus] = useState('All');
@@ -77,7 +77,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   const [taskFormStatus, setTaskFormStatus] = useState<TaskStatus>('Pending');
   const [taskFormNotes, setTaskFormNotes] = useState('');
   const [taskSubmitError, setTaskSubmitError] = useState<string | null>(null);
-  
+
   // Custom multi-staff picker in Task Editor
   const [taskAssignedStaffList, setTaskAssignedStaffList] = useState<string[]>([]);
   const [crewSuggestions, setCrewSuggestions] = useState<string[]>([
@@ -96,7 +96,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   const [expensePaymentMethod, setExpensePaymentMethod] = useState('Bank Transfer');
   const [expenseDate, setExpenseDate] = useState('');
   const [expenseNotes, setExpenseNotes] = useState('');
-  const [expenseBillImage, setExpenseBillImage] = useState<string>(''); 
+  const [expenseBillImage, setExpenseBillImage] = useState<string>('');
   const [expenseSubmitError, setExpenseSubmitError] = useState<string | null>(null);
 
   // Receipt Preview
@@ -172,7 +172,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       setLoadingDetails(true);
       setSelectedProject(project);
       setIsViewOpen(true);
-      
+
       const [taskRes, expenseRes, paymentRes] = await Promise.all([
         api.getTasks(project.id),
         api.getExpenses(project.id),
@@ -197,13 +197,13 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
         api.getExpenses(projId),
         api.getPayments(projId)
       ]);
-      
+
       setProjects(projRes.projects || []);
       const updatedProj = (projRes.projects || []).find((p: any) => p.id === projId);
       if (updatedProj) {
         setSelectedProject(updatedProj);
       }
-      
+
       setProjectTasks(taskRes.tasks || []);
       setProjectExpenses(expenseRes.expenses || []);
       setProjectPayments(paymentRes.payments || []);
@@ -317,9 +317,9 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
     setTaskFormName(task.taskName);
     setTaskFormDesc(task.description || '');
     setTaskFormBudget(task.assignedBudget);
-    
-    const parsedStaff = task.assignedStaff 
-      ? task.assignedStaff.split(',').map((s: string) => s.trim()).filter(Boolean) 
+
+    const parsedStaff = task.assignedStaff
+      ? task.assignedStaff.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [];
     setTaskAssignedStaffList(parsedStaff);
     setTaskMemberInput('');
@@ -624,35 +624,35 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
   // Filter computations
   const filteredProjects = projects.filter(p => {
-    const matchesSearch = p.projectName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          p.location.toLowerCase().includes(searchQuery.toLowerCase());
-    
+    const matchesSearch = p.projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.location.toLowerCase().includes(searchQuery.toLowerCase());
+
     const matchesStatus = statusFilter === 'All' || p.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const filteredTasksList = projectTasks.filter(t => {
-    const matchesSearch = t.taskName.toLowerCase().includes(tasksSearch.toLowerCase()) || 
-                          (t.description || '').toLowerCase().includes(tasksSearch.toLowerCase()) || 
-                          (t.assignedStaff || '').toLowerCase().includes(tasksSearch.toLowerCase());
+    const matchesSearch = t.taskName.toLowerCase().includes(tasksSearch.toLowerCase()) ||
+      (t.description || '').toLowerCase().includes(tasksSearch.toLowerCase()) ||
+      (t.assignedStaff || '').toLowerCase().includes(tasksSearch.toLowerCase());
     const matchesStatus = tasksStatus === 'All' || t.status === tasksStatus;
     return matchesSearch && matchesStatus;
   });
 
   const filteredExpensesList = projectExpenses.filter(e => {
-    const matchesSearch = e.paidTo.toLowerCase().includes(expensesSearch.toLowerCase()) || 
-                          (e.notes || '').toLowerCase().includes(expensesSearch.toLowerCase()) || 
-                          (e.taskName || '').toLowerCase().includes(expensesSearch.toLowerCase());
+    const matchesSearch = e.paidTo.toLowerCase().includes(expensesSearch.toLowerCase()) ||
+      (e.notes || '').toLowerCase().includes(expensesSearch.toLowerCase()) ||
+      (e.taskName || '').toLowerCase().includes(expensesSearch.toLowerCase());
     const matchesCat = expensesCategory === 'All' || e.category === expensesCategory;
     const matchesPay = expensesPayMethod === 'All' || e.paymentMethod === expensesPayMethod;
     return matchesSearch && matchesCat && matchesPay;
   });
 
   const filteredPayoutsList = projectPayments.filter(p => {
-    const matchesSearch = p.payeeName.toLowerCase().includes(payoutsSearch.toLowerCase()) || 
-                          (p.notes || '').toLowerCase().includes(payoutsSearch.toLowerCase()) || 
-                          (p.taskName || '').toLowerCase().includes(payoutsSearch.toLowerCase());
+    const matchesSearch = p.payeeName.toLowerCase().includes(payoutsSearch.toLowerCase()) ||
+      (p.notes || '').toLowerCase().includes(payoutsSearch.toLowerCase()) ||
+      (p.taskName || '').toLowerCase().includes(payoutsSearch.toLowerCase());
     const matchesType = payoutsPayee === 'All' || p.payeeType === payoutsPayee;
     const matchesStatus = payoutsStatus === 'All' || p.paymentStatus === payoutsStatus;
     return matchesSearch && matchesType && matchesStatus;
@@ -664,7 +664,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
   return (
     <div className="space-y-6 font-sans">
-      
+
       {/* 1. ARCHITECTURAL HEADER & SEARCH (MAIN SCREEN) */}
       {!isFormOpen && !isViewOpen && (
         <>
@@ -721,8 +721,8 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
             <div className="bg-white border border-zinc-200 rounded-2xl p-12 text-center text-zinc-500">
               <p className="text-sm font-semibold">No registered projects match current filters.</p>
               {userRole === 'admin' && (
-                <button 
-                  onClick={handleOpenCreateProject} 
+                <button
+                  onClick={handleOpenCreateProject}
                   className="mt-4 px-4 py-2 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition"
                 >
                   Initiate Project Scope
@@ -735,21 +735,20 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 const profit = p.profitLoss || 0;
                 const isOver = profit < 0;
                 return (
-                  <div 
+                  <div
                     key={p.id}
                     className="bg-white border border-zinc-200/80 rounded-2xl p-4 sm:p-5 shadow-sm hover:border-zinc-300 transition-all flex flex-col justify-between"
                   >
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight ${
-                            p.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/40' :
-                            p.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border border-zinc-200/40' :
-                            p.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/40' : 'bg-zinc-50 text-zinc-500'
-                          }`}>
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight ${p.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/40' :
+                              p.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border border-zinc-200/40' :
+                                p.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/40' : 'bg-zinc-50 text-zinc-500'
+                            }`}>
                             {p.status}
                           </span>
-                          <h2 
+                          <h2
                             onClick={() => loadProjectDetails(p)}
                             className="text-sm sm:text-base font-bold text-zinc-900 hover:text-zinc-700 cursor-pointer tracking-tight mt-1"
                           >
@@ -795,9 +794,9 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                           {formatCur(profit)}
                         </span>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
-                        <button 
+                        <button
                           onClick={() => loadProjectDetails(p)}
                           className="text-xs font-bold text-zinc-900 hover:underline flex items-center gap-0.5 cursor-pointer"
                         >
@@ -805,14 +804,14 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                         </button>
                         {userRole === 'admin' && (
                           <>
-                            <button 
+                            <button
                               onClick={() => handleOpenEditProject(p)}
                               className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
                               title="Edit Details"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDeleteProject(p.id)}
                               className="p-1 text-rose-500 hover:text-rose-700 rounded bg-zinc-50 border border-zinc-200/40"
                               title="Erase project"
@@ -834,7 +833,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       {/* 2. OVERRIDING VIEW MODE: THE INTEGRATED PROJECT DECK */}
       {isViewOpen && selectedProject && (
         <div className="space-y-6">
-          <button 
+          <button
             onClick={() => setIsViewOpen(false)}
             className="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors"
           >
@@ -853,15 +852,14 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               </div>
 
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                  selectedProject.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' :
-                  selectedProject.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border' :
-                  selectedProject.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/50' : 'bg-zinc-50 text-zinc-500'
-                }`}>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${selectedProject.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' :
+                    selectedProject.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border' :
+                      selectedProject.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/50' : 'bg-zinc-50 text-zinc-500'
+                  }`}>
                   {selectedProject.status}
                 </span>
                 {userRole === 'admin' && (
-                  <button 
+                  <button
                     onClick={() => {
                       handleOpenEditProject(selectedProject);
                       setIsViewOpen(false);
@@ -919,29 +917,26 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
           {/* THE INTEGRATION TAB NAVIGATORS */}
           <div className="flex border-b border-zinc-200">
-            <button 
+            <button
               onClick={() => setViewTab('tasks')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${
-                viewTab === 'tasks' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
-              }`}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${viewTab === 'tasks' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
+                }`}
             >
               <Briefcase className="w-4 h-4" />
               <span>Tasks ({projectTasks.length})</span>
             </button>
-            <button 
+            <button
               onClick={() => setViewTab('expenses')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${
-                viewTab === 'expenses' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
-              }`}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${viewTab === 'expenses' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
+                }`}
             >
               <Receipt className="w-4 h-4" />
               <span>Expenses ({projectExpenses.length})</span>
             </button>
-            <button 
+            <button
               onClick={() => setViewTab('payouts')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${
-                viewTab === 'payouts' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
-              }`}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${viewTab === 'payouts' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
+                }`}
             >
               <Coins className="w-4 h-4" />
               <span>Payments ({projectPayments.length})</span>
@@ -965,7 +960,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                       className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-zinc-200 rounded-xl focus:outline-none"
                     />
                   </div>
-                  <select 
+                  <select
                     value={tasksStatus}
                     onChange={(e) => setTasksStatus(e.target.value)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
@@ -978,11 +973,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   </select>
                 </div>
 
-                <button 
+                <button
                   onClick={handleOpenCreateTask}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Add Task 
+                  <Plus className="w-3.5 h-3.5" /> Add Task
                 </button>
               </div>
 
@@ -1004,7 +999,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                         <div className="space-y-3">
                           <div className="flex items-start justify-between gap-1">
                             <div>
-                              <h3 
+                              <h3
                                 onClick={() => setActiveTask(t)}
                                 className="text-xs sm:text-sm font-bold text-zinc-900 hover:underline cursor-pointer"
                               >
@@ -1015,11 +1010,10 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                             <select
                               value={t.status}
                               onChange={(e) => handleQuickStatusUpdate(t, e.target.value as TaskStatus)}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full outline-none border cursor-pointer ${
-                                t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                t.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border-zinc-200' :
-                                t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-100 text-zinc-500 border-zinc-200'
-                              }`}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full outline-none border cursor-pointer ${t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  t.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border-zinc-200' :
+                                    t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-100 text-zinc-500 border-zinc-200'
+                                }`}
                             >
                               <option value="Pending">Pending</option>
                               <option value="In Progress">In Progress</option>
@@ -1090,14 +1084,14 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                         <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100 text-xs">
                           <span className="text-[10px] text-zinc-400 font-semibold">{t.startDate} - {t.endDate}</span>
                           <div className="flex items-center gap-2">
-                            <button 
+                            <button
                               onClick={() => setActiveTask(t)}
                               className="text-xs font-black text-zinc-900 hover:underline cursor-pointer flex items-center gap-0.5"
                             >
                               <span>Details</span>
                               <ChevronRight className="w-3.5 h-3.5" />
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleOpenEditTask(t)}
                               className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
                               title="Edit"
@@ -1105,7 +1099,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             {userRole === 'admin' && (
-                              <button 
+                              <button
                                 onClick={() => handleDeleteTask(t.id)}
                                 className="p-1 text-rose-500 hover:text-rose-700 bg-zinc-50 border border-zinc-200/40 rounded"
                                 title="Delete"
@@ -1140,7 +1134,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                       className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-zinc-200 rounded-xl focus:outline-none"
                     />
                   </div>
-                  <select 
+                  <select
                     value={expensesCategory}
                     onChange={(e) => setExpensesCategory(e.target.value)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
@@ -1153,7 +1147,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                     <option value="Company Payment">Company Payment</option>
                     <option value="Other">Other</option>
                   </select>
-                  <select 
+                  <select
                     value={expensesPayMethod}
                     onChange={(e) => setExpensesPayMethod(e.target.value)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
@@ -1166,7 +1160,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </div>
 
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={() => handleOpenCreateExpense()}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm cursor-pointer"
                   >
@@ -1193,7 +1187,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               ) : (
                 <div className="space-y-2">
                   {filteredExpensesList.map((e) => (
-                    <div 
+                    <div
                       key={e.id}
                       className="bg-white border border-zinc-200 rounded-xl p-3.5 shadow-none flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-zinc-300 transition"
                     >
@@ -1232,7 +1226,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                         <div className="text-right flex items-center sm:block gap-2">
                           <span className="text-sm font-bold text-zinc-950 block">{formatCur(e.amount)}</span>
                           <div className="flex items-center gap-1 justify-end">
-                            <button 
+                            <button
                               onClick={() => handleOpenEditExpense(e)}
                               className="p-1 bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 border rounded"
                               title="Edit"
@@ -1240,7 +1234,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                               <Edit2 className="w-3 h-3" />
                             </button>
                             {userRole === 'admin' && (
-                              <button 
+                              <button
                                 onClick={() => handleDeleteExpense(e.id)}
                                 className="p-1 bg-zinc-50 hover:bg-rose-50 text-rose-500 hover:text-rose-700 border rounded"
                                 title="Delete"
@@ -1275,7 +1269,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                       className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-zinc-200 rounded-xl focus:outline-none"
                     />
                   </div>
-                  <select 
+                  <select
                     value={payoutsPayee}
                     onChange={(e) => setPayoutsPayee(e.target.value)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
@@ -1287,7 +1281,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                     <option value="Supplier">Supplier</option>
                     <option value="Other">Other</option>
                   </select>
-                  <select 
+                  <select
                     value={payoutsStatus}
                     onChange={(e) => setPayoutsStatus(e.target.value)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
@@ -1299,7 +1293,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   </select>
                 </div>
 
-                <button 
+                <button
                   onClick={() => handleOpenCreatePayout()}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm cursor-pointer"
                 >
@@ -1326,7 +1320,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               ) : (
                 <div className="space-y-2">
                   {filteredPayoutsList.map((p) => (
-                    <div 
+                    <div
                       key={p.id}
                       className="bg-white border rounded-xl p-3.5 shadow-none flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-300 transition"
                     >
@@ -1352,23 +1346,22 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                       <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-0 pt-2 sm:pt-0 border-zinc-100">
                         <div className="text-left sm:text-right">
                           <span className="text-sm font-black text-zinc-950 block">{formatCur(p.amount)}</span>
-                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ${
-                            p.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700' :
-                            p.paymentStatus === 'Partial' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
-                          }`}>
+                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ${p.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700' :
+                              p.paymentStatus === 'Partial' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+                            }`}>
                             {p.paymentStatus}
                           </span>
                         </div>
 
                         <div className="flex gap-1">
-                          <button 
+                          <button
                             onClick={() => handleOpenEditPayout(p)}
                             className="p-1 text-zinc-500 hover:text-zinc-950 border rounded bg-zinc-50"
                           >
                             <Edit2 className="w-3 h-3" />
                           </button>
                           {userRole === 'admin' && (
-                            <button 
+                            <button
                               onClick={() => handleDeletePayout(p.id)}
                               className="p-1 text-rose-500 hover:text-rose-700 border rounded bg-zinc-50"
                             >
@@ -1390,7 +1383,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       {activeTask && (
         <div className="fixed inset-0 bg-zinc-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-4 border border-zinc-200/80 shadow-2xl animate-fade-in relative font-sans">
-            <button 
+            <button
               onClick={() => setActiveTask(null)}
               className="absolute top-5 right-5 p-1 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 transition"
             >
@@ -1436,9 +1429,8 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   <span className="block text-[8.5px] text-zinc-400 font-bold uppercase tracking-wider">Sub-Contract Margin</span>
                   <span className="text-sm font-bold block">{formatCur(activeTask.assignedBudget - (activeTask.totalExpenses || 0))}</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold text-zinc-900 ${
-                  (activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
-                }`}>
+                <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold text-zinc-900 ${(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
+                  }`}>
                   {(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'Profitable' : 'Deficit'}
                 </span>
               </div>
@@ -1471,101 +1463,101 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              {/* SPECIFIED TASK EXPENSES (merged) */}
-              {activeTaskTab === 'expenses' && (
-                <div className="space-y-3 md:col-span-2">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
-                    <Receipt className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
-                  </span>
-                  <button 
-                    onClick={() => handleOpenCreateExpense(activeTask.id)}
-                    className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
-                  >
-                    <Plus className="w-3 h-3" /> Expense
-                  </button>
-                </div>
 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {projectExpenses.filter(e => e.taskId === activeTask.id).length === 0 ? (
-                    <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No expenses recorded for this task scope.</p>
-                  ) : (
-                    projectExpenses.filter(e => e.taskId === activeTask.id).map(e => (
-                      <div key={e.id} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
-                        <div>
-                          <span className="font-bold text-zinc-800 block">{e.paidTo}</span>
-                          <span className="text-[9.5px] text-zinc-400">{e.category} • {e.date}</span>
-                        </div>
-                        <div className="text-right flex items-center gap-1.5">
-                          <span className="font-black text-zinc-950">{formatCur(e.amount)}</span>
-                          <button 
-                            onClick={() => handleOpenEditExpense(e)}
-                            className="p-0.5 hover:bg-zinc-200 rounded"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-3 h-3 text-zinc-500" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                </div>
-              )}
+                {/* SPECIFIED TASK EXPENSES (merged) */}
+                {activeTaskTab === 'expenses' && (
+                  <div className="space-y-3 md:col-span-2">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
+                        <Receipt className="w-3.5 h-3.5 text-zinc-500" />
+                        <span>Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
+                      </span>
+                      <button
+                        onClick={() => handleOpenCreateExpense(activeTask.id)}
+                        className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
+                      >
+                        <Plus className="w-3 h-3" /> Expense
+                      </button>
+                    </div>
 
-              {activeTaskTab === 'pay' && (
-                <div className="space-y-3 md:col-span-2">
-                  <div className="flex items-center justify-between border-b pb-2">
-                    <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5 text-zinc-500" />
-                      <span>Assigned Crew</span>
-                    </span>
-                    <button
-                      onClick={() => handleOpenCreatePayout(activeTask.id)}
-                      className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
-                    >
-                      <Plus className="w-3 h-3" /> Pay
-                    </button>
-                  </div>
-
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {taskAssignedStaffList.length === 0 ? (
-                      <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No crew assigned to this task.</p>
-                    ) : (
-                      taskAssignedStaffList.map((m) => (
-                        <div key={m} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
-                          <div>
-                            <span className="font-bold text-zinc-800 block">{m}</span>
-                            <span className="text-[9.5px] text-zinc-400">Assigned</span>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {projectExpenses.filter(e => e.taskId === activeTask.id).length === 0 ? (
+                        <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No expenses recorded for this task scope.</p>
+                      ) : (
+                        projectExpenses.filter(e => e.taskId === activeTask.id).map(e => (
+                          <div key={e.id} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
+                            <div>
+                              <span className="font-bold text-zinc-800 block">{e.paidTo}</span>
+                              <span className="text-[9.5px] text-zinc-400">{e.category} • {e.date}</span>
+                            </div>
+                            <div className="text-right flex items-center gap-1.5">
+                              <span className="font-black text-zinc-950">{formatCur(e.amount)}</span>
+                              <button
+                                onClick={() => handleOpenEditExpense(e)}
+                                className="p-0.5 hover:bg-zinc-200 rounded"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-3 h-3 text-zinc-500" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="text-right flex items-center gap-2">
-                            <button
-                              onClick={() => handleQuickPay(m)}
-                              className="px-2 py-1 bg-zinc-900 text-white rounded-xl text-xs font-bold"
-                            >
-                              Pay
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {activeTaskTab === 'pay' && (
+                  <div className="space-y-3 md:col-span-2">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5 text-zinc-500" />
+                        <span>Assigned Crew</span>
+                      </span>
+                      <button
+                        onClick={() => handleOpenCreatePayout(activeTask.id)}
+                        className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
+                      >
+                        <Plus className="w-3 h-3" /> Pay
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {taskAssignedStaffList.length === 0 ? (
+                        <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No crew assigned to this task.</p>
+                      ) : (
+                        taskAssignedStaffList.map((m) => (
+                          <div key={m} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
+                            <div>
+                              <span className="font-bold text-zinc-800 block">{m}</span>
+                              <span className="text-[9.5px] text-zinc-400">Assigned</span>
+                            </div>
+                            <div className="text-right flex items-center gap-2">
+                              <button
+                                onClick={() => handleQuickPay(m)}
+                                className="px-2 py-1 bg-zinc-900 text-white rounded-xl text-xs font-bold"
+                              >
+                                Pay
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
 
               </div>
             </div>
 
             <div className="flex justify-end gap-2 border-t pt-4">
-              <button 
+              <button
                 onClick={() => { handleOpenEditTask(activeTask); }}
                 className="px-3 py-1.5 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 rounded-xl text-xs font-bold transition"
               >
                 Modify Task
               </button>
-              <button 
+              <button
                 onClick={() => setActiveTask(null)}
                 className="px-4 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition"
               >
@@ -1583,7 +1575,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       {isFormOpen && (
         <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border text-xs sm:text-sm border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-xl w-full space-y-4 font-sans animate-fade-in relative max-h-[90vh] overflow-y-auto">
-            <button 
+            <button
               onClick={() => setIsFormOpen(false)}
               className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-650"
             >
@@ -1707,7 +1699,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       {isTaskFormOpen && (
         <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border text-xs sm:text-sm border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-xl w-full space-y-4 font-sans animate-fade-in relative max-h-[90vh] overflow-y-auto">
-            <button 
+            <button
               onClick={() => setIsTaskFormOpen(false)}
               className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-650"
             >
@@ -1754,12 +1746,12 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Assigned Workers</label>
-                  
+
                   {/* Crew Badges */}
                   <div className="flex flex-wrap gap-1 mb-2 bg-zinc-55 border border-zinc-200 p-1.5 rounded-xl min-h-[38px] items-center">
                     {taskAssignedStaffList.map((m) => (
-                      <span 
-                        key={m} 
+                      <span
+                        key={m}
                         className="inline-flex items-center gap-1 bg-zinc-900 text-white text-[10px] font-bold pl-2 pr-1 py-0.5 rounded-lg"
                       >
                         <span>{m}</span>
@@ -1802,7 +1794,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                       {showTaskSuggestions && (
                         <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
                           {crewSuggestions
-                            .filter(worker => 
+                            .filter(worker =>
                               (!taskMemberInput || worker.toLowerCase().includes(taskMemberInput.toLowerCase())) &&
                               !taskAssignedStaffList.includes(worker)
                             )
@@ -1939,7 +1931,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       {isExpenseFormOpen && (
         <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border text-xs sm:text-sm border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-xl w-full space-y-4 font-sans animate-fade-in relative max-h-[90vh] overflow-y-auto">
-            <button 
+            <button
               onClick={() => setIsExpenseFormOpen(false)}
               className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-650"
             >
@@ -2053,11 +2045,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   <label className="flex-1 flex flex-col items-center justify-center border border-zinc-300 border-dashed rounded-xl px-2 py-3.5 cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition text-center text-xs text-zinc-600 font-bold gap-1 mt-1">
                     <UploadCloud className="w-5 h-5 text-zinc-400" />
                     <span>{expenseBillImage ? 'Receipt Doc uploaded ✓' : 'Upload invoice file (Max 2MB)'}</span>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleExpenseReceiptUpload} 
-                      className="hidden" 
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleExpenseReceiptUpload}
+                      className="hidden"
                     />
                   </label>
                   {expenseBillImage && (
@@ -2100,7 +2092,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       {isPayoutFormOpen && (
         <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border text-xs sm:text-sm border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-xl w-full space-y-4 font-sans animate-fade-in relative max-h-[90vh] overflow-y-auto">
-            <button 
+            <button
               onClick={() => setIsPayoutFormOpen(false)}
               className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-650"
             >
@@ -2108,7 +2100,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
             </button>
             <div className="border-b pb-3 border-zinc-100">
               <h2 className="text-base sm:text-lg font-bold text-zinc-900">
-                {payoutEditId ? 'Configure Disbursed Payout' : 'Authorize Payment'}
+                {payoutEditId ? 'Configure Disbursed Payout' : 'Pay Labour'}
               </h2>
               <span className="text-[10px] text-zinc-400 block font-bold mt-0.5">Project: {selectedProject.projectName}</span>
             </div>
@@ -2248,7 +2240,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       {isReceiptPreviewOpen && (
         <div className="fixed inset-0 bg-black/65 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-4 max-w-lg w-full space-y-4 inline-block shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <button 
+            <button
               onClick={() => setIsReceiptPreviewOpen(false)}
               className="absolute top-3 right-3 p-1 rounded-full text-zinc-400 hover:text-zinc-650 hover:bg-zinc-100 transition"
             >
@@ -2259,13 +2251,13 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               <span className="text-xs text-zinc-400 block font-semibold">Verification scan</span>
             </div>
             <div className="w-full max-h-[400px] overflow-auto bg-zinc-50 border rounded-xl flex justify-center items-center p-2">
-              <img 
-                src={previewExpenseImage} 
-                alt="Verification scan file attachment" 
+              <img
+                src={previewExpenseImage}
+                alt="Verification scan file attachment"
                 className="max-w-full max-h-[380px] object-contain rounded-lg"
               />
             </div>
-            <button 
+            <button
               onClick={() => setIsReceiptPreviewOpen(false)}
               className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition"
             >
