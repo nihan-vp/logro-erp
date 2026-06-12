@@ -7,7 +7,6 @@ import { getTenantDb } from './server/tenantDb';
 import { registerCompany, getRegistryDb } from './server/registry';
 import { ObjectId } from 'mongodb';
 import { Project, Task, Expense, Attendance, Payment, PaymentRequest, UserRole, ProjectStatus, TaskStatus, ExpenseCategory, PayeeType, PaymentStatus, AttendanceStatus, CrewMember, CrewTrade, CrewMemberStatus, OfficeTransaction } from './src/types';
-import crypto from 'crypto';
 
 export function hashPassword(password: string): string {
   const salt = 'construction_salt_2026';
@@ -38,7 +37,7 @@ app.use('/api', (req, res, next) => {
 // cryptography-based token verification method. A token is: Base64(payload) + '.' + Signature(Base64(payload))
 const JWT_SECRET = 'construction_jwt_secret_key_2026';
 
-function signToken(payload: { userId: string; role: UserRole; name: string; companyName: string }): string {
+function signToken(payload: { userId: string; role: UserRole; name: string; companyName: string; email: string }): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto
@@ -48,7 +47,7 @@ function signToken(payload: { userId: string; role: UserRole; name: string; comp
   return `${header}.${body}.${signature}`;
 }
 
-function verifyToken(token: string): { userId: string; role: UserRole; name: string; companyName: string } | null {
+function verifyToken(token: string): { userId: string; role: UserRole; name: string; companyName: string; email: string } | null {
   try {
     const [header, body, signature] = token.split('.');
     if (!header || !body || !signature) return null;
@@ -123,7 +122,8 @@ app.post('/api/auth/login', async (req, res) => {
         userId: 'superadmin',
         role: 'admin',
         name: 'Super Admin',
-        companyName: 'SUPERADMIN'
+        companyName: 'SUPERADMIN',
+        email: process.env.SUPERADMIN_EMAIL || 'superadmin@logro.com'
       });
       return res.json({
         token,
@@ -137,8 +137,8 @@ app.post('/api/auth/login', async (req, res) => {
       });
   }
 
-  if (!email || !password || !companyName) {
-    return res.status(400).json({ error: 'Please provide email, password, and company name' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Please provide email and password' });
   }
 
   const emailKey = email.toLowerCase().trim();
@@ -152,11 +152,52 @@ app.post('/api/auth/login', async (req, res) => {
     });
   }
 
-  const tenantDb = await getTenantDb(companyName);
-  const user: any = await tenantDb.collection('users').findOne({ email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
-  
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+  let targetCompanyName = companyName || 'DefaultCompany';
+  let user: any = null;
+
+  try {
+    const registryDb = await getRegistryDb();
+    const companies = await registryDb.collection('companies').find({}).toArray();
+
+    // If companyName is 'DefaultCompany' or not specified, search across all registered companies
+    if (targetCompanyName === 'DefaultCompany') {
+      for (const comp of companies) {
+        const tenantDb = await getTenantDb(comp.companyName);
+        const foundUser = await tenantDb.collection('users').findOne({ email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
+        if (foundUser) {
+          user = foundUser;
+          targetCompanyName = comp.companyName;
+          break;
+        }
+      }
+    }
+
+    // Fallback: search in targetCompanyName database
+    if (!user) {
+      const tenantDb = await getTenantDb(targetCompanyName);
+      user = await tenantDb.collection('users').findOne({ email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Block logins for suspended or expired companies
+    const company = companies.find(c => c.companyName.toLowerCase() === targetCompanyName.toLowerCase());
+    if (company) {
+      if (company.status === 'suspended') {
+        return res.status(403).json({ error: 'This company account has been suspended. Please contact the system administrator.' });
+      }
+      if (company.status === 'trial' && company.trialUntil && new Date(company.trialUntil) < new Date()) {
+        return res.status(403).json({ error: 'Your trial period has expired. Please contact the system administrator to activate your account.' });
+      }
+      if (company.validUntil && new Date(company.validUntil) < new Date()) {
+        return res.status(403).json({ error: 'Your subscription has expired. Please contact the system administrator.' });
+      }
+    }
+  } catch (err: any) {
+    console.error('Error during login tenant resolution:', err);
+    return res.status(500).json({ error: 'Internal server error during authentication' });
   }
 
   const expectedPassword = user.password || 'password123';
@@ -193,7 +234,8 @@ app.post('/api/auth/login', async (req, res) => {
     userId: user.id,
     role: user.role,
     name: user.name,
-    companyName
+    companyName: targetCompanyName,
+    email: user.email
   });
 
   res.json({
@@ -263,6 +305,82 @@ app.patch('/api/superadmin/companies/:id/subscription', requireAuth, async (req:
         { returnDocument: 'after' }
     );
     res.json(result);
+});
+
+// Superadmin: Tenant User Management
+app.get('/api/superadmin/companies/:companyName/users', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const { companyName } = req.params;
+    try {
+        const tenantDb = await getTenantDb(companyName);
+        const users = await tenantDb.collection('users').find({}).toArray();
+        res.json(users);
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to fetch tenant users' });
+    }
+});
+
+app.post('/api/superadmin/companies/:companyName/users', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const { companyName } = req.params;
+    const { name, email, role, phone, password } = req.body;
+    if (!name || !email || !role || !password) {
+        return res.status(400).json({ error: 'Name, email, role, and password are required' });
+    }
+    try {
+        const tenantDb = await getTenantDb(companyName);
+        const existing = await tenantDb.collection('users').findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+        if (existing) {
+            return res.status(400).json({ error: 'A user with this email already exists in this company' });
+        }
+        const newUser = {
+            id: 'usr_' + Date.now(),
+            name,
+            email,
+            password,
+            role,
+            phone: phone || '',
+            status: 'active'
+        };
+        await tenantDb.collection('users').insertOne(newUser);
+        res.status(201).json(newUser);
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to create tenant user' });
+    }
+});
+
+app.patch('/api/superadmin/companies/:companyName/users/:userId/status', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const { companyName, userId } = req.params;
+    const { status } = req.body;
+    if (status !== 'active' && status !== 'inactive') {
+        return res.status(400).json({ error: 'Invalid status value' });
+    }
+    try {
+        const tenantDb = await getTenantDb(companyName);
+        const result = await tenantDb.collection('users').findOneAndUpdate(
+            { id: userId },
+            { $set: { status } },
+            { returnDocument: 'after' }
+        );
+        if (!result) return res.status(404).json({ error: 'User not found' });
+        res.json(result);
+    } catch (err: any) {
+        res.status(550).json({ error: 'Failed to update user status' });
+    }
+});
+
+app.delete('/api/superadmin/companies/:companyName/users/:userId', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const { companyName, userId } = req.params;
+    try {
+        const tenantDb = await getTenantDb(companyName);
+        const result = await tenantDb.collection('users').deleteOne({ id: userId });
+        if (result.deletedCount === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, message: 'User deleted successfully' });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to delete user' });
+    }
 });
 
 // User/Roles screen - List and Manage Users for Admin
@@ -1212,7 +1330,7 @@ app.post('/api/office/funds', requireAuth, requireAdminOrAccountant, async (req:
     await tenantDb.collection('officeTransactions').insertOne(newTransaction);
     
     // Update balance
-    let currentFund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
+    let currentFund: any = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
     if (!currentFund) currentFund = { id: 'fund_main', balance: 0, updatedAt: '' };
     
     if (type === 'Cash In') currentFund.balance += Number(amount);

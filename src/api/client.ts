@@ -176,4 +176,9 @@ export const api = {
   createCompany: (data: any) => request('/superadmin/companies', { method: 'POST', body: JSON.stringify(data) }),
   updateCompanyStatus: (id: string, status: string) => request(`/superadmin/companies/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   extendSubscription: (id: string, months: number) => request(`/superadmin/companies/${id}/subscription`, { method: 'PATCH', body: JSON.stringify({ months }) }),
+  
+  getTenantUsers: (companyName: string) => request(`/superadmin/companies/${companyName}/users`),
+  createTenantUser: (companyName: string, data: any) => request(`/superadmin/companies/${companyName}/users`, { method: 'POST', body: JSON.stringify(data) }),
+  toggleTenantUserStatus: (companyName: string, userId: string, status: string) => request(`/superadmin/companies/${companyName}/users/${userId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  deleteTenantUser: (companyName: string, userId: string) => request(`/superadmin/companies/${companyName}/users/${userId}`, { method: 'DELETE' }),
 };

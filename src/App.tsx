@@ -86,7 +86,7 @@ export default function App() {
   }, []);
 
   const userRole = currentUser?.role || 'manager';
-  const isSuperAdmin = currentUser?.userId === 'superadmin';
+  const isSuperAdmin = currentUser?.id === 'superadmin';
 
   const projectsComponent = useMemo(() => (
     <Projects
