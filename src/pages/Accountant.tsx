@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { Wallet, Send, ClipboardList, PlusCircle, X } from 'lucide-react';
+import { notify } from '../utils/toast';
+import { useConfirm } from '../context/ConfirmContext';
 
 export default function AccountantPage() {
+  const confirm = useConfirm();
   const [funds, setFunds] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
@@ -25,14 +28,22 @@ export default function AccountantPage() {
         setFunds(fundRes.officeFunds[0] || { balance: 0 });
         setTransactions(fundRes.officeTransactions || []);
         setRequests(reqRes.paymentRequests || []);
-    } catch (err) {
-        console.error("Failed to fetch accountant data", err);
+    } catch (err: any) {
+        notify.error(err?.message || 'Failed to fetch accountant data');
     } finally {
         setLoading(false);
     }
   };
 
   const handleApprove = async (request: any) => {
+      const ok = await confirm({
+        title: 'Approve and pay?',
+        message: `Process payment of ₹${request.amount} to ${request.payeeName}? This will record the payout and update office funds.`,
+        confirmLabel: 'Approve & Pay',
+        variant: 'warning',
+      });
+      if (!ok) return;
+
       try {
           await api.createPayment({
               projectId: request.projectId,
@@ -47,14 +58,23 @@ export default function AccountantPage() {
               requestId: request.id
           });
           fetchAccountantData();
-          alert('Payment processed successfully!');
+          notify.success('Payment processed successfully!');
       } catch (err: any) {
-          alert(err.message || 'Error processing payment.');
+          notify.error(err.message || 'Error processing payment.');
       }
   };
 
   const handleInflowSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
+
+      const ok = await confirm({
+        title: 'Record cash inflow?',
+        message: `Record ₹${inflowAmount} cash inflow${inflowDesc ? ` for "${inflowDesc}"` : ''}? Office balance will be updated.`,
+        confirmLabel: 'Record Inflow',
+        variant: 'default',
+      });
+      if (!ok) return;
+
       try {
           await api.postOfficeFund({
               type: 'Cash In',
@@ -65,9 +85,9 @@ export default function AccountantPage() {
           setInflowDesc('');
           setShowInflowForm(false);
           fetchAccountantData();
-          alert('Inflow recorded successfully!');
+          notify.success('Inflow recorded successfully!');
       } catch (err: any) {
-          alert(err.message || 'Error recording inflow.');
+          notify.error(err.message || 'Error recording inflow.');
       }
   };
 

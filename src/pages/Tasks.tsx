@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { Task, TaskStatus } from '../types';
+import { notify } from '../utils/toast';
+import { useConfirm } from '../context/ConfirmContext';
+import TaskAttendanceSection from '../components/TaskAttendanceSection';
 
 interface TasksProps {
   onNavigate: (page: string, params?: any) => void;
@@ -14,6 +17,7 @@ interface TasksProps {
 }
 
 export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksProps) {
+  const confirm = useConfirm();
   const [tasks, setTasks] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,9 +47,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
 
   // Multi-staff assignment and suggestions
   const [assignedStaffList, setAssignedStaffList] = useState<string[]>([]);
-  const [crewSuggestions, setCrewSuggestions] = useState<string[]>([
-    'Dave Cooper', 'Manny Ramirez', 'Samuel Jackson', 'Arnie S.'
-  ]);
+  const [crewSuggestions, setCrewSuggestions] = useState<string[]>([]);
   const [memberInput, setMemberInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -58,21 +60,19 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
       setLoading(true);
       setError(null);
       
-      const [projectsRes, tasksRes, attendanceRes] = await Promise.all([
+      const [projectsRes, tasksRes, crewRes] = await Promise.all([
         api.getProjects(),
         api.getTasks(),
-        api.getAttendance().catch(() => ({ attendance: [] }))
+        api.getCrew('active').catch(() => ({ crew: [] }))
       ]);
       
       setProjects(projectsRes.projects || []);
       setTasks(tasksRes.tasks || []);
-
-      const loggedNames = Array.from(new Set((attendanceRes?.attendance || []).map((a: any) => a.workerName).filter(Boolean))) as string[];
-      const defaults = ['Dave Cooper', 'Manny Ramirez', 'Samuel Jackson', 'Arnie S.'];
-      const uniqueCrew = Array.from(new Set([...defaults, ...loggedNames]));
-      setCrewSuggestions(uniqueCrew);
+      setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
     } catch (err: any) {
-      setError(err?.message || 'Failed to sync construction tasks');
+      const message = err?.message || 'Failed to sync construction tasks';
+      setError(message);
+      notify.error(message);
     } finally {
       setLoading(false);
     }
@@ -82,8 +82,8 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
     try {
       const res = await api.getTasks();
       setTasks(res.tasks || []);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to refresh tasks');
     }
   };
 
@@ -144,23 +144,32 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this task? This will also remove any linked expenses, attendance sheets, and subcontractors payouts.')) {
-      return;
-    }
+    const task = tasks.find(t => t.id === id) || selectedTask;
+    const ok = await confirm({
+      title: 'Delete task?',
+      message: task
+        ? `Delete "${task.taskName}"? Linked expenses, attendance records, and payouts will also be removed.`
+        : 'Delete this task? Linked expenses, attendance records, and payouts will also be removed.',
+      confirmLabel: 'Delete Task',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await api.deleteTask(id);
       setIsFormOpen(false);
       setIsViewOpen(false);
       fetchInitialData();
+      notify.success('Task deleted.');
     } catch (err: any) {
-      alert(err?.message || 'Error erasing task');
+      notify.error(err?.message || 'Error erasing task');
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectId || !taskName || assignedBudget === undefined || !startDate || !endDate) {
-      setSubmitError('Project, Name, Budget, and Timelines are required');
+      notify.warning('Project, Name, Budget, and Timelines are required');
       return;
     }
 
@@ -181,13 +190,17 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
       setSubmitError(null);
       if (editId) {
         await api.updateTask(editId, payload);
+        notify.success('Task updated.');
       } else {
         await api.createTask(payload);
+        notify.success('Task created.');
       }
       setIsFormOpen(false);
       fetchInitialData();
     } catch (err: any) {
-      setSubmitError(err?.message || 'Error submitting task scope');
+      const message = err?.message || 'Error submitting task scope';
+      setSubmitError(message);
+      notify.error(message);
     }
   };
 
@@ -215,7 +228,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
       };
       await api.updateTask(task.id, payload);
     } catch (err: any) {
-      console.error('Failed to sync progress to database: ', err.message);
+      notify.error(err?.message || 'Failed to sync progress to database');
     }
   };
 
@@ -228,8 +241,9 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
       };
       await api.updateTask(task.id, payload);
       syncTasksOnly();
+      notify.success('Task status updated.');
     } catch (err: any) {
-      alert('Failed to update status: ' + err.message);
+      notify.error('Failed to update status: ' + err.message);
     }
   };
 
@@ -264,13 +278,16 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
               <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Engineering Scopes</h1>
               <p className="text-xs sm:text-sm text-zinc-500">Track task budgets, on-site expenses and profits</p>
             </div>
-            <button
-              onClick={handleOpenCreate}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Task Scope</span>
-            </button>
+             {userRole === 'admin' && (
+               <button
+                 onClick={handleOpenCreate}
+                 className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
+               >
+                 <Plus className="w-4 h-4" />
+                 <span>Add Task Scope</span>
+               </button>
+             )}
+
           </div>
 
           {/* Filtering panels */}
@@ -328,13 +345,16 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
           ) : filteredTasks.length === 0 ? (
             <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
               <ClipboardList className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
-              <p className="text-zinc-500 text-xs">No project tasks found. Click Add Task to register a scope.</p>
-              <button 
-                onClick={handleOpenCreate} 
-                className="mt-3 px-4 py-2 bg-zinc-900 text-white rounded-xl text-xs font-semibold hover:bg-zinc-800 transition-colors"
-              >
-                Create Task
-              </button>
+               <p className="text-zinc-500 text-xs">No project tasks found. {userRole === 'admin' && 'Click Add Task to register a scope.'}</p>
+               {userRole === 'admin' && (
+                 <button 
+                   onClick={handleOpenCreate} 
+                   className="mt-3 px-4 py-2 bg-zinc-900 text-white rounded-xl text-xs font-semibold hover:bg-zinc-800 transition-colors"
+                 >
+                   Create Task
+                 </button>
+               )}
+
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -441,30 +461,27 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                     {/* Bottom controls */}
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100 text-xs">
                       <span className="text-[10px] text-zinc-400 font-medium">Staff: {t.assignedStaff || 'Unassigned'}</span>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => { setSelectedTask(t); setIsViewOpen(true); }}
-                          className="text-xs font-semibold text-zinc-950 hover:underline cursor-pointer"
-                        >
-                          Budget Details
-                        </button>
-                        <button 
-                          onClick={() => handleOpenEdit(t)}
-                          className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
-                          title="Edit Task"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        {userRole === 'admin' && (
-                          <button 
-                            onClick={() => handleDelete(t.id)}
-                            className="p-1 text-rose-500 hover:text-rose-900 rounded bg-zinc-50 border border-zinc-200/40"
-                            title="Delete Task"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
+                         <div className="flex items-center gap-2">
+                           {userRole === 'admin' && (
+                             <button 
+                               onClick={() => handleOpenEdit(t)}
+                               className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
+                               title="Edit Task"
+                             >
+                               <Edit2 className="w-3 h-3" />
+                             </button>
+                           )}
+                           {userRole === 'admin' && (
+                             <button 
+                               onClick={() => handleDelete(t.id)}
+                               className="p-1 text-rose-500 hover:text-rose-900 rounded bg-zinc-50 border border-zinc-200/40"
+                               title="Delete Task"
+                             >
+                               <Trash2 className="w-3 h-3" />
+                             </button>
+                           )}
+                         </div>
+
                     </div>
                   </div>
                 );
@@ -544,6 +561,15 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
               </div>
             )}
 
+            <div className="border-t border-zinc-100 pt-4">
+              <TaskAttendanceSection
+                projectId={selectedTask.projectId}
+                taskId={selectedTask.id}
+                assignedStaff={selectedTask.assignedStaff}
+                onSaved={fetchInitialData}
+              />
+            </div>
+
             {/* Quick Action Short cuts for on-site managers */}
             <div className="border-t border-zinc-100 pt-4">
               <span className="text-[10px] text-zinc-400 font-bold uppercase block mb-2.5">Quick Operations</span>
@@ -556,11 +582,11 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                   Log Task Expense
                 </button>
                 <button 
-                  onClick={() => onNavigate('attendance', { projectId: selectedTask.projectId, taskId: selectedTask.id })}
+                  onClick={() => onNavigate('projects', { projectId: selectedTask.projectId, taskId: selectedTask.id, openSubTab: 'tasks' })}
                   className="px-3 py-2 bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Calendar className="w-4 h-4 text-zinc-500" />
-                  Mark Attendance
+                  Open in Project
                 </button>
                 <button 
                   onClick={() => onNavigate('payments', { projectId: selectedTask.projectId, taskId: selectedTask.id })}

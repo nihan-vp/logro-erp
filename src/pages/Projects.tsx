@@ -2,21 +2,31 @@ import React, { useState, useEffect } from 'react';
 import {
   Plus, Search, Edit2, Trash2, Calendar, MapPin, Building,
   ChevronRight, ArrowLeft, RefreshCw, AlertTriangle, Briefcase,
-  Receipt, Coins, TrendingUp, PlusCircle, DollarSign, Eye,
+  Receipt, TrendingUp, PlusCircle, DollarSign, Eye,
   UploadCloud, X, ChevronDown, CheckCircle2, FileText, Trash,
-  Image as ImageIcon, Users
+  Image as ImageIcon
 } from 'lucide-react';
 import { api } from '../api/client';
-import { Project, ProjectStatus, Task, TaskStatus, Expense, ExpenseCategory, Payment, PayeeType, PaymentStatus } from '../types';
+import { Project, ProjectStatus, Task, TaskStatus, Expense, ExpenseCategory, PaymentRequest } from '../types';
+import { notify } from '../utils/toast';
+import { useConfirm } from '../context/ConfirmContext';
+import TaskAttendanceSection from '../components/TaskAttendanceSection';
+
+const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest['category'] => {
+  if (cat === 'Material' || cat === 'Tools') return 'Vendor';
+  if (cat === 'Labour') return 'Worker';
+  if (cat === 'Transport') return 'Transportation';
+  return 'Other';
+};
 
 interface ProjectsProps {
   onNavigate: (page: string, params?: any) => void;
   userRole: string;
   initialParams?: any;
-  clearParams?: () => void;
 }
 
-export default function Projects({ onNavigate, userRole, initialParams, clearParams }: ProjectsProps) {
+export default function Projects({ onNavigate, userRole, initialParams }: ProjectsProps) {
+  const confirm = useConfirm();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -29,16 +39,14 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   // Expanded project panel details
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
-  const [viewTab, setViewTab] = useState<'tasks' | 'expenses' | 'payouts'>('tasks');
+  const [viewTab, setViewTab] = useState<'tasks' | 'expenses'>('tasks');
 
   // Parallel child states of selected project
   const [projectTasks, setProjectTasks] = useState<any[]>([]);
   const [projectExpenses, setProjectExpenses] = useState<any[]>([]);
-  const [projectPayments, setProjectPayments] = useState<any[]>([]);
 
   // Specified Task focus overlay
   const [activeTask, setActiveTask] = useState<any | null>(null);
-  const [activeTaskTab, setActiveTaskTab] = useState<'expenses' | 'pay'>('expenses');
 
   // Sub-filters for Project Sub-tabs
   const [tasksSearch, setTasksSearch] = useState('');
@@ -47,10 +55,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   const [expensesSearch, setExpensesSearch] = useState('');
   const [expensesCategory, setExpensesCategory] = useState('All');
   const [expensesPayMethod, setExpensesPayMethod] = useState('All');
-
-  const [payoutsSearch, setPayoutsSearch] = useState('');
-  const [payoutsPayee, setPayoutsPayee] = useState('All');
-  const [payoutsStatus, setPayoutsStatus] = useState('All');
 
   // --- CRUD Form states ---
   // A. Overall Project Form
@@ -80,9 +84,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
   // Custom multi-staff picker in Task Editor
   const [taskAssignedStaffList, setTaskAssignedStaffList] = useState<string[]>([]);
-  const [crewSuggestions, setCrewSuggestions] = useState<string[]>([
-    ''
-  ]);
+  const [crewSuggestions, setCrewSuggestions] = useState<string[]>([]);
   const [taskMemberInput, setTaskMemberInput] = useState('');
   const [showTaskSuggestions, setShowTaskSuggestions] = useState(false);
 
@@ -98,23 +100,11 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   const [expenseNotes, setExpenseNotes] = useState('');
   const [expenseBillImage, setExpenseBillImage] = useState<string>('');
   const [expenseSubmitError, setExpenseSubmitError] = useState<string | null>(null);
+  const [officeBalance, setOfficeBalance] = useState(0);
 
   // Receipt Preview
   const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
   const [previewExpenseImage, setPreviewExpenseImage] = useState('');
-
-  // D. Child Payout Form
-  const [isPayoutFormOpen, setIsPayoutFormOpen] = useState(false);
-  const [payoutEditId, setPayoutEditId] = useState<string | null>(null);
-  const [payoutTaskId, setPayoutTaskId] = useState('');
-  const [payoutPayeeType, setPayoutPayeeType] = useState<PayeeType>('Worker');
-  const [payoutPayeeName, setPayoutPayeeName] = useState('');
-  const [payoutAmount, setPayoutAmount] = useState<number>(0);
-  const [payoutDate, setPayoutDate] = useState('');
-  const [payoutPaymentMethod, setPayoutPaymentMethod] = useState('Bank Transfer');
-  const [payoutPaymentStatus, setPayoutPaymentStatus] = useState<PaymentStatus>('Paid');
-  const [payoutNotes, setPayoutNotes] = useState('');
-  const [payoutSubmitError, setPayoutSubmitError] = useState<string | null>(null);
 
   // Pending deep linking actions
   const [pendingTaskIdToOpen, setPendingTaskIdToOpen] = useState<string | null>(null);
@@ -125,21 +115,20 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   }, []);
 
   // Handle incoming deep links (initialParams) from Dashboard etc.
+  const hasLoadedInitialParams = React.useRef(false);
   useEffect(() => {
-    if (initialParams && initialParams.projectId && projects.length > 0) {
+    if (initialParams && initialParams.projectId && projects.length > 0 && !hasLoadedInitialParams.current) {
       const proj = projects.find(p => p.id === initialParams.projectId);
       if (proj) {
         loadProjectDetails(proj);
-        if (initialParams.openSubTab) {
+        if (initialParams.openSubTab && initialParams.openSubTab !== 'payouts') {
           setViewTab(initialParams.openSubTab);
         }
         if (initialParams.taskId) {
           setPendingTaskIdToOpen(initialParams.taskId);
         }
       }
-      if (clearParams) {
-        clearParams();
-      }
+      hasLoadedInitialParams.current = true;
     }
   }, [initialParams, projects]);
 
@@ -158,10 +147,16 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
     try {
       setLoading(true);
       setError(null);
-      const res = await api.getProjects();
+      const [res, crewRes] = await Promise.all([
+        api.getProjects(),
+        api.getCrew('active').catch(() => ({ crew: [] }))
+      ]);
       setProjects(res.projects || []);
+      setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
     } catch (err: any) {
-      setError(err?.message || 'Failed to download projects tracker data.');
+      const message = err?.message || 'Failed to download projects tracker data.';
+      setError(message);
+      notify.error(message);
     } finally {
       setLoading(false);
     }
@@ -173,17 +168,15 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       setSelectedProject(project);
       setIsViewOpen(true);
 
-      const [taskRes, expenseRes, paymentRes] = await Promise.all([
+      const [taskRes, expenseRes] = await Promise.all([
         api.getTasks(project.id),
         api.getExpenses(project.id),
-        api.getPayments(project.id)
       ]);
 
       setProjectTasks(taskRes.tasks || []);
       setProjectExpenses(expenseRes.expenses || []);
-      setProjectPayments(paymentRes.payments || []);
     } catch (err: any) {
-      console.error('Failed to download project details:', err);
+      notify.error(err?.message || 'Failed to download project details');
     } finally {
       setLoadingDetails(false);
     }
@@ -191,11 +184,10 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
   const reloadProjectData = async (projId: string) => {
     try {
-      const [projRes, taskRes, expenseRes, paymentRes] = await Promise.all([
+      const [projRes, taskRes, expenseRes] = await Promise.all([
         api.getProjects(),
         api.getTasks(projId),
         api.getExpenses(projId),
-        api.getPayments(projId)
       ]);
 
       setProjects(projRes.projects || []);
@@ -206,7 +198,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
       setProjectTasks(taskRes.tasks || []);
       setProjectExpenses(expenseRes.expenses || []);
-      setProjectPayments(paymentRes.payments || []);
 
       if (activeTask) {
         const updatedTask = (taskRes.tasks || []).find((t: any) => t.id === activeTask.id);
@@ -217,7 +208,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
         }
       }
     } catch (err: any) {
-      console.error('Error synchronizing database states:', err);
+      notify.error(err?.message || 'Error synchronizing project data');
     }
   };
 
@@ -249,24 +240,33 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   };
 
   const handleDeleteProject = async (id: string) => {
-    if (!window.confirm('Are you absolutely sure you want to delete this project? ALL related tasks, expenses, payment disbursements and labour files will be instantly erased. This cannot be undone.')) {
-      return;
-    }
+    const project = projects.find(p => p.id === id);
+    const ok = await confirm({
+      title: 'Delete project?',
+      message: project
+        ? `Delete "${project.projectName}"? All tasks, expenses, attendance, and labour records will be permanently erased.`
+        : 'Delete this project? All related data will be permanently erased.',
+      confirmLabel: 'Delete Project',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await api.deleteProject(id);
       setProjects(projects.filter(p => p.id !== id));
       if (selectedProject?.id === id) {
         setIsViewOpen(false);
       }
+      notify.success('Project deleted.');
     } catch (err: any) {
-      alert(err?.message || 'Error occurred deleting project scope data.');
+      notify.error(err?.message || 'Error occurred deleting project scope data.');
     }
   };
 
   const handleProjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projName || !projClient || !projLocation || !projStartDate || !projEndDate) {
-      setProjSubmitError('Core fields are required.');
+      notify.warning('Core fields are required.');
       return;
     }
 
@@ -284,13 +284,17 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       setProjSubmitError(null);
       if (projEditId) {
         await api.updateProject(projEditId, payload);
+        notify.success('Project updated.');
       } else {
         await api.createProject(payload);
+        notify.success('Project created.');
       }
       setIsFormOpen(false);
       fetchProjects();
     } catch (err: any) {
-      setProjSubmitError(err?.message || 'Failed saving project structure.');
+      const message = err?.message || 'Failed saving project structure.';
+      setProjSubmitError(message);
+      notify.error(message);
     }
   };
 
@@ -337,7 +341,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskFormName || taskFormBudget === undefined || !taskFormStartDate || !taskFormEndDate) {
-      setTaskSubmitError('Task name, budget envelope, and schedule dates are required.');
+      notify.warning('Task name, budget envelope, and schedule dates are required.');
       return;
     }
 
@@ -358,26 +362,39 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       setTaskSubmitError(null);
       if (taskEditId) {
         await api.updateTask(taskEditId, payload);
+        notify.success('Task updated.');
       } else {
         await api.createTask(payload);
+        notify.success('Task created.');
       }
       setIsTaskFormOpen(false);
       reloadProjectData(selectedProject.id);
     } catch (err: any) {
-      setTaskSubmitError(err?.message || 'Failed saving task requirements.');
+      const message = err?.message || 'Failed saving task requirements.';
+      setTaskSubmitError(message);
+      notify.error(message);
     }
   };
 
   const handleDeleteTask = async (id: string) => {
-    if (!window.confirm('Delete this task scope permanently? This automatically removes any links in line expenses and payroll logs.')) {
-      return;
-    }
+    const task = projectTasks.find(t => t.id === id);
+    const ok = await confirm({
+      title: 'Delete task?',
+      message: task
+        ? `Delete "${task.taskName}"? Linked expenses and payroll logs will be removed.`
+        : 'Delete this task? Linked expenses and payroll logs will be removed.',
+      confirmLabel: 'Delete Task',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await api.deleteTask(id);
       setIsTaskFormOpen(false);
       reloadProjectData(selectedProject.id);
+      notify.success('Task deleted.');
     } catch (err: any) {
-      alert(err?.message || 'Error occurred deleting selected task.');
+      notify.error(err?.message || 'Error occurred deleting selected task.');
     }
   };
 
@@ -390,8 +407,9 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       };
       await api.updateTask(task.id, payload);
       reloadProjectData(selectedProject.id);
+      notify.success('Task status updated.');
     } catch (err: any) {
-      alert('Failed updating task status: ' + err.message);
+      notify.error('Failed updating task status: ' + err.message);
     }
   };
 
@@ -414,8 +432,8 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       };
       await api.updateTask(task.id, payload);
       reloadProjectData(selectedProject.id);
-    } catch (err) {
-      console.error('Quick progress sync error:', err);
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to sync task progress');
     }
   };
 
@@ -434,6 +452,15 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
   };
 
 
+  const refreshOfficeBalance = async () => {
+    try {
+      const res = await api.getOfficeFunds();
+      setOfficeBalance(res.officeFunds[0]?.balance ?? 0);
+    } catch {
+      // non-blocking
+    }
+  };
+
   // --- CHILD EXPENSE ACTION HANDLERS ---
   const handleOpenCreateExpense = (initialTaskId?: string) => {
     setExpenseEditId(null);
@@ -447,9 +474,14 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
     setExpenseBillImage('');
     setExpenseSubmitError(null);
     setIsExpenseFormOpen(true);
+    refreshOfficeBalance();
   };
 
   const handleOpenEditExpense = (exp: any) => {
+    if (!exp.isPendingRequest) {
+      notify.warning('Only pending requests can be edited. Paid expenses are locked after office fund disbursement.');
+      return;
+    }
     setExpenseEditId(exp.id);
     setExpenseTaskId(exp.taskId);
     setExpenseCategory(exp.category);
@@ -461,50 +493,83 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
     setExpenseBillImage(exp.billImage || '');
     setExpenseSubmitError(null);
     setIsExpenseFormOpen(true);
+    refreshOfficeBalance();
   };
 
   const handleExpenseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!expenseTaskId || !expenseCategory || expenseAmount <= 0 || !expensePaidTo || !expenseDate) {
-      setExpenseSubmitError('Task context, category, positive cost, payee, and date are required.');
+      notify.warning('Task context, category, positive cost, payee, and date are required.');
       return;
     }
 
-    const payload = {
+    const ok = await confirm({
+      title: expenseEditId ? 'Update payment request?' : 'Submit expense request?',
+      message: expenseEditId
+        ? `Update this pending ${expenseCategory} request of ${formatCur(expenseAmount)} for ${expensePaidTo}?`
+        : `Submit a ${expenseCategory} expense of ${formatCur(expenseAmount)} for ${expensePaidTo}? It will appear in Finance Hub and be paid from office funds after accountant approval.`,
+      confirmLabel: expenseEditId ? 'Save Changes' : 'Submit Request',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
+    const paymentRequestPayload = {
       projectId: selectedProject.id,
       taskId: expenseTaskId,
-      category: expenseCategory,
+      payeeName: expensePaidTo,
+      category: expenseCategoryToPaymentCategory(expenseCategory),
       amount: Number(expenseAmount),
-      paidTo: expensePaidTo,
+      description: expenseNotes,
+      dueDate: expenseDate,
+      priority: 'Medium' as const,
       paymentMethod: expensePaymentMethod,
-      date: expenseDate,
-      notes: expenseNotes,
-      billImage: expenseBillImage
+      billImage: expenseBillImage,
     };
 
     try {
       setExpenseSubmitError(null);
       if (expenseEditId) {
-        await api.updateExpense(expenseEditId, payload);
+        await api.updatePaymentRequest(expenseEditId, paymentRequestPayload);
+        notify.success('Payment request updated.');
       } else {
-        await api.createExpense(payload);
+        await api.createPaymentRequest(paymentRequestPayload);
+        notify.success('Expense submitted to Finance Hub for office fund approval.');
       }
       setIsExpenseFormOpen(false);
       reloadProjectData(selectedProject.id);
     } catch (err: any) {
-      setExpenseSubmitError(err?.message || 'Failed saving ledger expense details.');
+      const message = err?.message || 'Failed saving ledger expense details.';
+      setExpenseSubmitError(message);
+      notify.error(message);
     }
   };
 
   const handleDeleteExpense = async (id: string) => {
-    if (!window.confirm('Erase this actual site expense? All budgets and profit sums are recalculated immediately.')) {
+    const expense = projectExpenses.find(e => e.id === id);
+    if (expense && !expense.isPendingRequest) {
+      notify.warning('Paid expenses cannot be deleted. They are linked to office fund payments.');
       return;
     }
+    const ok = await confirm({
+      title: 'Cancel payment request?',
+      message: expense
+        ? `Cancel the pending ${expense.category} request of ${formatCur(expense.amount)} for ${expense.paidTo}?`
+        : 'Cancel this pending payment request?',
+      confirmLabel: 'Cancel Request',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
-      await api.deleteExpense(id);
+      if (id.startsWith('pr_')) {
+        await api.deletePaymentRequest(id);
+      } else {
+        await api.deleteExpense(id);
+      }
       reloadProjectData(selectedProject.id);
+      notify.success('Payment request cancelled.');
     } catch (err: any) {
-      alert(err?.message || 'Error deleting expense.');
+      notify.error(err?.message || 'Error deleting expense.');
     }
   };
 
@@ -513,7 +578,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('File limits exceeded. Please upload lightweight receipt images up to 2MB.');
+      notify.warning('File limits exceeded. Please upload lightweight receipt images up to 2MB.');
       return;
     }
 
@@ -522,95 +587,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
       setExpenseBillImage(reader.result as string);
     };
     reader.readAsDataURL(file);
-  };
-
-
-  // --- CHILD PAYOUT ACTION HANDLERS ---
-  const handleOpenCreatePayout = (initialTaskId?: string) => {
-    setPayoutEditId(null);
-    setPayoutTaskId(initialTaskId || (projectTasks[0]?.id || ''));
-    setPayoutPayeeType('Worker');
-    setPayoutPayeeName('');
-    setPayoutAmount(0);
-    setPayoutDate(new Date().toISOString().split('T')[0]);
-    setPayoutPaymentMethod('Bank Transfer');
-    setPayoutPaymentStatus('Paid');
-    setPayoutNotes('');
-    setPayoutSubmitError(null);
-    setIsPayoutFormOpen(true);
-  };
-
-  const handleOpenEditPayout = (p: any) => {
-    setPayoutEditId(p.id);
-    setPayoutTaskId(p.taskId);
-    setPayoutPayeeType(p.payeeType);
-    setPayoutPayeeName(p.payeeName);
-    setPayoutAmount(p.amount);
-    setPayoutDate(p.paymentDate);
-    setPayoutPaymentMethod(p.paymentMethod);
-    setPayoutPaymentStatus(p.paymentStatus);
-    setPayoutNotes(p.notes || '');
-    setPayoutSubmitError(null);
-    setIsPayoutFormOpen(true);
-  };
-
-  const handleQuickPay = (workerName: string) => {
-    setPayoutEditId(null);
-    setPayoutTaskId(activeTask?.id || '');
-    setPayoutPayeeType('Worker');
-    setPayoutPayeeName(workerName);
-    setPayoutAmount(0);
-    setPayoutDate(new Date().toISOString().split('T')[0]);
-    setPayoutPaymentMethod('Bank Transfer');
-    setPayoutPaymentStatus('Paid');
-    setPayoutNotes('');
-    setPayoutSubmitError(null);
-    setIsPayoutFormOpen(true);
-  };
-
-  const handlePayoutSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!payoutTaskId || !payoutPayeeName || payoutAmount <= 0 || !payoutDate) {
-      setPayoutSubmitError('Task context, payee legal name, positive cost and date are required.');
-      return;
-    }
-
-    const payload = {
-      projectId: selectedProject.id,
-      taskId: payoutTaskId,
-      payeeType: payoutPayeeType,
-      payeeName: payoutPayeeName,
-      amount: Number(payoutAmount),
-      paymentDate: payoutDate,
-      paymentMethod: payoutPaymentMethod,
-      paymentStatus: payoutPaymentStatus,
-      notes: payoutNotes
-    };
-
-    try {
-      setPayoutSubmitError(null);
-      if (payoutEditId) {
-        await api.updatePayment(payoutEditId, payload);
-      } else {
-        await api.createPayment(payload);
-      }
-      setIsPayoutFormOpen(false);
-      reloadProjectData(selectedProject.id);
-    } catch (err: any) {
-      setPayoutSubmitError(err?.message || 'Failed saving payout details.');
-    }
-  };
-
-  const handleDeletePayout = async (id: string) => {
-    if (!window.confirm('Are states correct? Erase this Payment?')) {
-      return;
-    }
-    try {
-      await api.deletePayment(id);
-      reloadProjectData(selectedProject.id);
-    } catch (err: any) {
-      alert(err?.message || 'Error deleting payouts data.');
-    }
   };
 
   // Currency helpers
@@ -649,18 +625,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
     return matchesSearch && matchesCat && matchesPay;
   });
 
-  const filteredPayoutsList = projectPayments.filter(p => {
-    const matchesSearch = p.payeeName.toLowerCase().includes(payoutsSearch.toLowerCase()) ||
-      (p.notes || '').toLowerCase().includes(payoutsSearch.toLowerCase()) ||
-      (p.taskName || '').toLowerCase().includes(payoutsSearch.toLowerCase());
-    const matchesType = payoutsPayee === 'All' || p.payeeType === payoutsPayee;
-    const matchesStatus = payoutsStatus === 'All' || p.paymentStatus === payoutsStatus;
-    return matchesSearch && matchesType && matchesStatus;
-  });
-
   const totalFilteredExpense = filteredExpensesList.reduce((sum, e) => sum + e.amount, 0);
-  const totalFilteredPayoutPaid = filteredPayoutsList.filter(p => p.paymentStatus === 'Paid').reduce((sum, p) => sum + p.amount, 0);
-  const totalFilteredPayoutPending = filteredPayoutsList.filter(p => p.paymentStatus === 'Pending' || p.paymentStatus === 'Partial').reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <div className="space-y-6 font-sans">
@@ -671,7 +636,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Projects </h1>
-              <p className="text-xs sm:text-sm text-zinc-500 font-medium">Coordinate construction projects, scopes, expenditures and disbursements</p>
+              <p className="text-xs sm:text-sm text-zinc-500 font-medium">Coordinate construction projects, scopes and expenditures</p>
             </div>
             {userRole === 'admin' && (
               <button
@@ -873,7 +838,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
             </div>
 
             {/* Micro financials overview ledger */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+            <div className="grid grid-cols-2 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
               <div>
                 <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Budgets</span>
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalBudget || 0)}</span>
@@ -881,14 +846,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               <div>
                 <span className="text-[10px] text-zinc-400 font-bold uppercase block">Outflow spent</span>
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalExpenses || 0)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Paid</span>
-                <span className="text-base font-bold text-emerald-700 block">{formatCur(selectedProject.totalPaidAmount || 0)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Unpaid Balance</span>
-                <span className="text-base font-bold text-amber-600 block">{formatCur(selectedProject.pendingPayments || 0)}</span>
               </div>
             </div>
 
@@ -933,14 +890,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               <Receipt className="w-4 h-4" />
               <span>Expenses ({projectExpenses.length})</span>
             </button>
-            <button
-              onClick={() => setViewTab('payouts')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${viewTab === 'payouts' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
-                }`}
-            >
-              <Coins className="w-4 h-4" />
-              <span>Payments ({projectPayments.length})</span>
-            </button>
           </div>
 
           {/* TAB 1: INTEGRATED CHILD TASKS LIST */}
@@ -973,27 +922,32 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   </select>
                 </div>
 
-                <button
-                  onClick={handleOpenCreateTask}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add Task
-                </button>
+                                {userRole === 'admin' && (
+                                  <button
+                                    onClick={handleOpenCreateTask}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Add Task
+                                  </button>
+                                )}
+
               </div>
 
-              {loadingDetails ? (
-                <div className="flex justify-center p-8">
-                  <div className="w-7 h-7 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin"></div>
-                </div>
-              ) : filteredTasksList.length === 0 ? (
-                <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
-                  <p className="text-xs text-zinc-500">No project tasks found. Click Add Task to add.</p>
-                </div>
-              ) : (
+               {loadingDetails ? (
+                 <div className="flex justify-center p-8">
+                   <div className="w-7 h-7 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin"></div>
+                 </div>
+               ) : filteredTasksList.length === 0 ? (
+                 <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
+                   <p className="text-xs text-zinc-500">No project tasks found. {userRole === 'admin' && 'Click Add Task to add.'}</p>
+                 </div>
+               ) : (
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredTasksList.map((t) => {
-                    const isOver = t.totalExpenses > t.assignedBudget;
-                    const isNearing = !isOver && (t.totalExpenses / t.assignedBudget) > 0.85;
+                    const taskCommitted = t.totalCommitted ?? t.totalExpenses ?? 0;
+                    const isOver = taskCommitted > t.assignedBudget;
+                    const isNearing = !isOver && t.assignedBudget > 0 && (taskCommitted / t.assignedBudget) > 0.85;
                     return (
                       <div key={t.id} className="bg-white border border-zinc-200 rounded-2xl p-4 space-y-3 shadow-none hover:border-zinc-300 transition flex flex-col justify-between">
                         <div className="space-y-3">
@@ -1031,14 +985,14 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                           {isOver && (
                             <div className="bg-red-50 text-red-700 text-[10px] p-2 rounded-lg flex items-center gap-1.5 font-bold">
                               <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                              <span>Overbudget Spent {formatCur(t.totalExpenses - t.assignedBudget)} extra.</span>
+                              <span>Overbudget Spent {formatCur(taskCommitted - t.assignedBudget)} extra.</span>
                             </div>
                           )}
 
                           {isNearing && (
                             <div className="bg-amber-50 text-amber-800 text-[10px] p-2 rounded-lg flex items-center gap-1.5 font-bold">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              <span>Ceiling reached ({(t.totalExpenses / t.assignedBudget * 100).toFixed(0)}% spent)</span>
+                              <span>Ceiling reached ({(taskCommitted / t.assignedBudget * 100).toFixed(0)}% committed)</span>
                             </div>
                           )}
 
@@ -1049,12 +1003,15 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                             </div>
                             <div>
                               <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Actual Cost</span>
-                              <span className="text-zinc-900 block">{formatCur(t.totalExpenses || 0)}</span>
+                              <span className="text-zinc-900 block">{formatCur(taskCommitted)}</span>
+                              {(t.pendingExpenses || 0) > 0 && (
+                                <span className="text-[9px] text-amber-600 block">{formatCur(t.pendingExpenses)} pending</span>
+                              )}
                             </div>
                             <div>
                               <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
                               <span className={`block ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                {formatCur(t.assignedBudget - t.totalExpenses)}
+                                {formatCur(t.assignedBudget - taskCommitted)}
                               </span>
                             </div>
                           </div>
@@ -1091,22 +1048,23 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                               <span>Details</span>
                               <ChevronRight className="w-3.5 h-3.5" />
                             </button>
-                            <button
-                              onClick={() => handleOpenEditTask(t)}
-                              className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            {userRole === 'admin' && (
-                              <button
-                                onClick={() => handleDeleteTask(t.id)}
-                                className="p-1 text-rose-500 hover:text-rose-700 bg-zinc-50 border border-zinc-200/40 rounded"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                               <button
+                                 onClick={() => handleOpenEditTask(t)}
+                                 className={`p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40 ${userRole !== 'admin' ? 'hidden' : ''}`}
+                                 title="Edit"
+                               >
+                                 <Edit2 className="w-3.5 h-3.5" />
+                               </button>
+                               {userRole === 'admin' && (
+                                 <button
+                                   onClick={() => handleDeleteTask(t.id)}
+                                   className="p-1 text-rose-500 hover:text-rose-700 bg-zinc-50 border border-zinc-200/40 rounded"
+                                   title="Delete"
+                                 >
+                                   <Trash2 className="w-3.5 h-3.5" />
+                                 </button>
+                               )}
+
                           </div>
                         </div>
                       </div>
@@ -1159,14 +1117,17 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                   </select>
                 </div>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleOpenCreateExpense()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Log Expenditure
-                  </button>
-                </div>
+                    <div className="flex gap-2">
+                      {userRole === 'admin' && (
+                        <button
+                          onClick={() => handleOpenCreateExpense()}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Log Expenditure
+                        </button>
+                      )}
+                    </div>
+
               </div>
 
               {/* Total Aggregate box */}
@@ -1196,6 +1157,15 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{e.category}</span>
                           <span className="text-zinc-200">•</span>
                           <span className="text-[10px] font-bold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">{e.taskName}</span>
+                          {e.isPendingRequest ? (
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                              Pending — Office Fund
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Paid
+                            </span>
+                          )}
                         </div>
                         <h3 className="text-xs sm:text-sm font-bold text-zinc-950">
                           Paid to: <b className="text-zinc-900 font-extrabold">{e.paidTo}</b>
@@ -1225,24 +1195,27 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
                         <div className="text-right flex items-center sm:block gap-2">
                           <span className="text-sm font-bold text-zinc-950 block">{formatCur(e.amount)}</span>
-                          <div className="flex items-center gap-1 justify-end">
-                            <button
-                              onClick={() => handleOpenEditExpense(e)}
-                              className="p-1 bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 border rounded"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
-                            {userRole === 'admin' && (
-                              <button
-                                onClick={() => handleDeleteExpense(e.id)}
-                                className="p-1 bg-zinc-50 hover:bg-rose-50 text-rose-500 hover:text-rose-700 border rounded"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
+                            <div className="flex items-center gap-1 justify-end">
+                              {userRole === 'admin' && e.isPendingRequest && (
+                                <button
+                                  onClick={() => handleOpenEditExpense(e)}
+                                  className="p-1 bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 border rounded"
+                                  title="Edit request"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                              )}
+                              {userRole === 'admin' && e.isPendingRequest && (
+                                <button
+                                  onClick={() => handleDeleteExpense(e.id)}
+                                  className="p-1 bg-zinc-50 hover:bg-rose-50 text-rose-500 hover:text-rose-700 border rounded"
+                                  title="Cancel request"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+
                         </div>
                       </div>
                     </div>
@@ -1252,130 +1225,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
             </div>
           )}
 
-          {/* TAB 3: INTEGRATED DISBURSEMENTS / PAYOUTS */}
-          {viewTab === 'payouts' && (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                  <div className="relative flex-1 sm:w-56">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400">
-                      <Search className="w-3.5 h-3.5" />
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="Search payments..."
-                      value={payoutsSearch}
-                      onChange={(e) => setPayoutsSearch(e.target.value)}
-                      className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-zinc-200 rounded-xl focus:outline-none"
-                    />
-                  </div>
-                  <select
-                    value={payoutsPayee}
-                    onChange={(e) => setPayoutsPayee(e.target.value)}
-                    className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
-                  >
-                    <option value="All">All Payees</option>
-                    <option value="Worker">Worker</option>
-                    <option value="Company">Company</option>
-                    <option value="Subcontractor">Subcontractor</option>
-                    <option value="Supplier">Supplier</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <select
-                    value={payoutsStatus}
-                    onChange={(e) => setPayoutsStatus(e.target.value)}
-                    className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="Paid">Paid</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Partial">Partial</option>
-                  </select>
-                </div>
-
-                <button
-                  onClick={() => handleOpenCreatePayout()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Record Payout
-                </button>
-              </div>
-
-              {/* Aggregates Box */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-zinc-900 text-white px-3 py-2.5 rounded-xl">
-                  <span className="text-[9px] text-zinc-400 font-bold block uppercase">Disbursed Paid</span>
-                  <span className="text-base font-black tracking-tight">{formatCur(totalFilteredPayoutPaid)}</span>
-                </div>
-                <div className="bg-white border rounded-xl px-3 py-2.5">
-                  <span className="text-[9px] text-zinc-400 font-bold block uppercase">Pending / Retainer</span>
-                  <span className="text-base font-black text-rose-700 tracking-tight">{formatCur(totalFilteredPayoutPending)}</span>
-                </div>
-              </div>
-
-              {filteredPayoutsList.length === 0 ? (
-                <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
-                  <p className="text-xs text-zinc-500">No payments recorded.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredPayoutsList.map((p) => (
-                    <div
-                      key={p.id}
-                      className="bg-white border rounded-xl p-3.5 shadow-none flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-300 transition"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{p.payeeType}</span>
-                          <span className="text-zinc-200">•</span>
-                          <span className="text-[10px] font-semibold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">{p.taskName}</span>
-                        </div>
-                        <h3 className="text-xs sm:text-sm font-bold text-zinc-950">
-                          Disbursed payee: <b className="text-zinc-900 font-extrabold">{p.payeeName}</b>
-                        </h3>
-                        {p.notes && (
-                          <p className="text-[11px] text-zinc-500 bg-zinc-50 p-2 rounded italic">
-                            &quot;{p.notes}&quot;
-                          </p>
-                        )}
-                        <p className="text-[9.5px] text-zinc-400 font-semibold">
-                          Date: {p.paymentDate} • Method: {p.paymentMethod}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-0 pt-2 sm:pt-0 border-zinc-100">
-                        <div className="text-left sm:text-right">
-                          <span className="text-sm font-black text-zinc-950 block">{formatCur(p.amount)}</span>
-                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ${p.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700' :
-                              p.paymentStatus === 'Partial' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
-                            }`}>
-                            {p.paymentStatus}
-                          </span>
-                        </div>
-
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleOpenEditPayout(p)}
-                            className="p-1 text-zinc-500 hover:text-zinc-950 border rounded bg-zinc-50"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
-                          {userRole === 'admin' && (
-                            <button
-                              onClick={() => handleDeletePayout(p.id)}
-                              className="p-1 text-rose-500 hover:text-rose-700 border rounded bg-zinc-50"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -1402,7 +1251,7 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
             </div>
 
             {/* Quick stats specific to this active task */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
+            <div className="grid grid-cols-3 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
               <div>
                 <span className="text-[10px] text-zinc-400 font-bold uppercase block">Budget</span>
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.assignedBudget)}</span>
@@ -1410,10 +1259,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               <div>
                 <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Overheads</span>
                 <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.totalExpenses || 0)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.paymentsPaid || 0)}</span>
               </div>
               <div>
                 <span className="text-[10px] text-zinc-400 font-bold uppercase block">Difference</span>
@@ -1448,122 +1293,78 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
 
             {/* NESTED MANAGEMENT INSIDE SPECIFIED TASK */}
             <div className="space-y-4 border-t border-zinc-150 pt-4">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setActiveTaskTab('expenses')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold ${activeTaskTab === 'expenses' ? 'bg-zinc-900 text-white' : 'bg-white border'}`}
-                >
-                  Expenses
-                </button>
-                <button
-                  onClick={() => setActiveTaskTab('pay')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold ${activeTaskTab === 'pay' ? 'bg-zinc-900 text-white' : 'bg-white border'}`}
-                >
-                  Pay Workers
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
+                    <Receipt className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
+                  </span>
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => handleOpenCreateExpense(activeTask.id)}
+                      className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
+                    >
+                      <Plus className="w-3 h-3" /> Expense
+                    </button>
+                  )}
+                </div>
 
-                {/* SPECIFIED TASK EXPENSES (merged) */}
-                {activeTaskTab === 'expenses' && (
-                  <div className="space-y-3 md:col-span-2">
-                    <div className="flex items-center justify-between border-b pb-2">
-                      <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
-                        <Receipt className="w-3.5 h-3.5 text-zinc-500" />
-                        <span>Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
-                      </span>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {projectExpenses.filter(e => e.taskId === activeTask.id).length === 0 ? (
+                    <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No expenses recorded for this task scope.</p>
+                  ) : (
+                    projectExpenses.filter(e => e.taskId === activeTask.id).map(e => (
+                      <div key={e.id} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
+                        <div>
+                          <span className="font-bold text-zinc-800 block">{e.paidTo}</span>
+                          <span className="text-[9.5px] text-zinc-400">{e.category} • {e.date}</span>
+                          {e.isPendingRequest && (
+                            <span className="text-[8.5px] font-bold text-amber-700 uppercase">Pending office fund</span>
+                          )}
+                        </div>
+                        <div className="text-right flex items-center gap-1.5">
+                          <span className="font-black text-zinc-950">{formatCur(e.amount)}</span>
+                          {e.isPendingRequest && userRole === 'admin' && (
+                            <button
+                              onClick={() => handleOpenEditExpense(e)}
+                              className="p-0.5 hover:bg-zinc-200 rounded"
+                              title="Edit request"
+                            >
+                              <Edit2 className="w-3 h-3 text-zinc-500" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <TaskAttendanceSection
+                projectId={selectedProject.id}
+                taskId={activeTask.id}
+                assignedStaff={activeTask.assignedStaff}
+                onSaved={() => selectedProject && reloadProjectData(selectedProject.id)}
+              />
+            </div>
+
+                    <div className="flex justify-end gap-2 border-t pt-4">
+                      {userRole === 'admin' && (
+                        <button
+                          onClick={() => { handleOpenEditTask(activeTask); }}
+                          className="px-3 py-1.5 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 rounded-xl text-xs font-bold transition"
+                        >
+                          Modify Task
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleOpenCreateExpense(activeTask.id)}
-                        className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
+                        onClick={() => setActiveTask(null)}
+                        className="px-4 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition"
                       >
-                        <Plus className="w-3 h-3" /> Expense
+                        Done
                       </button>
                     </div>
 
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {projectExpenses.filter(e => e.taskId === activeTask.id).length === 0 ? (
-                        <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No expenses recorded for this task scope.</p>
-                      ) : (
-                        projectExpenses.filter(e => e.taskId === activeTask.id).map(e => (
-                          <div key={e.id} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
-                            <div>
-                              <span className="font-bold text-zinc-800 block">{e.paidTo}</span>
-                              <span className="text-[9.5px] text-zinc-400">{e.category} • {e.date}</span>
-                            </div>
-                            <div className="text-right flex items-center gap-1.5">
-                              <span className="font-black text-zinc-950">{formatCur(e.amount)}</span>
-                              <button
-                                onClick={() => handleOpenEditExpense(e)}
-                                className="p-0.5 hover:bg-zinc-200 rounded"
-                                title="Edit"
-                              >
-                                <Edit2 className="w-3 h-3 text-zinc-500" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {activeTaskTab === 'pay' && (
-                  <div className="space-y-3 md:col-span-2">
-                    <div className="flex items-center justify-between border-b pb-2">
-                      <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5 text-zinc-500" />
-                        <span>Assigned Crew</span>
-                      </span>
-                      <button
-                        onClick={() => handleOpenCreatePayout(activeTask.id)}
-                        className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
-                      >
-                        <Plus className="w-3 h-3" /> Pay
-                      </button>
-                    </div>
-
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {taskAssignedStaffList.length === 0 ? (
-                        <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No crew assigned to this task.</p>
-                      ) : (
-                        taskAssignedStaffList.map((m) => (
-                          <div key={m} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
-                            <div>
-                              <span className="font-bold text-zinc-800 block">{m}</span>
-                              <span className="text-[9.5px] text-zinc-400">Assigned</span>
-                            </div>
-                            <div className="text-right flex items-center gap-2">
-                              <button
-                                onClick={() => handleQuickPay(m)}
-                                className="px-2 py-1 bg-zinc-900 text-white rounded-xl text-xs font-bold"
-                              >
-                                Pay
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <button
-                onClick={() => { handleOpenEditTask(activeTask); }}
-                className="px-3 py-1.5 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 rounded-xl text-xs font-bold transition"
-              >
-                Modify Task
-              </button>
-              <button
-                onClick={() => setActiveTask(null)}
-                className="px-4 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition"
-              >
-                Done
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1950,6 +1751,20 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
               </div>
             )}
 
+            {userRole === 'admin' && expenseAmount > 0 && expenseAmount > officeBalance && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                <div>
+                  <p className="font-bold">Insufficient office funds</p>
+                  <p className="mt-0.5 font-medium leading-relaxed">
+                    Available office balance is <span className="font-bold">{formatCur(officeBalance)}</span>, but this
+                    request is for <span className="font-bold">{formatCur(expenseAmount)}</span>. You can still submit —
+                    the accountant may need to record a cash inflow before approval.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleExpenseSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -2081,154 +1896,6 @@ export default function Projects({ onNavigate, userRole, initialParams, clearPar
                 className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
               >
                 Site Expense
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-
-      {/* PAYOUT FORM MODAL */}
-      {isPayoutFormOpen && (
-        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border text-xs sm:text-sm border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-xl w-full space-y-4 font-sans animate-fade-in relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setIsPayoutFormOpen(false)}
-              className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-650"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="border-b pb-3 border-zinc-100">
-              <h2 className="text-base sm:text-lg font-bold text-zinc-900">
-                {payoutEditId ? 'Configure Disbursed Payout' : 'Pay Labour'}
-              </h2>
-              <span className="text-[10px] text-zinc-400 block font-bold mt-0.5">Project: {selectedProject.projectName}</span>
-            </div>
-
-            {payoutSubmitError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs sm:text-sm font-bold">
-                {payoutSubmitError}
-              </div>
-            )}
-
-            <form onSubmit={handlePayoutSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Under Specified Task Scope</label>
-                  <select
-                    required
-                    value={payoutTaskId}
-                    onChange={(e) => setPayoutTaskId(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-900"
-                  >
-                    <option value="" disabled>Select task scope...</option>
-                    {projectTasks.map(t => (
-                      <option key={t.id} value={t.id}>{t.taskName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payee Type</label>
-                  <select
-                    value={payoutPayeeType}
-                    onChange={(e) => setPayoutPayeeType(e.target.value as PayeeType)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl"
-                  >
-                    <option value="Worker">Worker</option>
-                    <option value="Company">Company</option>
-                    <option value="Subcontractor">Subcontractor</option>
-                    <option value="Supplier">Supplier</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Dave Cooper, Union labor corp"
-                    value={payoutPayeeName}
-                    onChange={(e) => setPayoutPayeeName(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid Amount (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    placeholder="0.00"
-                    value={payoutAmount || ''}
-                    onChange={(e) => setPayoutAmount(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-zinc-355 rounded-xl text-zinc-950"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Status</label>
-                  <select
-                    value={payoutPaymentStatus}
-                    onChange={(e) => setPayoutPaymentStatus(e.target.value as PaymentStatus)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-355 rounded-xl"
-                  >
-                    <option value="Paid">Paid</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Partial">Partial</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={payoutDate}
-                    onChange={(e) => setPayoutDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-355 rounded-xl text-zinc-950 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Method</label>
-                  <select
-                    value={payoutPaymentMethod}
-                    onChange={(e) => setPayoutPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-355 rounded-xl"
-                  >
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment notes</label>
-                <textarea
-                  placeholder="Notes"
-                  value={payoutNotes}
-                  onChange={(e) => setPayoutNotes(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 bg-white border border-zinc-355 rounded-xl text-zinc-950 focus:outline-none text-xs sm:text-sm"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
-              >
-                Incorporate Payment
               </button>
             </form>
           </div>

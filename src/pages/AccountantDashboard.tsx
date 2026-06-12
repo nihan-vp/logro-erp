@@ -1,14 +1,125 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { Wallet, Send, ClipboardList, PlusCircle, X, CheckCircle2, Clock, LayoutDashboard } from 'lucide-react';
+import {
+  Wallet, Send, ClipboardList, Plus, X, CheckCircle2, Clock,
+  RefreshCw, Landmark, ArrowDownRight, ArrowUpRight, Search,
+  ChevronLeft, ChevronRight, Building2
+} from 'lucide-react';
+import { notify } from '../utils/toast';
+import { useConfirm } from '../context/ConfirmContext';
+import { OfficeTransaction, PaymentRequest, Project, Task } from '../types';
+
+type EnrichedPaymentRequest = PaymentRequest & { projectName: string; taskName: string };
+
+const formatCur = (num: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
+
+const cardClass = 'bg-white border border-zinc-200/80 rounded-xl p-5 shadow-sm h-full flex flex-col';
+const cardLabelClass = 'text-xs font-semibold text-zinc-500 uppercase tracking-wider';
+const cardValueClass = 'text-2xl font-bold text-zinc-950';
+
+const getPriorityStyle = (priority: PaymentRequest['priority']) => {
+  switch (priority) {
+    case 'High': return 'bg-rose-50 text-rose-700 border-rose-200';
+    case 'Medium': return 'bg-amber-50 text-amber-700 border-amber-200';
+    default: return 'bg-zinc-100 text-zinc-600 border-zinc-200';
+  }
+};
+
+const inputClass =
+  'w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 text-zinc-950 text-xs sm:text-sm';
+const labelClass = 'block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1';
+
+const ROWS_PER_PAGE_OPTIONS = [5, 10, 25, 50];
+const ROWS_PER_PAGE_STORAGE_KEY = 'erp_accountant_rows_per_page';
+const TABLE_ROW_HEIGHT_PX = 56;
+
+const getStoredRowsPerPage = (): number => {
+  const stored = localStorage.getItem(ROWS_PER_PAGE_STORAGE_KEY);
+  if (!stored) return 10;
+  const parsed = Number(stored);
+  return ROWS_PER_PAGE_OPTIONS.includes(parsed) ? parsed : 10;
+};
+
+function TablePagination({
+  totalItems,
+  rowsPerPage,
+  currentPage,
+  onRowsPerPageChange,
+  onPageChange,
+  idPrefix,
+}: {
+  totalItems: number;
+  rowsPerPage: number;
+  currentPage: number;
+  onRowsPerPageChange: (n: number) => void;
+  onPageChange: (page: number) => void;
+  idPrefix: string;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / rowsPerPage));
+  const activePage = Math.min(currentPage, totalPages);
+  const startIndex = (activePage - 1) * rowsPerPage;
+  const rangeStart = totalItems === 0 ? 0 : startIndex + 1;
+  const rangeEnd = Math.min(startIndex + rowsPerPage, totalItems);
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3 py-3 border-t border-zinc-100 bg-zinc-50/50 rounded-b-xl">
+      <p className="text-[11px] text-zinc-500 font-medium">
+        Showing <span className="font-semibold text-zinc-700">{rangeStart}–{rangeEnd}</span> of{' '}
+        <span className="font-semibold text-zinc-700">{totalItems}</span>
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <label htmlFor={`${idPrefix}-rows-per-page`} className="text-[10px] font-bold text-zinc-400 uppercase whitespace-nowrap">
+            Rows per page
+          </label>
+          <select
+            id={`${idPrefix}-rows-per-page`}
+            value={rowsPerPage}
+            onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
+            className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
+          >
+            {ROWS_PER_PAGE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.max(1, activePage - 1))}
+            disabled={activePage <= 1}
+            className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-xs font-semibold text-zinc-600 min-w-[72px] text-center">
+            {activePage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.min(totalPages, activePage + 1))}
+            disabled={activePage >= totalPages}
+            className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label="Next page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: string, params?: any) => void }) {
-  const [funds, setFunds] = useState<any>(null);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [requests, setRequests] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
+  const confirm = useConfirm();
+  const [funds, setFunds] = useState<{ balance: number } | null>(null);
+  const [transactions, setTransactions] = useState<OfficeTransaction[]>([]);
+  const [requests, setRequests] = useState<EnrichedPaymentRequest[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showInflowForm, setShowInflowForm] = useState(false);
   const [inflowAmount, setInflowAmount] = useState('');
   const [inflowDesc, setInflowDesc] = useState('');
@@ -17,216 +128,638 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   const [inflowSource, setInflowSource] = useState('');
   const [inflowMethod, setInflowMethod] = useState('');
   const [inflowRef, setInflowRef] = useState('');
+  const [inflowSubmitError, setInflowSubmitError] = useState<string | null>(null);
+  const [requestSearch, setRequestSearch] = useState('');
+  const [txnSearch, setTxnSearch] = useState('');
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [rowsPerPage, setRowsPerPage] = useState(getStoredRowsPerPage);
+  const [reqPage, setReqPage] = useState(1);
+  const [txnPage, setTxnPage] = useState(1);
+
+  const fetchAccountantData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [fundRes, reqRes, projRes, taskRes] = await Promise.all([
+        api.getOfficeFunds(),
+        api.getPaymentRequests(),
+        api.getProjects(),
+        api.getTasks(),
+      ]);
+      const projectList: Project[] = projRes.projects || [];
+      const taskList: Task[] = taskRes.tasks || [];
+      setFunds(fundRes.officeFunds[0] || { balance: 0 });
+      setTransactions(fundRes.officeTransactions || []);
+      setRequests(
+        (reqRes.paymentRequests || []).map((r: PaymentRequest) => ({
+          ...r,
+          projectName: projectList.find(p => p.id === r.projectId)?.projectName || 'Unknown Project',
+          taskName: taskList.find(t => t.id === r.taskId)?.taskName || 'Unknown Task',
+        }))
+      );
+      setProjects(projectList);
+    } catch (err: any) {
+      const message = err?.message || 'Failed to fetch accountant data';
+      setError(message);
+      notify.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchAccountantData();
   }, []);
 
-  const fetchAccountantData = async () => {
-    setLoading(true);
+  useEffect(() => {
+    localStorage.setItem(ROWS_PER_PAGE_STORAGE_KEY, String(rowsPerPage));
+  }, [rowsPerPage]);
+
+  useEffect(() => {
+    setReqPage(1);
+  }, [requestSearch, rowsPerPage]);
+
+  useEffect(() => {
+    setTxnPage(1);
+  }, [txnSearch, rowsPerPage]);
+
+  const handleApprove = async (request: EnrichedPaymentRequest) => {
+    const ok = await confirm({
+      title: 'Approve and pay?',
+      message: `Process payment of ${formatCur(request.amount)} to ${request.payeeName}? This will record the payout and update office funds.`,
+      confirmLabel: 'Approve & Pay',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
+    setApprovingId(request.id);
     try {
-        const [fundRes, reqRes, projRes, taskRes] = await Promise.all([
-            api.getOfficeFunds(),
-            api.getPaymentRequests(),
-            api.getProjects(),
-            api.getTasks()
-        ]);
-        setFunds(fundRes.officeFunds[0] || { balance: 0 });
-        setTransactions(fundRes.officeTransactions || []);
-        setRequests(reqRes.paymentRequests || []);
-        setProjects(projRes.projects || []);
-        setTasks(taskRes.tasks || []);
-    } catch (err) {
-        console.error("Failed to fetch accountant data", err);
+      await api.createPayment({
+        projectId: request.projectId,
+        taskId: request.taskId,
+        payeeType: request.category === 'Worker' ? 'Worker' : 'Supplier',
+        payeeName: request.payeeName,
+        amount: request.amount,
+        paymentDate: new Date().toISOString().split('T')[0],
+        paymentMethod: 'Bank Transfer',
+        paymentStatus: 'Paid',
+        notes: request.description,
+        requestId: request.id,
+      });
+      fetchAccountantData();
+      notify.success('Payment processed successfully.');
+    } catch (err: any) {
+      notify.error(err.message || 'Error processing payment.');
     } finally {
-        setLoading(false);
+      setApprovingId(null);
     }
   };
 
-  const getTaskName = (desc: string) => {
-      const match = desc.match(/tsk_\d+/);
-      if (match) {
-          const task = tasks.find(t => t.id === match[0]);
-          return task ? task.taskName : match[0];
-      }
-      return desc;
-  };
-
-  const handleApprove = async (request: any) => {
-      try {
-          await api.createPayment({
-              projectId: request.projectId,
-              taskId: request.taskId,
-              payeeType: request.category === 'Worker' ? 'Worker' : 'Supplier',
-              payeeName: request.payeeName,
-              amount: request.amount,
-              paymentDate: new Date().toISOString().split('T')[0],
-              paymentMethod: 'Bank Transfer',
-              paymentStatus: 'Paid',
-              notes: request.description,
-              requestId: request.id
-          });
-          fetchAccountantData();
-          alert('Payment processed successfully!');
-      } catch (err: any) {
-          alert(err.message || 'Error processing payment.');
-      }
+  const resetInflowForm = () => {
+    setInflowAmount('');
+    setInflowDesc('');
+    setInflowDate(new Date().toISOString().slice(0, 16));
+    setInflowProject('');
+    setInflowSource('');
+    setInflowMethod('');
+    setInflowRef('');
+    setInflowSubmitError(null);
   };
 
   const handleInflowSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      try {
-          await api.postOfficeFund({
-              type: 'Cash In',
-              amount: Number(inflowAmount),
-              description: inflowDesc,
-              date: inflowDate,
-              projectId: inflowProject,
-              source: inflowSource,
-              paymentMethod: inflowMethod,
-              reference: inflowRef
-          });
-          setInflowAmount('');
-          setInflowDesc('');
-          setInflowDate(new Date().toISOString().slice(0, 16));
-          setInflowProject('');
-          setInflowSource('');
-          setInflowMethod('');
-          setInflowRef('');
-          setShowInflowForm(false);
-          fetchAccountantData();
-          alert('Inflow recorded successfully!');
-      } catch (err: any) {
-          alert(err.message || 'Error recording inflow.');
-      }
+    e.preventDefault();
+
+    const ok = await confirm({
+      title: 'Record cash inflow?',
+      message: `Record ${formatCur(Number(inflowAmount))} cash inflow${inflowDesc ? ` for "${inflowDesc}"` : ''}? Office balance will be updated.`,
+      confirmLabel: 'Record Inflow',
+      variant: 'default',
+    });
+    if (!ok) return;
+
+    try {
+      setInflowSubmitError(null);
+      await api.postOfficeFund({
+        type: 'Cash In',
+        amount: Number(inflowAmount),
+        description: inflowDesc,
+        date: inflowDate,
+        projectId: inflowProject,
+        source: inflowSource,
+        paymentMethod: inflowMethod,
+        reference: inflowRef,
+      });
+      resetInflowForm();
+      setShowInflowForm(false);
+      fetchAccountantData();
+      notify.success('Inflow recorded successfully.');
+    } catch (err: any) {
+      const message = err.message || 'Error recording inflow.';
+      setInflowSubmitError(message);
+      notify.error(message);
+    }
   };
 
-  if (loading) return <div className="p-4 text-center font-bold">Loading Accountant Dashboard...</div>;
-
+  const today = new Date().toISOString().split('T')[0];
   const pendingRequests = requests.filter(r => r.status === 'Pending');
+  const totalPendingAmount = pendingRequests.reduce((sum, r) => sum + r.amount, 0);
+  const processedToday = transactions.filter(t => t.date?.startsWith(today)).length;
+  const todayInflow = transactions
+    .filter(t => t.type === 'Cash In' && t.date?.startsWith(today))
+    .reduce((sum, t) => sum + t.amount, 0);
+  const todayOutflow = transactions
+    .filter(t => t.type === 'Cash Out' && t.date?.startsWith(today))
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const filteredPending = pendingRequests.filter(r => {
+    const q = requestSearch.toLowerCase();
+    return (
+      r.payeeName.toLowerCase().includes(q) ||
+      r.projectName.toLowerCase().includes(q) ||
+      r.taskName.toLowerCase().includes(q) ||
+      (r.description || '').toLowerCase().includes(q)
+    );
+  });
+
+  const filteredTransactions = [...transactions]
+    .reverse()
+    .filter(t => {
+      const q = txnSearch.toLowerCase();
+      return (
+        (t.description || '').toLowerCase().includes(q) ||
+        (t.source || '').toLowerCase().includes(q) ||
+        t.type.toLowerCase().includes(q)
+      );
+    });
+
+  const reqTotalPages = Math.max(1, Math.ceil(filteredPending.length / rowsPerPage));
+  const reqActivePage = Math.min(reqPage, reqTotalPages);
+  const reqStartIndex = (reqActivePage - 1) * rowsPerPage;
+  const paginatedPending = filteredPending.slice(reqStartIndex, reqStartIndex + rowsPerPage);
+  const reqEmptyRowCount = Math.max(0, rowsPerPage - paginatedPending.length);
+  const reqTableBodyHeight = rowsPerPage * TABLE_ROW_HEIGHT_PX;
+
+  const txnTotalPages = Math.max(1, Math.ceil(filteredTransactions.length / rowsPerPage));
+  const txnActivePage = Math.min(txnPage, txnTotalPages);
+  const txnStartIndex = (txnActivePage - 1) * rowsPerPage;
+  const paginatedTransactions = filteredTransactions.slice(txnStartIndex, txnStartIndex + rowsPerPage);
+  const txnEmptyRowCount = Math.max(0, rowsPerPage - paginatedTransactions.length);
+  const txnTableBodyHeight = rowsPerPage * TABLE_ROW_HEIGHT_PX;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4">
+        <div className="w-10 h-10 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin" />
+        <p className="text-zinc-500 text-sm mt-3 font-medium">Loading accountant data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center max-w-lg mx-auto my-12">
+        <p className="text-sm font-semibold text-red-800">Load Error</p>
+        <p className="text-xs text-red-600 mt-1">{error}</p>
+        <button
+          onClick={fetchAccountantData}
+          className="mt-3 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 font-sans p-4 md:p-6">
-        <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-                <button 
-                    onClick={() => onNavigate('dashboard')}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-zinc-600 hover:text-zinc-900 transition-all text-sm font-semibold"
-                >
-                    <LayoutDashboard className="w-4 h-4" />
-                    <span>Dashboard</span>
-                </button>
-                <h1 className="text-2xl font-bold">Accountant Dashboard</h1>
-            </div>
-            <button 
-              onClick={() => setShowInflowForm(true)}
-              className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center gap-2"
-            >
-                <PlusCircle className="w-4 h-4" /> Record Cash Inflow
-            </button>
+    <div className="space-y-6 font-sans">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-950">Accountant</h1>
+          <p className="text-xs sm:text-sm text-zinc-500">Office funds, payment approvals & transaction ledger</p>
         </div>
-        
-        {/* KPI Section */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="bg-white border p-6 rounded-2xl shadow-sm">
-                <h2 className="text-sm font-semibold text-zinc-500 flex items-center gap-2"><Wallet /> Current Office Balance</h2>
-                <p className="text-3xl font-bold mt-2">₹{funds?.balance || 0}</p>
-            </div>
-            <div className="bg-white border p-6 rounded-2xl shadow-sm">
-                <h2 className="text-sm font-semibold text-zinc-500 flex items-center gap-2"><Clock /> Pending Requests</h2>
-                <p className="text-3xl font-bold mt-2">{pendingRequests.length}</p>
-            </div>
-            <div className="bg-white border p-6 rounded-2xl shadow-sm">
-                <h2 className="text-sm font-semibold text-zinc-500 flex items-center gap-2"><CheckCircle2 /> Processed Today</h2>
-                <p className="text-3xl font-bold mt-2">{transactions.filter(t => t.date.startsWith(new Date().toISOString().split('T')[0])).length}</p>
-            </div>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <button
+            onClick={() => onNavigate('projects')}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white hover:bg-zinc-100 border border-zinc-200/80 rounded-xl text-xs sm:text-sm font-semibold text-zinc-700 transition-colors"
+          >
+            <Building2 className="w-4 h-4" />
+            <span>Projects</span>
+          </button>
+          <button
+            onClick={fetchAccountantData}
+            className="p-2.5 bg-white hover:bg-zinc-100 border border-zinc-200/80 rounded-xl transition-colors text-zinc-600"
+            title="Refresh"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => { resetInflowForm(); setShowInflowForm(true); }}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Record Inflow</span>
+          </button>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white border p-6 rounded-2xl shadow-sm">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Send /> Pending Payment Requests</h3>
-                <div className="space-y-3">
-                    {pendingRequests.map(r => (
-                        <div key={r.id} className="text-sm border p-3 rounded-lg flex justify-between items-center bg-zinc-50">
-                            <div>
-                                <p className="font-semibold">{r.description} ({r.category})</p>
-                                <p className="text-xs text-zinc-500">Due: {r.dueDate} | Payee: {r.payeeName}</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <span className="font-bold text-zinc-950">₹{r.amount}</span>
-                                <button 
-                                  onClick={() => handleApprove(r)}
-                                  className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-emerald-700"
-                                >
-                                  Approve
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                    {pendingRequests.length === 0 && <p className="text-xs text-zinc-500">No pending requests.</p>}
-                </div>
-            </div>
-            
-            <div className="bg-white border p-6 rounded-2xl shadow-sm">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><ClipboardList /> Transaction History</h3>
-                <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                    {transactions.slice(-10).reverse().map(t => (
-                        <div key={t.id} className="text-sm border-b py-2 flex justify-between">
-                            <div>
-                                <p className="text-xs font-medium">{getTaskName(t.description)}</p>
-                                 <p className="text-[10px] text-zinc-400">
-                                     {new Date(t.date).toLocaleString()}
-                                     {t.type === 'Cash Out' && t.description && t.description.includes('Payment to ') && (
-                                         <span className="block text-zinc-600 font-semibold">
-                                             To: {t.description.split('Payment to ')[1].split(' for')[0]}
-                                         </span>
-                                     )}
-                                     {t.type === 'Cash In' && t.source && (
-                                         <span className="block text-emerald-700 font-semibold">
-                                             From: {t.source}
-                                         </span>
-                                     )}
-                                 </p>
-                            </div>
-                            <span className={`font-semibold ${t.type === 'Cash In' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                {t.type === 'Cash In' ? '+' : '-'} ₹{t.amount}
-                            </span>
-                        </div>
-                    ))}
-                    {transactions.length === 0 && <p className="text-xs text-zinc-500">No recent transactions.</p>}
-                </div>
-            </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className={cardClass}>
+          <div className="flex items-center justify-between mb-3">
+            <span className={cardLabelClass}>Office Balance</span>
+            <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-700">
+              <Landmark className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-auto">
+            <span className={`${cardValueClass} block`}>{formatCur(funds?.balance || 0)}</span>
+            <span className="text-[10px] text-zinc-400 font-medium block mt-1">Available funds</span>
+          </div>
         </div>
 
-        {/* Inflow Form Modal */}
-        {showInflowForm && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                <form onSubmit={handleInflowSubmit} className="bg-white p-6 rounded-2xl w-full max-w-sm space-y-4 shadow-2xl">
-                    <div className="flex justify-between items-center">
-                        <h2 className="text-lg font-bold">Record Cash Inflow</h2>
-                        <button type="button" onClick={() => setShowInflowForm(false)}><X className="w-5 h-5"/></button>
-                    </div>
-                    <input type="number" placeholder="Amount (₹)" className="w-full border p-2 rounded-lg" value={inflowAmount} onChange={e => setInflowAmount(e.target.value)} required />
-                    <input type="text" placeholder="Description" className="w-full border p-2 rounded-lg" value={inflowDesc} onChange={e => setInflowDesc(e.target.value)} required />
-                    <input type="text" placeholder="Source (e.g. Client Name, Owner)" className="w-full border p-2 rounded-lg" value={inflowSource} onChange={e => setInflowSource(e.target.value)} required />
-                    <div className="grid grid-cols-2 gap-2">
-                        <select className="border p-2 rounded-lg text-sm" value={inflowMethod} onChange={e => setInflowMethod(e.target.value)} required>
-                            <option value="">Method</option>
-                            <option value="Bank Transfer">Bank Transfer</option>
-                            <option value="Cash">Cash</option>
-                            <option value="Cheque">Cheque</option>
-                        </select>
-                        <input type="text" placeholder="Ref/Cheque #" className="border p-2 rounded-lg text-sm" value={inflowRef} onChange={e => setInflowRef(e.target.value)} />
-                    </div>
-                    <input type="datetime-local" className="w-full border p-2 rounded-lg" value={inflowDate} onChange={e => setInflowDate(e.target.value)} required />
-                    <select className="w-full border p-2 rounded-lg" value={inflowProject} onChange={e => setInflowProject(e.target.value)} required>
-                        <option value="">Select Project</option>
-                        {projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}
-                    </select>
-                    <button type="submit" className="w-full bg-emerald-600 text-white p-2 rounded-lg font-semibold">Record Inflow</button>
-                </form>
+        <div className={cardClass}>
+          <div className="flex items-center justify-between mb-3">
+            <span className={cardLabelClass}>Pending Requests</span>
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-700">
+              <Clock className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-auto">
+            <span className={`${cardValueClass} block`}>{pendingRequests.length}</span>
+            <span className="text-[10px] text-amber-600 font-medium block mt-1">
+              {formatCur(totalPendingAmount)} awaiting approval
+            </span>
+          </div>
+        </div>
+
+        <div className={cardClass}>
+          <div className="flex items-center justify-between mb-3">
+            <span className={cardLabelClass}>Today's Inflow</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700">
+              <ArrowUpRight className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-auto">
+            <span className={`${cardValueClass} block text-emerald-700`}>{formatCur(todayInflow)}</span>
+            <span className="text-[10px] text-emerald-600 font-medium block mt-1">
+              {processedToday} transaction{processedToday !== 1 ? 's' : ''} today
+            </span>
+          </div>
+        </div>
+
+        <div className={cardClass}>
+          <div className="flex items-center justify-between mb-3">
+            <span className={cardLabelClass}>Today's Outflow</span>
+            <span className="p-1.5 rounded-lg bg-rose-50 text-rose-700">
+              <ArrowDownRight className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-auto">
+            <span className={`${cardValueClass} block text-rose-700`}>{formatCur(todayOutflow)}</span>
+            <span className="text-[10px] text-rose-600 font-medium block mt-1">Payments processed today</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Pending Payment Requests */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-zinc-900 tracking-tight flex items-center gap-1.5">
+            <Send className="w-4 h-4 text-zinc-500" />
+            Pending Payment Requests
+          </h2>
+          <button
+            onClick={() => onNavigate('finance')}
+            className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 transition-colors text-left sm:text-right"
+          >
+            View Finance Hub
+          </button>
+        </div>
+
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm">
+          <div className="relative mb-3">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400">
+              <Search className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              placeholder="Search payee, project or task..."
+              value={requestSearch}
+              onChange={e => setRequestSearch(e.target.value)}
+              className="w-full text-xs sm:text-sm pl-9 pr-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white transition-all text-zinc-900"
+            />
+          </div>
+
+          {filteredPending.length === 0 ? (
+            <div className="p-8 border border-dashed rounded-xl text-center bg-zinc-50">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+              <p className="text-xs text-zinc-500 font-medium">No pending payment requests.</p>
+              <p className="text-[10px] text-zinc-400 mt-1">All caught up — new requests appear here from Finance Hub.</p>
             </div>
-        )}
+          ) : (
+            <div className="border border-zinc-200/80 rounded-xl overflow-hidden -mx-1">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left text-zinc-600 border-collapse min-w-[640px]">
+                  <thead>
+                    <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
+                      <th className="py-3 px-3">Payee</th>
+                      <th className="py-3 px-3">Project / Task</th>
+                      <th className="py-3 px-3">Category</th>
+                      <th className="py-3 px-3 text-right">Amount</th>
+                      <th className="py-3 px-3">Due</th>
+                      <th className="py-3 px-3">Priority</th>
+                      <th className="py-3 px-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody
+                    className="divide-y divide-zinc-100 text-zinc-900"
+                    style={{ height: reqTableBodyHeight }}
+                  >
+                    {paginatedPending.map(r => (
+                      <tr key={r.id} className="hover:bg-zinc-50/50 transition-colors" style={{ height: TABLE_ROW_HEIGHT_PX }}>
+                        <td className="px-3 align-middle">
+                          <span className="font-bold text-zinc-950 block">{r.payeeName}</span>
+                          {r.description && (
+                            <span className="text-[10px] text-zinc-400 italic line-clamp-1 block mt-0.5">{r.description}</span>
+                          )}
+                        </td>
+                        <td className="px-3 align-middle">
+                          <span className="font-medium text-zinc-700 block">{r.projectName}</span>
+                          <span className="text-[10px] text-zinc-400 block">{r.taskName}</span>
+                        </td>
+                        <td className="px-3 align-middle">
+                          <span className="text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded">{r.category}</span>
+                        </td>
+                        <td className="px-3 align-middle text-right font-extrabold text-zinc-950 whitespace-nowrap">
+                          {formatCur(r.amount)}
+                        </td>
+                        <td className="px-3 align-middle text-zinc-600 whitespace-nowrap">{r.dueDate}</td>
+                        <td className="px-3 align-middle">
+                          <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full border ${getPriorityStyle(r.priority)}`}>
+                            {r.priority}
+                          </span>
+                        </td>
+                        <td className="px-3 align-middle text-center">
+                          <button
+                            onClick={() => handleApprove(r)}
+                            disabled={approvingId === r.id}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+                          >
+                            <Wallet className="w-3.5 h-3.5" />
+                            {approvingId === r.id ? 'Processing...' : 'Approve & Pay'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {Array.from({ length: reqEmptyRowCount }).map((_, i) => (
+                      <tr key={`req-empty-${i}`} style={{ height: TABLE_ROW_HEIGHT_PX }} aria-hidden="true">
+                        <td colSpan={7} className="px-3 align-middle">&nbsp;</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <TablePagination
+                idPrefix="req"
+                totalItems={filteredPending.length}
+                rowsPerPage={rowsPerPage}
+                currentPage={reqPage}
+                onRowsPerPageChange={setRowsPerPage}
+                onPageChange={setReqPage}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Transaction History */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-semibold text-zinc-900 tracking-tight flex items-center gap-1.5">
+          <ClipboardList className="w-4 h-4 text-zinc-500" />
+          Transaction Ledger
+        </h2>
+
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm">
+          <div className="relative mb-3">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400">
+              <Search className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={txnSearch}
+              onChange={e => setTxnSearch(e.target.value)}
+              className="w-full text-xs sm:text-sm pl-9 pr-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white transition-all text-zinc-900"
+            />
+          </div>
+
+          {filteredTransactions.length === 0 ? (
+            <div className="p-8 border border-dashed rounded-xl text-center bg-zinc-50">
+              <ClipboardList className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
+              <p className="text-xs text-zinc-500">No transactions recorded yet.</p>
+            </div>
+          ) : (
+            <div className="border border-zinc-200/80 rounded-xl overflow-hidden -mx-1">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left text-zinc-600 border-collapse min-w-[560px]">
+                  <thead>
+                    <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3">Description</th>
+                      <th className="py-3 px-3">Type</th>
+                      <th className="py-3 px-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody
+                    className="divide-y divide-zinc-100 text-zinc-900"
+                    style={{ height: txnTableBodyHeight }}
+                  >
+                    {paginatedTransactions.map(t => (
+                      <tr key={t.id} className="hover:bg-zinc-50/50 transition-colors" style={{ height: TABLE_ROW_HEIGHT_PX }}>
+                        <td className="px-3 align-middle text-zinc-600 whitespace-nowrap">
+                          {new Date(t.date).toLocaleString('en-IN', {
+                            day: '2-digit', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </td>
+                        <td className="px-3 align-middle">
+                          <span className="font-medium text-zinc-800 block">{t.description}</span>
+                          {t.type === 'Cash In' && t.source && (
+                            <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">From: {t.source}</span>
+                          )}
+                          {t.type === 'Cash Out' && t.description?.includes('Payment to ') && (
+                            <span className="text-[10px] text-zinc-500 block mt-0.5">
+                              To: {t.description.split('Payment to ')[1]?.split(' for')[0]}
+                            </span>
+                          )}
+                          {t.reference && (
+                            <span className="text-[10px] text-zinc-400 block mt-0.5">Ref: {t.reference}</span>
+                          )}
+                        </td>
+                        <td className="px-3 align-middle">
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                            t.type === 'Cash In'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            {t.type === 'Cash In' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                            {t.type}
+                          </span>
+                        </td>
+                        <td className={`px-3 align-middle text-right font-extrabold whitespace-nowrap ${
+                          t.type === 'Cash In' ? 'text-emerald-700' : 'text-rose-700'
+                        }`}>
+                          {t.type === 'Cash In' ? '+' : '−'} {formatCur(t.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                    {Array.from({ length: txnEmptyRowCount }).map((_, i) => (
+                      <tr key={`txn-empty-${i}`} style={{ height: TABLE_ROW_HEIGHT_PX }} aria-hidden="true">
+                        <td colSpan={4} className="px-3 align-middle">&nbsp;</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <TablePagination
+                idPrefix="txn"
+                totalItems={filteredTransactions.length}
+                rowsPerPage={rowsPerPage}
+                currentPage={txnPage}
+                onRowsPerPageChange={setRowsPerPage}
+                onPageChange={setTxnPage}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Inflow Modal */}
+      {showInflowForm && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-md w-full space-y-4 font-sans animate-fade-in relative max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { setShowInflowForm(false); setInflowSubmitError(null); }}
+              className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-600 p-1 rounded-lg hover:bg-zinc-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="border-b pb-3 border-zinc-100 pr-8">
+              <h2 className="text-base sm:text-lg font-bold text-zinc-900">Record Cash Inflow</h2>
+              <p className="text-[10px] text-zinc-400 font-medium mt-0.5">Funds received into office account</p>
+            </div>
+
+            {inflowSubmitError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs font-semibold">
+                {inflowSubmitError}
+              </div>
+            )}
+
+            <form onSubmit={handleInflowSubmit} className="space-y-4">
+              <div>
+                <label className={labelClass}>Amount (₹)</label>
+                <input
+                  type="number"
+                  required
+                  min={0.01}
+                  step="any"
+                  placeholder="e.g. 50000"
+                  value={inflowAmount}
+                  onChange={e => setInflowAmount(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Description</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Client advance payment"
+                  value={inflowDesc}
+                  onChange={e => setInflowDesc(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Source</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Client name, owner"
+                  value={inflowSource}
+                  onChange={e => setInflowSource(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Method</label>
+                  <select
+                    value={inflowMethod}
+                    onChange={e => setInflowMethod(e.target.value)}
+                    required
+                    className={inputClass}
+                  >
+                    <option value="">Select...</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Ref / Cheque #</label>
+                  <input
+                    type="text"
+                    placeholder="Optional"
+                    value={inflowRef}
+                    onChange={e => setInflowRef(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className={labelClass}>Date & Time</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={inflowDate}
+                  onChange={e => setInflowDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Project</label>
+                <select
+                  value={inflowProject}
+                  onChange={e => setInflowProject(e.target.value)}
+                  required
+                  className={inputClass}
+                >
+                  <option value="">Select project...</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.projectName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors"
+              >
+                Record Inflow
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

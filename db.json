@@ -17,6 +17,15 @@
       "phone": "",
       "role": "accountant",
       "status": "active"
+    },
+    {
+      "id": "usr_sitemanager",
+      "name": "Site Manager",
+      "email": "sitemanager@logro.com",
+      "password": "sm.Logro@9090",
+      "phone": "",
+      "role": "manager",
+      "status": "active"
     }
   ],
   "projects": [
@@ -39,11 +48,37 @@
       "projectId": "prj_1781058922141",
       "taskName": "Site Clearance",
       "description": "",
-      "assignedBudget": 20000,
+      "assignedBudget": 200000,
       "assignedStaff": "eee",
       "startDate": "2026-06-10",
       "endDate": "2026-07-10",
-      "progress": 20,
+      "progress": 90,
+      "status": "In Progress",
+      "notes": ""
+    },
+    {
+      "id": "tsk_1781186135370",
+      "projectId": "prj_1781058922141",
+      "taskName": "Roof",
+      "description": "",
+      "assignedBudget": 100000,
+      "assignedStaff": "SHAREEF",
+      "startDate": "2026-06-11",
+      "endDate": "2026-07-11",
+      "progress": 90,
+      "status": "In Progress",
+      "notes": ""
+    },
+    {
+      "id": "tsk_1781198497050",
+      "projectId": "prj_1781058922141",
+      "taskName": "w",
+      "description": "",
+      "assignedBudget": 0,
+      "assignedStaff": "Manny Ramirez",
+      "startDate": "2026-06-11",
+      "endDate": "2026-07-11",
+      "progress": 0,
       "status": "Pending",
       "notes": ""
     }
@@ -111,6 +146,106 @@
       "date": "2026-06-10",
       "notes": "",
       "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781101810701",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Other",
+      "amount": 20000,
+      "paidTo": "KAIRALI",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-10",
+      "notes": "",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781201375129",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 200,
+      "paidTo": "naseer",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-11",
+      "notes": "",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781201384638",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 300,
+      "paidTo": "ee",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-11",
+      "notes": "",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781201390397",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 250,
+      "paidTo": "ee",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-11",
+      "notes": "",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781201393450",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 2000,
+      "paidTo": "dd",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-11",
+      "notes": "",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781201395675",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Transport",
+      "amount": 2000,
+      "paidTo": "thyehet",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-11",
+      "fromLocation": "",
+      "toLocation": "",
+      "notes": "d",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781201397564",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Transport",
+      "amount": 2000,
+      "paidTo": "sss",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-11",
+      "fromLocation": "",
+      "toLocation": "",
+      "notes": "Transport expense for sss",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "exp_1781201399488",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "category": "Material",
+      "amount": 2500,
+      "paidTo": "e",
+      "paymentMethod": "Bank Transfer",
+      "date": "2026-06-11",
+      "notes": "",
+      "createdBy": "usr_accountant"
     }
   ],
   "attendance": [
@@ -123,7 +258,7 @@
       "status": "Present",
       "dailyWage": 250,
       "overtimeAmount": 0,
-      "paymentStatus": "Paid"
+      "paymentStatus": "Pending"
     },
     {
       "id": "att_1781094601125_86r81",
@@ -156,64 +291,133 @@
       "status": "Present",
       "dailyWage": 300,
       "overtimeAmount": 0,
+      "paymentStatus": "Paid"
+    },
+    {
+      "id": "att_1781200683284_98qw6",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "workerName": "eee",
+      "date": "2026-06-11",
+      "status": "Half Day",
+      "dailyWage": 200,
+      "overtimeAmount": 0,
       "paymentStatus": "Pending"
     }
   ],
   "payments": [
     {
-      "id": "pay_1781091591545",
+      "id": "pay_1781201375129",
       "projectId": "prj_1781058922141",
       "taskId": "tsk_1781058952015",
       "payeeType": "Supplier",
-      "payeeName": "ff",
-      "amount": 20000,
-      "paymentDate": "2026-06-10",
+      "payeeName": "naseer",
+      "amount": 200,
+      "paymentDate": "2026-06-11",
       "paymentMethod": "Bank Transfer",
       "paymentStatus": "Paid",
       "notes": ""
     },
     {
-      "id": "pay_1781092689964",
-      "projectId": "prj_1781058922141",
-      "taskId": "tsk_1781058952015",
-      "payeeType": "Worker",
-      "payeeName": "Nihan",
-      "amount": 19000,
-      "paymentDate": "2026-06-10",
-      "paymentMethod": "Bank Transfer",
-      "paymentStatus": "Paid",
-      "notes": ""
-    },
-    {
-      "id": "pay_1781094695994",
+      "id": "pay_1781201384638",
       "projectId": "prj_1781058922141",
       "taskId": "tsk_1781058952015",
       "payeeType": "Supplier",
-      "payeeName": "00",
-      "amount": 200,
-      "paymentDate": "2026-06-10",
+      "payeeName": "ee",
+      "amount": 300,
+      "paymentDate": "2026-06-11",
       "paymentMethod": "Bank Transfer",
       "paymentStatus": "Paid",
       "notes": ""
     },
     {
-      "id": "pay_1781094915417",
+      "id": "pay_1781201390397",
       "projectId": "prj_1781058922141",
       "taskId": "tsk_1781058952015",
-      "payeeType": "Company",
-      "payeeName": "JSW",
-      "amount": 200,
-      "paymentDate": "2026-06-10",
+      "payeeType": "Supplier",
+      "payeeName": "ee",
+      "amount": 250,
+      "paymentDate": "2026-06-11",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": ""
+    },
+    {
+      "id": "pay_1781201393450",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Supplier",
+      "payeeName": "dd",
+      "amount": 2000,
+      "paymentDate": "2026-06-11",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": ""
+    },
+    {
+      "id": "pay_1781201395675",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Supplier",
+      "payeeName": "thyehet",
+      "amount": 2000,
+      "paymentDate": "2026-06-11",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": "d"
+    },
+    {
+      "id": "pay_1781201397564",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Supplier",
+      "payeeName": "sss",
+      "amount": 2000,
+      "paymentDate": "2026-06-11",
+      "paymentMethod": "Bank Transfer",
+      "paymentStatus": "Paid",
+      "notes": "Transport expense for sss"
+    },
+    {
+      "id": "pay_1781201399488",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeType": "Supplier",
+      "payeeName": "e",
+      "amount": 2500,
+      "paymentDate": "2026-06-11",
       "paymentMethod": "Bank Transfer",
       "paymentStatus": "Paid",
       "notes": ""
     }
   ],
+  "crew": [
+    {
+      "id": "crew_manny_ramirez",
+      "name": "Manny Ramirez",
+      "trade": "Helper",
+      "dailyWage": 200,
+      "phone": "",
+      "status": "active",
+      "notes": "",
+      "createdAt": "2026-06-10T00:00:00.000Z"
+    },
+    {
+      "id": "crew_samuel_jackson",
+      "name": "Samuel Jackson",
+      "trade": "Carpenter",
+      "dailyWage": 220,
+      "phone": "",
+      "status": "active",
+      "notes": "",
+      "createdAt": "2026-06-10T00:00:00.000Z"
+    }
+  ],
   "officeFunds": [
     {
       "id": "fund_main",
-      "balance": 30600,
-      "updatedAt": "2026-06-10T12:44:17.122Z"
+      "balance": 1350,
+      "updatedAt": "2026-06-11T18:09:59.488Z"
     }
   ],
   "officeTransactions": [
@@ -272,6 +476,70 @@
       "description": "..",
       "date": "2026-06-10T12:43",
       "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781101810701",
+      "type": "Cash Out",
+      "amount": 20000,
+      "description": "Payment to KAIRALI for tsk_1781058952015",
+      "date": "2026-06-10T14:30:10.701Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781201375129",
+      "type": "Cash Out",
+      "amount": 200,
+      "description": "Payment to naseer for tsk_1781058952015",
+      "date": "2026-06-11T18:09:35.129Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781201384638",
+      "type": "Cash Out",
+      "amount": 300,
+      "description": "Payment to ee for tsk_1781058952015",
+      "date": "2026-06-11T18:09:44.638Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781201390397",
+      "type": "Cash Out",
+      "amount": 250,
+      "description": "Payment to ee for tsk_1781058952015",
+      "date": "2026-06-11T18:09:50.397Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781201393450",
+      "type": "Cash Out",
+      "amount": 2000,
+      "description": "Payment to dd for tsk_1781058952015",
+      "date": "2026-06-11T18:09:53.450Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781201395675",
+      "type": "Cash Out",
+      "amount": 2000,
+      "description": "Payment to thyehet for tsk_1781058952015",
+      "date": "2026-06-11T18:09:55.675Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781201397564",
+      "type": "Cash Out",
+      "amount": 2000,
+      "description": "Payment to sss for tsk_1781058952015",
+      "date": "2026-06-11T18:09:57.564Z",
+      "createdBy": "usr_accountant"
+    },
+    {
+      "id": "tx_1781201399488",
+      "type": "Cash Out",
+      "amount": 2500,
+      "description": "Payment to e for tsk_1781058952015",
+      "date": "2026-06-11T18:09:59.488Z",
+      "createdBy": "usr_accountant"
     }
   ],
   "paymentRequests": [
@@ -311,8 +579,140 @@
       "description": "",
       "dueDate": "2026-06-10",
       "priority": "Medium",
-      "status": "Pending",
+      "status": "Paid",
       "createdAt": "2026-06-10T12:43:27.169Z"
+    },
+    {
+      "id": "pr_1781188452950",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "naseer",
+      "category": "Vendor",
+      "amount": 200,
+      "description": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Paid",
+      "createdAt": "2026-06-11T14:34:12.950Z"
+    },
+    {
+      "id": "pr_1781194812680",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "ee",
+      "category": "Vendor",
+      "amount": 300,
+      "description": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Paid",
+      "createdAt": "2026-06-11T16:20:12.680Z"
+    },
+    {
+      "id": "pr_1781195559860",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "KAIRALI",
+      "category": "Other",
+      "amount": 20000,
+      "description": "",
+      "dueDate": "2026-06-10",
+      "priority": "Medium",
+      "status": "Pending",
+      "createdAt": "2026-06-11T16:32:39.860Z"
+    },
+    {
+      "id": "pr_1781195802125",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "ee",
+      "category": "Vendor",
+      "amount": 250,
+      "description": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Paid",
+      "createdAt": "2026-06-11T16:36:42.125Z"
+    },
+    {
+      "id": "pr_1781195976849",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "e",
+      "category": "Vendor",
+      "amount": 2500,
+      "description": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Paid",
+      "createdAt": "2026-06-11T16:39:36.849Z"
+    },
+    {
+      "id": "pr_1781196813527",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "dd",
+      "category": "Vendor",
+      "amount": 2000,
+      "description": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Paid",
+      "createdAt": "2026-06-11T16:53:33.527Z"
+    },
+    {
+      "id": "pr_migrated_1781198687193",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "thyehet",
+      "category": "Transportation",
+      "amount": 2000,
+      "description": "d",
+      "fromLocation": "",
+      "toLocation": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Paid",
+      "paymentMethod": "Bank Transfer",
+      "billImage": "",
+      "createdBy": "usr_admin",
+      "createdAt": "2026-06-11T17:24:47.193Z"
+    },
+    {
+      "id": "pr_migrated_1781200500400",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "sss",
+      "category": "Transportation",
+      "amount": 2000,
+      "description": "Transport expense for sss",
+      "fromLocation": "",
+      "toLocation": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Paid",
+      "paymentMethod": "Bank Transfer",
+      "billImage": "",
+      "createdBy": "usr_admin",
+      "createdAt": "2026-06-11T17:55:00.400Z"
+    },
+    {
+      "id": "pr_migrated_1781200542662",
+      "projectId": "prj_1781058922141",
+      "taskId": "tsk_1781058952015",
+      "payeeName": "ddd",
+      "category": "Vendor",
+      "amount": 2000000,
+      "description": "Material expense for ddd",
+      "fromLocation": "",
+      "toLocation": "",
+      "dueDate": "2026-06-11",
+      "priority": "Medium",
+      "status": "Pending",
+      "paymentMethod": "Bank Transfer",
+      "billImage": "",
+      "createdBy": "usr_admin",
+      "createdAt": "2026-06-11T17:55:42.662Z"
     }
   ],
   "auditLogs": [
@@ -378,6 +778,78 @@
       "performedBy": "usr_accountant",
       "timestamp": "2026-06-10T12:44:17.122Z",
       "details": "Cash In of 30000 for project prj_1781058922141"
+    },
+    {
+      "id": "audit_1781101810701",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781101810701",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-10T14:30:10.701Z",
+      "details": "Processed payment of 20000 to KAIRALI"
+    },
+    {
+      "id": "audit_1781201375129",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781201375129",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-11T18:09:35.129Z",
+      "details": "Processed payment of 200 to naseer"
+    },
+    {
+      "id": "audit_1781201384638",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781201384638",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-11T18:09:44.638Z",
+      "details": "Processed payment of 300 to ee"
+    },
+    {
+      "id": "audit_1781201390397",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781201390397",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-11T18:09:50.397Z",
+      "details": "Processed payment of 250 to ee"
+    },
+    {
+      "id": "audit_1781201393450",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781201393450",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-11T18:09:53.450Z",
+      "details": "Processed payment of 2000 to dd"
+    },
+    {
+      "id": "audit_1781201395675",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781201395675",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-11T18:09:55.675Z",
+      "details": "Processed payment of 2000 to thyehet"
+    },
+    {
+      "id": "audit_1781201397564",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781201397564",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-11T18:09:57.564Z",
+      "details": "Processed payment of 2000 to sss"
+    },
+    {
+      "id": "audit_1781201399488",
+      "action": "Create",
+      "entity": "Payment",
+      "entityId": "pay_1781201399488",
+      "performedBy": "usr_accountant",
+      "timestamp": "2026-06-11T18:09:59.488Z",
+      "details": "Processed payment of 2500 to e"
     }
   ]
 }

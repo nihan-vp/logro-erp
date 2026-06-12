@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { MongoClient, Db } from 'mongodb';
-import { User, Project, Task, Expense, Attendance, Payment, OfficeFund, OfficeTransaction, PaymentRequest, AuditLog } from '../src/types';
+import { User, Project, Task, Expense, Attendance, Payment, OfficeFund, OfficeTransaction, PaymentRequest, AuditLog, CrewMember } from '../src/types';
 
 // Initialize environment variables from .env
 dotenv.config();
@@ -17,6 +17,7 @@ interface DatabaseSchema {
   expenses: Expense[];
   attendance: Attendance[];
   payments: Payment[];
+  crew: CrewMember[];
   officeFunds: OfficeFund[];
   officeTransactions: OfficeTransaction[];
   paymentRequests: PaymentRequest[];
@@ -42,6 +43,15 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
       phone: '',
       role: 'accountant',
       status: 'active'
+    },
+    {
+      id: 'usr_sitemanager',
+      name: 'Site Manager',
+      email: 'sitemanager@logro.com',
+      password: 'sm.Logro@9090',
+      phone: '',
+      role: 'manager',
+      status: 'active'
     }
   ];
 
@@ -53,6 +63,7 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
     expenses: Array.isArray(data.expenses) ? [...data.expenses] : [],
     attendance: Array.isArray(data.attendance) ? [...data.attendance] : [],
     payments: Array.isArray(data.payments) ? [...data.payments] : [],
+    crew: Array.isArray(data.crew) ? [...data.crew] : [],
     officeFunds: Array.isArray(data.officeFunds) ? [...data.officeFunds] : [],
     officeTransactions: Array.isArray(data.officeTransactions) ? [...data.officeTransactions] : [],
     paymentRequests: Array.isArray(data.paymentRequests) ? [...data.paymentRequests] : [],
@@ -85,6 +96,29 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
     }
   }
 
+  if (nextData.crew.length === 0) {
+    const seen = new Set<string>();
+    for (const att of nextData.attendance) {
+      const key = att.workerName.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        nextData.crew.push({
+          id: 'crew_' + att.workerName.replace(/\s+/g, '_').toLowerCase(),
+          name: att.workerName,
+          trade: 'Helper',
+          dailyWage: att.dailyWage || 200,
+          phone: '',
+          status: 'active',
+          notes: '',
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+    if (nextData.crew.length > 0) {
+      changed = true;
+    }
+  }
+
   return { data: nextData, changed };
 }
 
@@ -95,6 +129,7 @@ const collectionsList: (keyof DatabaseSchema)[] = [
   'expenses',
   'attendance',
   'payments',
+  'crew',
   'officeFunds',
   'officeTransactions',
   'paymentRequests',
@@ -172,6 +207,7 @@ async function loadDataFromMongo() {
       tempDb.expenses = [];
       tempDb.attendance = [];
       tempDb.payments = [];
+      tempDb.crew = [];
       tempDb.officeFunds = [];
       tempDb.officeTransactions = [];
       tempDb.paymentRequests = [];
@@ -236,7 +272,12 @@ export function readDb(): DatabaseSchema {
       tasks: [],
       expenses: [],
       attendance: [],
-      payments: []
+      payments: [],
+      crew: [],
+      officeFunds: [],
+      officeTransactions: [],
+      paymentRequests: [],
+      auditLogs: []
     });
     return fallback.data;
   }
@@ -300,6 +341,15 @@ function generateSeedData(): DatabaseSchema {
       phone: '',
       role: 'accountant',
       status: 'active'
+    },
+    {
+      id: 'usr_sitemanager',
+      name: 'Site Manager',
+      email: 'sitemanager@logro.com',
+      password: 'sm.Logro@9090',
+      phone: '',
+      role: 'manager',
+      status: 'active'
     }
   ];
 
@@ -310,6 +360,7 @@ function generateSeedData(): DatabaseSchema {
     expenses: [],
     attendance: [],
     payments: [],
+    crew: [],
     officeFunds: [],
     officeTransactions: [],
     paymentRequests: [],

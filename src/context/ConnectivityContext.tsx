@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { notify } from '../utils/toast';
 
 interface ConnectivityContextType {
   isOnline: boolean;
@@ -9,24 +10,34 @@ const ConnectivityContext = createContext<ConnectivityContextType | undefined>(u
 
 export const ConnectivityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const wasOnlineRef = useRef(navigator.onLine);
 
   const checkConnectivity = useCallback(async () => {
     if (!navigator.onLine) {
+      if (wasOnlineRef.current) {
+        notify.warning('You are offline.');
+      }
+      wasOnlineRef.current = false;
       setIsOnline(false);
       return;
     }
 
     try {
-      // Use a small, frequently available resource with a cache-buster to verify actual internet access
-      // Using a HEAD request to minimize data usage
-      const response = await fetch('/favicon.ico', { 
-        method: 'HEAD', 
+      await fetch('/favicon.ico', {
+        method: 'HEAD',
         cache: 'no-store',
-        mode: 'no-cors' 
+        mode: 'no-cors',
       });
+      if (!wasOnlineRef.current) {
+        notify.success('Connection restored.');
+      }
+      wasOnlineRef.current = true;
       setIsOnline(true);
-    } catch (error) {
-      console.warn('Connectivity check failed:', error);
+    } catch {
+      if (wasOnlineRef.current) {
+        notify.warning('You are offline.');
+      }
+      wasOnlineRef.current = false;
       setIsOnline(false);
     }
   }, []);
@@ -37,6 +48,10 @@ export const ConnectivityProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
 
     const handleOffline = () => {
+      if (wasOnlineRef.current) {
+        notify.warning('You are offline.');
+      }
+      wasOnlineRef.current = false;
       setIsOnline(false);
     };
 

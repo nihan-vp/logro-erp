@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { readDb, writeDb, hashPassword } from './server/db';
-import { Project, Task, Expense, Attendance, Payment, UserRole, ProjectStatus, TaskStatus, ExpenseCategory, PayeeType, PaymentStatus, AttendanceStatus } from './src/types';
+import { Project, Task, Expense, Attendance, Payment, PaymentRequest, UserRole, ProjectStatus, TaskStatus, ExpenseCategory, PayeeType, PaymentStatus, AttendanceStatus, CrewMember, CrewTrade, CrewMemberStatus, OfficeTransaction } from './src/types';
 
 // Initialize environment variables from .env
 dotenv.config();
@@ -246,6 +246,106 @@ app.put('/api/users/profile', requireAuth, (req: any, res) => {
   res.json(db.users[userIndex]);
 });
 
+const REQUEST_TO_EXPENSE_CATEGORY: Record<string, ExpenseCategory> = {
+  Worker: 'Labour',
+  Vendor: 'Material',
+  Transportation: 'Transport',
+  Other: 'Other',
+};
+
+function expenseCategoryToRequestCategory(category: ExpenseCategory | string): PaymentRequest['category'] {
+  if (category === 'Material' || category === 'Tools') return 'Vendor';
+  if (category === 'Labour') return 'Worker';
+  if (category === 'Transport') return 'Transportation';
+  return 'Other';
+}
+
+// Admin expenses submitted after office-fund workflow should be payment requests, not direct expenses.
+const ORPHAN_EXPENSE_MIGRATION_CUTOFF = 1781190000000;
+
+function expenseIdToTimestamp(id: string): number {
+  const n = Number(id.replace('exp_', ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function migrateOrphanAdminExpenses(db: ReturnType<typeof readDb>): boolean {
+  if (!db.paymentRequests) db.paymentRequests = [];
+  const toRemove = new Set<string>();
+
+  for (const exp of db.expenses) {
+    if (expenseIdToTimestamp(exp.id) < ORPHAN_EXPENSE_MIGRATION_CUTOFF) continue;
+
+    const creator = db.users.find(u => u.id === exp.createdBy);
+    if (creator?.role === 'accountant') continue;
+
+    const hasMatchingRequest = db.paymentRequests.some(pr =>
+      pr.taskId === exp.taskId &&
+      pr.amount === exp.amount &&
+      pr.payeeName === exp.paidTo &&
+      pr.dueDate === exp.date
+    );
+    if (hasMatchingRequest) continue;
+
+    const ts = expenseIdToTimestamp(exp.id);
+    db.paymentRequests.push({
+      id: `pr_migrated_${exp.id.replace('exp_', '')}`,
+      projectId: exp.projectId,
+      taskId: exp.taskId,
+      payeeName: exp.paidTo,
+      category: expenseCategoryToRequestCategory(exp.category),
+      amount: exp.amount,
+      description: exp.notes || `${exp.category} expense for ${exp.paidTo}`,
+      fromLocation: exp.fromLocation || '',
+      toLocation: exp.toLocation || '',
+      dueDate: exp.date,
+      priority: 'Medium',
+      status: 'Pending',
+      paymentMethod: exp.paymentMethod,
+      billImage: exp.billImage,
+      createdBy: exp.createdBy,
+      createdAt: new Date(ts).toISOString(),
+    });
+    toRemove.add(exp.id);
+  }
+
+  if (toRemove.size === 0) return false;
+  db.expenses = db.expenses.filter(e => !toRemove.has(e.id));
+  return true;
+}
+
+function loadDbWithSync(): ReturnType<typeof readDb> {
+  const db = readDb();
+  if (!db.paymentRequests) db.paymentRequests = [];
+  if (migrateOrphanAdminExpenses(db)) {
+    writeDb(db);
+  }
+  return db;
+}
+
+function paymentRequestToExpenseItem(pr: PaymentRequest, db: ReturnType<typeof readDb>) {
+  const prj = db.projects.find(p => p.id === pr.projectId);
+  const tsk = db.tasks.find(t => t.id === pr.taskId);
+  return {
+    id: pr.id,
+    projectId: pr.projectId,
+    taskId: pr.taskId,
+    category: REQUEST_TO_EXPENSE_CATEGORY[pr.category] || 'Other',
+    amount: pr.amount,
+    paidTo: pr.payeeName,
+    paymentMethod: pr.paymentMethod || 'Office Fund (Pending)',
+    date: pr.dueDate,
+    fromLocation: pr.fromLocation,
+    toLocation: pr.toLocation,
+    notes: pr.description,
+    billImage: pr.billImage,
+    createdBy: pr.createdBy || '',
+    projectName: prj ? prj.projectName : 'Unknown Project',
+    taskName: tsk ? tsk.taskName : 'Unknown Task',
+    isPendingRequest: true,
+    requestStatus: pr.status,
+  };
+}
+
 // Helper for Calculations
 function calculateMetrics() {
   const db = readDb();
@@ -265,10 +365,16 @@ function calculateMetrics() {
     taskToLabourCost[att.taskId] = (taskToLabourCost[att.taskId] || 0) + cost;
   });
 
-  // 2. Task regular expenses
+  // 2. Task regular expenses (paid / recorded)
   const taskToExpensesCost: Record<string, number> = {};
   db.expenses.forEach(exp => {
     taskToExpensesCost[exp.taskId] = (taskToExpensesCost[exp.taskId] || 0) + exp.amount;
+  });
+
+  // 2b. Pending payment requests tied to tasks (awaiting office fund approval)
+  const taskToPendingExpenseCost: Record<string, number> = {};
+  (db.paymentRequests || []).filter(pr => pr.status === 'Pending').forEach(pr => {
+    taskToPendingExpenseCost[pr.taskId] = (taskToPendingExpenseCost[pr.taskId] || 0) + pr.amount;
   });
 
   // 3. Task payments made
@@ -282,6 +388,7 @@ function calculateMetrics() {
   return {
     taskToLabourCost,
     taskToExpensesCost,
+    taskToPendingExpenseCost,
     taskToPaymentsMade
   };
 }
@@ -307,20 +414,27 @@ app.get('/api/projects', requireAuth, (req, res) => {
       return acc + (att.dailyWage * portion) + (att.overtimeAmount || 0);
     }, 0);
 
+    const pendingRequestAmt = db.paymentRequests
+      .filter(pr => pr.projectId === prj.id && pr.status === 'Pending')
+      .reduce((acc, pr) => acc + pr.amount, 0);
+
     const totalActualExpense = regularExpenseAmt + labourCostAmt;
+    const totalCommittedExpense = totalActualExpense + pendingRequestAmt;
 
     // Total payments of this project
     const projectPayments = db.payments.filter(p => p.projectId === prj.id);
     const totalPaidAmount = projectPayments.filter(p => p.paymentStatus === 'Paid').reduce((acc, p) => acc + p.amount, 0);
     const pendingPaymentsAmt = projectPayments.filter(p => p.paymentStatus === 'Pending').reduce((acc, p) => acc + p.amount, 0);
 
-    const profitLoss = totalBudget - totalActualExpense;
+    const profitLoss = totalBudget - totalCommittedExpense;
     const profitPercentage = totalBudget > 0 ? (profitLoss / totalBudget) * 100 : 0;
 
     return {
       ...prj,
       totalBudget,
       totalExpenses: totalActualExpense,
+      pendingExpenses: pendingRequestAmt,
+      totalCommittedExpense,
       totalPaidAmount,
       pendingPayments: pendingPaymentsAmt,
       profitLoss,
@@ -404,43 +518,52 @@ app.delete('/api/projects/:id', requireAuth, (req, res) => {
 
 // 3. Task routes
 app.get('/api/tasks', requireAuth, (req, res) => {
-  const db = readDb();
-  const { projectId } = req.query;
+  try {
+    const db = readDb();
+    const { projectId } = req.query;
 
-  let tasks = db.tasks;
-  if (projectId) {
-    tasks = tasks.filter(t => t.projectId === projectId);
+    let tasks = db.tasks || [];
+    if (projectId) {
+      tasks = tasks.filter(t => t.projectId === projectId);
+    }
+
+    // Calculate task statistics
+    const { taskToLabourCost, taskToExpensesCost, taskToPendingExpenseCost, taskToPaymentsMade } = calculateMetrics();
+
+    const tasksWithStats = tasks.map(tsk => {
+      const labourCost = taskToLabourCost[tsk.id] || 0;
+      const directExpenses = taskToExpensesCost[tsk.id] || 0;
+      const pendingExpenses = taskToPendingExpenseCost[tsk.id] || 0;
+      const totalExpenses = directExpenses + labourCost;
+      const totalCommitted = totalExpenses + pendingExpenses;
+      const paymentsPaid = taskToPaymentsMade[tsk.id] || 0;
+      const remainingBudget = tsk.assignedBudget - totalCommitted;
+      const profitLoss = tsk.assignedBudget - totalCommitted;
+      const isOverBudget = totalCommitted > tsk.assignedBudget;
+
+      // Find matching project details
+      const prj = db.projects.find(p => p.id === tsk.projectId);
+
+      return {
+        ...tsk,
+        projectName: prj ? prj.projectName : 'Unknown Project',
+        labourCost,
+        directExpenses,
+        pendingExpenses,
+        totalExpenses,
+        totalCommitted,
+        paymentsPaid,
+        remainingBudget,
+        profitLoss,
+        isOverBudget
+      };
+    });
+
+    res.json({ tasks: tasksWithStats });
+  } catch (err: any) {
+    console.error('DEBUG ERROR in GET /api/tasks:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
-
-  // Calculate task statistics
-  const { taskToLabourCost, taskToExpensesCost, taskToPaymentsMade } = calculateMetrics();
-
-  const tasksWithStats = tasks.map(tsk => {
-    const labourCost = taskToLabourCost[tsk.id] || 0;
-    const directExpenses = taskToExpensesCost[tsk.id] || 0;
-    const totalExpenses = directExpenses + labourCost;
-    const paymentsPaid = taskToPaymentsMade[tsk.id] || 0;
-    const remainingBudget = tsk.assignedBudget - totalExpenses;
-    const profitLoss = tsk.assignedBudget - totalExpenses;
-    const isOverBudget = totalExpenses > tsk.assignedBudget;
-
-    // Find matching project details
-    const prj = db.projects.find(p => p.id === tsk.projectId);
-
-    return {
-      ...tsk,
-      projectName: prj ? prj.projectName : 'Unknown Project',
-      labourCost,
-      directExpenses,
-      totalExpenses,
-      paymentsPaid,
-      remainingBudget,
-      profitLoss,
-      isOverBudget
-    };
-  });
-
-  res.json({ tasks: tasksWithStats });
 });
 
 app.post('/api/tasks', requireAuth, (req, res) => {
@@ -516,7 +639,7 @@ app.delete('/api/tasks/:id', requireAuth, (req, res) => {
 
 // 4. Expense routes (Linked to task & project)
 app.get('/api/expenses', requireAuth, (req, res) => {
-  const db = readDb();
+  const db = loadDbWithSync();
   const { projectId, taskId } = req.query;
 
   let expenses = db.expenses;
@@ -527,60 +650,111 @@ app.get('/api/expenses', requireAuth, (req, res) => {
     expenses = expenses.filter(e => e.taskId === taskId);
   }
 
-  // Hydrate expense values
   const hydrated = expenses.map(e => {
     const prj = db.projects.find(p => p.id === e.projectId);
     const tsk = db.tasks.find(t => t.id === e.taskId);
     return {
       ...e,
       projectName: prj ? prj.projectName : 'Unknown Project',
-      taskName: tsk ? tsk.taskName : 'Unknown Task'
+      taskName: tsk ? tsk.taskName : 'Unknown Task',
+      isPendingRequest: false,
     };
   });
 
-  res.json({ expenses: hydrated.reverse() }); // Latest first
+  let pendingRequests = db.paymentRequests.filter(pr => pr.status === 'Pending');
+  if (projectId) {
+    pendingRequests = pendingRequests.filter(pr => pr.projectId === projectId);
+  }
+  if (taskId) {
+    pendingRequests = pendingRequests.filter(pr => pr.taskId === taskId);
+  }
+
+  const pendingAsExpenses = pendingRequests.map(pr => paymentRequestToExpenseItem(pr, db));
+  const combined = [...pendingAsExpenses, ...hydrated].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  res.json({ expenses: combined });
 });
 
 app.post('/api/expenses', requireAuth, (req: any, res) => {
-  console.log("POST /api/expenses received. Body:", JSON.stringify(req.body));
   try {
-    const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage } = req.body;
+    const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation } = req.body;
     if (!projectId || !taskId || !category || amount === undefined || !paidTo || !paymentMethod || !date) {
-      console.log("Validation failed");
       return res.status(400).json({ error: 'All core expense fields are required' });
     }
 
-    const db = readDb();
-    const newExpense: Expense = {
-      id: 'exp_' + Date.now(),
+    const db = loadDbWithSync();
+    const newRequest: PaymentRequest = {
+      id: 'pr_' + Date.now(),
       projectId,
       taskId,
-      category: category as ExpenseCategory,
+      payeeName: String(paidTo).trim(),
+      category: expenseCategoryToRequestCategory(category),
       amount: Number(amount),
-      paidTo,
+      description: notes || `${category} expense for ${paidTo}`,
+      fromLocation: fromLocation || '',
+      toLocation: toLocation || '',
+      dueDate: date,
+      priority: 'Medium',
+      status: 'Pending',
       paymentMethod,
-      date,
-      notes,
-      billImage, // Store direct base 64 string
-      createdBy: req.user.userId
+      billImage,
+      createdBy: req.user.userId,
+      createdAt: new Date().toISOString(),
     };
 
-    db.expenses.push(newExpense);
+    db.paymentRequests.push(newRequest);
     writeDb(db);
-    res.status(201).json(newExpense);
+
+    const expenseView = paymentRequestToExpenseItem(newRequest, db);
+    res.status(201).json({
+      paymentRequest: newRequest,
+      expense: expenseView,
+      message: 'Expense submitted as a payment request. It will be paid from office funds after accountant approval.',
+    });
   } catch (err) {
-    console.error("Error in POST /api/expenses:", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error('Error in POST /api/expenses:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
 app.put('/api/expenses/:id', requireAuth, (req, res) => {
-  const { category, amount, paidTo, paymentMethod, date, notes, billImage } = req.body;
+  const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation } = req.body;
   if (!category || amount === undefined || !paidTo || !paymentMethod || !date) {
     return res.status(400).json({ error: 'All core fields are required' });
   }
 
   const db = readDb();
+
+  if (req.params.id.startsWith('pr_')) {
+    const reqIdx = db.paymentRequests.findIndex(r => r.id === req.params.id);
+    if (reqIdx === -1) {
+      return res.status(404).json({ error: 'Payment request not found' });
+    }
+    if (db.paymentRequests[reqIdx].status !== 'Pending') {
+      return res.status(400).json({ error: 'Only pending payment requests can be edited' });
+    }
+
+    db.paymentRequests[reqIdx] = {
+      ...db.paymentRequests[reqIdx],
+      projectId: projectId || db.paymentRequests[reqIdx].projectId,
+      taskId: taskId || db.paymentRequests[reqIdx].taskId,
+      payeeName: String(paidTo).trim(),
+      category: expenseCategoryToRequestCategory(category),
+      amount: Number(amount),
+      description: notes || db.paymentRequests[reqIdx].description,
+      fromLocation: fromLocation ?? db.paymentRequests[reqIdx].fromLocation,
+      toLocation: toLocation ?? db.paymentRequests[reqIdx].toLocation,
+      dueDate: date,
+      paymentMethod,
+      billImage: billImage !== undefined ? billImage : db.paymentRequests[reqIdx].billImage,
+    };
+
+    writeDb(db);
+    return res.json(paymentRequestToExpenseItem(db.paymentRequests[reqIdx], db));
+  }
+
   const expIdx = db.expenses.findIndex(e => e.id === req.params.id);
   if (expIdx === -1) {
     return res.status(404).json({ error: 'Expense not found' });
@@ -603,6 +777,20 @@ app.put('/api/expenses/:id', requireAuth, (req, res) => {
 
 app.delete('/api/expenses/:id', requireAuth, (req, res) => {
   const db = readDb();
+
+  if (req.params.id.startsWith('pr_')) {
+    const reqIdx = db.paymentRequests.findIndex(r => r.id === req.params.id);
+    if (reqIdx === -1) {
+      return res.status(404).json({ error: 'Payment request not found' });
+    }
+    if (db.paymentRequests[reqIdx].status !== 'Pending') {
+      return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
+    }
+    db.paymentRequests.splice(reqIdx, 1);
+    writeDb(db);
+    return res.json({ success: true, message: 'Payment request cancelled' });
+  }
+
   const expIdx = db.expenses.findIndex(e => e.id === req.params.id);
   if (expIdx === -1) {
     return res.status(404).json({ error: 'Expense not found' });
@@ -612,7 +800,157 @@ app.delete('/api/expenses/:id', requireAuth, (req, res) => {
   res.json({ success: true, message: 'Expense deleted successfully' });
 });
 
-// 5. Attendance routes
+// 5. Crew roster routes
+app.get('/api/crew', requireAuth, (req, res) => {
+  const db = readDb();
+  if (!db.crew) db.crew = [];
+  const { status } = req.query;
+  let crew = db.crew;
+  if (status === 'active' || status === 'inactive') {
+    crew = crew.filter(c => c.status === status);
+  }
+  res.json({ crew: crew.sort((a, b) => a.name.localeCompare(b.name)) });
+});
+
+app.post('/api/crew', requireAuth, (req, res) => {
+  const { name, trade, dailyWage, phone, status, notes } = req.body;
+  if (!name || !trade || dailyWage === undefined) {
+    return res.status(400).json({ error: 'Name, trade, and daily wage are required' });
+  }
+
+  const db = readDb();
+  if (!db.crew) db.crew = [];
+
+  const duplicate = db.crew.find(c => c.name.toLowerCase() === String(name).toLowerCase().trim());
+  if (duplicate) {
+    return res.status(400).json({ error: 'A crew member with this name already exists' });
+  }
+
+  const newMember: CrewMember = {
+    id: 'crew_' + Date.now(),
+    name: String(name).trim(),
+    trade: trade as CrewTrade,
+    dailyWage: Number(dailyWage),
+    phone: phone || '',
+    status: (status || 'active') as CrewMemberStatus,
+    notes: notes || '',
+    createdAt: new Date().toISOString()
+  };
+
+  db.crew.push(newMember);
+  writeDb(db);
+  res.status(201).json(newMember);
+});
+
+app.put('/api/crew/:id', requireAuth, (req, res) => {
+  const { name, trade, dailyWage, phone, status, notes } = req.body;
+  if (!name || !trade || dailyWage === undefined) {
+    return res.status(400).json({ error: 'Name, trade, and daily wage are required' });
+  }
+
+  const db = readDb();
+  if (!db.crew) db.crew = [];
+  const idx = db.crew.findIndex(c => c.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Crew member not found' });
+  }
+
+  const duplicate = db.crew.find(c => c.id !== req.params.id && c.name.toLowerCase() === String(name).toLowerCase().trim());
+  if (duplicate) {
+    return res.status(400).json({ error: 'A crew member with this name already exists' });
+  }
+
+  db.crew[idx] = {
+    ...db.crew[idx],
+    name: String(name).trim(),
+    trade: trade as CrewTrade,
+    dailyWage: Number(dailyWage),
+    phone: phone || '',
+    status: (status || 'active') as CrewMemberStatus,
+    notes: notes || ''
+  };
+
+  writeDb(db);
+  res.json(db.crew[idx]);
+});
+
+app.delete('/api/crew/:id', requireAuth, (req, res) => {
+  const db = readDb();
+  if (!db.crew) db.crew = [];
+  const idx = db.crew.findIndex(c => c.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Crew member not found' });
+  }
+  db.crew.splice(idx, 1);
+  writeDb(db);
+  res.json({ success: true, message: 'Crew member removed' });
+});
+
+const VALID_TRADES: CrewTrade[] = ['Mason', 'Electrician', 'Plumber', 'Carpenter', 'Helper', 'Supervisor', 'Other'];
+
+app.post('/api/crew/bulk', requireAuth, (req, res) => {
+  const { members } = req.body;
+  if (!Array.isArray(members) || members.length === 0) {
+    return res.status(400).json({ error: 'A non-empty members array is required' });
+  }
+
+  const db = readDb();
+  if (!db.crew) db.crew = [];
+
+  const added: CrewMember[] = [];
+  const skipped: string[] = [];
+  const errors: string[] = [];
+
+  members.forEach((m: any, idx: number) => {
+    const name = String(m.name || '').trim();
+    if (!name) {
+      errors.push(`Row ${idx + 1}: name is required`);
+      return;
+    }
+
+    const duplicate = db.crew.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+      skipped.push(name);
+      return;
+    }
+
+    const tradeRaw = String(m.trade || 'Helper').trim();
+    const trade = VALID_TRADES.find(t => t.toLowerCase() === tradeRaw.toLowerCase()) || 'Other';
+    const dailyWage = Number(m.dailyWage);
+    if (Number.isNaN(dailyWage) || dailyWage < 0) {
+      errors.push(`Row ${idx + 1} (${name}): invalid daily wage`);
+      return;
+    }
+
+    const statusRaw = String(m.status || 'active').toLowerCase();
+    const status: CrewMemberStatus = statusRaw === 'inactive' ? 'inactive' : 'active';
+
+    const newMember: CrewMember = {
+      id: 'crew_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      name,
+      trade,
+      dailyWage,
+      phone: m.phone ? String(m.phone).trim() : '',
+      status,
+      notes: m.notes ? String(m.notes).trim() : '',
+      createdAt: new Date().toISOString()
+    };
+
+    db.crew.push(newMember);
+    added.push(newMember);
+  });
+
+  writeDb(db);
+  res.status(201).json({
+    success: true,
+    added: added.length,
+    skipped: skipped.length,
+    errors,
+    records: added
+  });
+});
+
+// 6. Attendance routes
 app.get('/api/attendance', requireAuth, (req, res) => {
   const db = readDb();
   const { projectId, taskId, date } = req.query;
@@ -774,6 +1112,12 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
     return res.status(400).json({ error: 'All core payment fields are required' });
   }
 
+  // SECURITY: Prevent manual payments by non-admins. 
+  // If no requestId is provided, it's a manual payment.
+  if (!requestId && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Manual payments can only be created by administrators. Please submit a request first.' });
+  }
+
   const db = readDb();
   
   // 1. Balance Validation
@@ -837,12 +1181,13 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
              category: categoryMap[pr.category] || 'Other',
              amount: pr.amount,
              paidTo: pr.payeeName,
-             paymentMethod: paymentMethod,
+             paymentMethod: paymentMethod || pr.paymentMethod || 'Office Fund',
              date: paymentDate,
              fromLocation: pr.fromLocation,
              toLocation: pr.toLocation,
              notes: pr.description,
-             createdBy: req.user.userId
+             billImage: pr.billImage,
+             createdBy: pr.createdBy || req.user.userId
            });
       }
   }
@@ -945,30 +1290,95 @@ app.post('/api/office/funds', requireAuth, requireAdminOrAccountant, (req: any, 
 });
 
 app.get('/api/payment-requests', requireAuth, (req, res) => {
-    const db = readDb();
-    res.json({ paymentRequests: db.paymentRequests });
+    const db = loadDbWithSync();
+    const paymentRequests = [...db.paymentRequests].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    res.json({ paymentRequests });
 });
 
 app.post('/api/payment-requests', requireAuth, (req: any, res) => {
-    console.log("POST /api/payment-requests received:", req.body);
-    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority } = req.body;
+    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage } = req.body;
+    if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
+        return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
+    }
+
     const db = readDb();
     const newRequest: PaymentRequest = {
         id: 'pr_' + Date.now(),
         projectId,
         taskId,
-        payeeName,
+        payeeName: String(payeeName).trim(),
         category,
-        amount,
-        description,
+        amount: Number(amount),
+        description: description || '',
+        fromLocation: fromLocation || '',
+        toLocation: toLocation || '',
         dueDate,
-        priority,
+        priority: priority || 'Medium',
         status: 'Pending',
+        paymentMethod: paymentMethod || 'Bank Transfer',
+        billImage,
+        createdBy: req.user.userId,
         createdAt: new Date().toISOString()
     };
     db.paymentRequests.push(newRequest);
     writeDb(db);
     res.status(201).json(newRequest);
+});
+
+app.put('/api/payment-requests/:id', requireAuth, (req, res) => {
+    const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage } = req.body;
+    if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
+        return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
+    }
+
+    const db = readDb();
+    const idx = db.paymentRequests.findIndex(r => r.id === req.params.id);
+    if (idx === -1) {
+        return res.status(404).json({ error: 'Payment request not found' });
+    }
+
+    const existing = db.paymentRequests[idx];
+    if (existing.status !== 'Pending') {
+        return res.status(400).json({ error: 'Only pending payment requests can be edited' });
+    }
+
+    db.paymentRequests[idx] = {
+        ...existing,
+        projectId,
+        taskId,
+        payeeName: String(payeeName).trim(),
+        category,
+        amount: Number(amount),
+        description: description || '',
+        fromLocation: fromLocation || '',
+        toLocation: toLocation || '',
+        dueDate,
+        priority: priority || existing.priority || 'Medium',
+        paymentMethod: paymentMethod ?? existing.paymentMethod,
+        billImage: billImage !== undefined ? billImage : existing.billImage,
+    };
+
+    writeDb(db);
+    res.json(db.paymentRequests[idx]);
+});
+
+app.delete('/api/payment-requests/:id', requireAuth, (req, res) => {
+    const db = readDb();
+    const idx = db.paymentRequests.findIndex(r => r.id === req.params.id);
+    if (idx === -1) {
+        return res.status(404).json({ error: 'Payment request not found' });
+    }
+
+    const existing = db.paymentRequests[idx];
+    if (existing.status !== 'Pending') {
+        return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
+    }
+
+    db.paymentRequests.splice(idx, 1);
+    writeDb(db);
+    res.json({ success: true, message: 'Payment request deleted' });
 });
 
 // 7. General ERP reports and stats endpoint
@@ -979,6 +1389,7 @@ app.get('/api/reports/summary', requireAuth, (req, res) => {
   const { taskToLabourCost, taskToExpensesCost } = calculateMetrics();
 
   const totalProjects = db.projects.length;
+  const totalTasks = db.tasks.length;
   const activeTasks = db.tasks.filter(t => t.status === 'In Progress').length;
   const completedTasks = db.tasks.filter(t => t.status === 'Completed').length;
 
@@ -1047,6 +1458,7 @@ app.get('/api/reports/summary', requireAuth, (req, res) => {
   res.json({
     stats: {
       totalProjects,
+      totalTasks,
       activeTasks,
       completedTasks,
       totalAssignedBudget,

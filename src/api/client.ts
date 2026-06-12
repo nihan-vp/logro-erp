@@ -102,6 +102,16 @@ export const api = {
   updateExpense: (id: string, e: any) => request(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(e) }),
   deleteExpense: (id: string) => request(`/expenses/${id}`, { method: 'DELETE' }),
 
+  // Crew
+  getCrew: (status?: 'active' | 'inactive') => {
+    const q = status ? `?status=${status}` : '';
+    return request(`/crew${q}`);
+  },
+  createCrewMember: (data: any) => request('/crew', { method: 'POST', body: JSON.stringify(data) }),
+  bulkCrew: (data: { members: any[] }) => request('/crew/bulk', { method: 'POST', body: JSON.stringify(data) }),
+  updateCrewMember: (id: string, data: any) => request(`/crew/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCrewMember: (id: string) => request(`/crew/${id}`, { method: 'DELETE' }),
+
   // Attendance
   getAttendance: (projectId?: string, taskId?: string, date?: string) => {
     const params = new URLSearchParams();
@@ -131,6 +141,8 @@ export const api = {
   postOfficeFund: (data: any) => request('/office/funds', { method: 'POST', body: JSON.stringify(data) }),
   getPaymentRequests: () => request('/payment-requests'),
   createPaymentRequest: (data: any) => request('/payment-requests', { method: 'POST', body: JSON.stringify(data) }),
+  updatePaymentRequest: (id: string, data: any) => request(`/payment-requests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePaymentRequest: (id: string) => request(`/payment-requests/${id}`, { method: 'DELETE' }),
 
   // Reports Summary
   getReportSummary: () => request('/reports/summary')

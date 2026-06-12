@@ -29,6 +29,9 @@ export interface PaymentRequest {
     dueDate: string;
     priority: 'Low' | 'Medium' | 'High';
     status: 'Pending' | 'Paid' | 'Partially Paid' | 'Cancelled';
+    paymentMethod?: string;
+    billImage?: string;
+    createdBy?: string;
     createdAt: string;
 }
 export interface AuditLog {
@@ -101,6 +104,20 @@ export interface Expense {
   createdBy: string;
 }
 
+export type CrewTrade = 'Mason' | 'Electrician' | 'Plumber' | 'Carpenter' | 'Helper' | 'Supervisor' | 'Other';
+export type CrewMemberStatus = 'active' | 'inactive';
+
+export interface CrewMember {
+  id: string;
+  name: string;
+  trade: CrewTrade;
+  dailyWage: number;
+  phone?: string;
+  status: CrewMemberStatus;
+  notes?: string;
+  createdAt: string;
+}
+
 export type AttendanceStatus = 'Present' | 'Absent' | 'Half Day';
 
 export interface Attendance {
@@ -134,6 +151,8 @@ export interface Payment {
 
 export interface DashboardStats {
   totalProjects: number;
+  totalTasks: number;
+  pendingTasks?: number;
   activeTasks: number;
   completedTasks: number;
   totalAssignedBudget: number;

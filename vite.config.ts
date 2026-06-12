@@ -13,7 +13,10 @@ export default defineConfig(() => {
     },
     server: {
     host: "0.0.0.0",
-    allowedHosts: ["api.quizpro.dev"]
+    allowedHosts: ["api.quizpro.dev"],
+    watch: {
+      ignored: ['**/db.json'],
+    },
   },
   };
 });

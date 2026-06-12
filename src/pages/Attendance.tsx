@@ -1,419 +1,491 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Calendar, CheckSquare, Search, Trash2, Edit2, CheckCircle2, 
-  X, ShieldAlert, Users, PlusCircle, BookmarkCheck, ArrowLeft 
+import {
+  Plus, Search, Trash2, Edit2, Users, X, Phone, Briefcase, Upload, Download, BookmarkCheck
 } from 'lucide-react';
 import { api } from '../api/client';
-import { Attendance, AttendanceStatus } from '../types';
+import { CrewMember, CrewTrade, CrewMemberStatus } from '../types';
+import { notify } from '../utils/toast';
+import { useConfirm } from '../context/ConfirmContext';
 
-interface AttendanceProps {
-  initialProjectId?: string;
-  initialTaskId?: string;
+const TRADE_OPTIONS: CrewTrade[] = ['Mason', 'Electrician', 'Plumber', 'Carpenter', 'Helper', 'Supervisor', 'Other'];
+
+const CSV_TEMPLATE = 'Name,Trade,Daily Wage,Phone,Status,Notes\nDave Cooper,Mason,250,9876543210,active,\nManny Ramirez,Helper,200,,active,';
+
+interface CsvCrewRow {
+  name: string;
+  trade: CrewTrade;
+  dailyWage: number;
+  phone: string;
+  status: CrewMemberStatus;
+  notes: string;
 }
 
-export default function AttendancePage({ initialProjectId, initialTaskId }: AttendanceProps) {
-  const [attendance, setAttendance] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function normalizeTrade(value: string): CrewTrade {
+  const match = TRADE_OPTIONS.find(t => t.toLowerCase() === value.trim().toLowerCase());
+  return match || 'Other';
+}
+
+function normalizeStatus(value: string): CrewMemberStatus {
+  return value.trim().toLowerCase() === 'inactive' ? 'inactive' : 'active';
+}
+
+function parseCrewCsv(text: string): CsvCrewRow[] {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const firstCols = parseCsvLine(lines[0]).map(c => c.toLowerCase());
+  const hasHeader = firstCols.some(c => c.includes('name') || c.includes('trade') || c.includes('wage'));
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  return dataLines.map(line => {
+    const [name, trade, wage, phone, status, notes] = parseCsvLine(line);
+    return {
+      name: name || '',
+      trade: normalizeTrade(trade || 'Helper'),
+      dailyWage: Number(wage) || 200,
+      phone: phone || '',
+      status: normalizeStatus(status || 'active'),
+      notes: notes || ''
+    };
+  }).filter(row => row.name.trim() !== '');
+}
+
+export default function AttendancePage() {
+  const confirm = useConfirm();
+  const [crew, setCrew] = useState<CrewMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | CrewMemberStatus>('All');
 
-  // Filters
-  const [projectFilter, setProjectFilter] = useState<string>(initialProjectId || 'All');
-  const [taskFilter, setTaskFilter] = useState<string>(initialTaskId || 'All');
-  const [dateFilter, setDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
-
-  // Form states
-  const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-
-  // Field states (Bulk markup)
-  const [projectId, setProjectId] = useState('');
-  const [taskId, setTaskId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  
-  // Bulks - seed some standard worker helpers
-  const [bulkWorkers, setBulkWorkers] = useState<any[]>([
-    { workerName: 'Dave Cooper', status: 'Present', dailyWage: 250, overtimeAmount: 0 },
-    { workerName: 'Manny Ramirez', status: 'Present', dailyWage: 200, overtimeAmount: 0 },
-    { workerName: 'Samuel Jackson', status: 'Present', dailyWage: 220, overtimeAmount: 0 },
-    { workerName: 'Arnie S.', status: 'Present', dailyWage: 300, overtimeAmount: 0 }
-  ]);
-
-  // Single edit states
-  const [editingRecord, setEditingRecord] = useState<any>(null);
-  const [workerName, setWorkerName] = useState('');
-  const [editStatus, setEditStatus] = useState<AttendanceStatus>('Present');
-  const [editWage, setEditWage] = useState(0);
-  const [editOvertime, setEditOvertime] = useState(0);
-  const [editPaymentStatus, setEditPaymentStatus] = useState<'Paid' | 'Pending'>('Pending');
-  const [editNotes, setEditNotes] = useState('');
-
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [trade, setTrade] = useState<CrewTrade>('Helper');
+  const [dailyWage, setDailyWage] = useState(200);
+  const [phone, setPhone] = useState('');
+  const [memberStatus, setMemberStatus] = useState<CrewMemberStatus>('active');
+  const [notes, setNotes] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchInitialData();
-  }, [projectFilter, taskFilter, dateFilter]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<CsvCrewRow[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
-  const fetchInitialData = async () => {
+  useEffect(() => {
+    fetchCrew();
+  }, []);
+
+  const fetchCrew = async () => {
     try {
       setLoading(true);
-      setError(null);
-      
-      const prjs = await api.getProjects();
-      setProjects(prjs.projects || []);
-
-      const attRes = await api.getAttendance(
-        projectFilter !== 'All' ? projectFilter : undefined,
-        taskFilter !== 'All' ? taskFilter : undefined,
-        dateFilter || undefined
-      );
-      setAttendance(attRes.attendance || []);
+      const res = await api.getCrew();
+      setCrew(res.crew || []);
     } catch (err: any) {
-      setError(err?.message || 'Failed to download attendance logs');
+      notify.error(err?.message || 'Failed to load crew roster');
     } finally {
       setLoading(false);
     }
   };
 
-  // Sync tasks list when project is changed
-  useEffect(() => {
-    if (projectId) {
-      api.getTasks(projectId).then(res => {
-        setTasks(res.tasks || []);
-        if (res.tasks && res.tasks.length > 0) {
-          setTaskId(res.tasks[0].id);
-        }
-      });
-    } else {
-      setTasks([]);
-    }
-  }, [projectId]);
-
-  const handleOpenBulk = () => {
-    setProjectId(projects[0]?.id || '');
-    setDate(new Date().toISOString().split('T')[0]);
+  const resetForm = () => {
+    setEditId(null);
+    setName('');
+    setTrade('Helper');
+    setDailyWage(200);
+    setPhone('');
+    setMemberStatus('active');
+    setNotes('');
     setSubmitError(null);
-    setIsBulkOpen(true);
   };
 
-  const handleAddWorkerRow = () => {
-    setBulkWorkers([
-      ...bulkWorkers,
-      { workerName: '', status: 'Present', dailyWage: 200, overtimeAmount: 0 }
-    ]);
+  const handleOpenAdd = () => {
+    resetForm();
+    setIsFormOpen(true);
   };
 
-  const handleRemoveWorkerRow = (idx: number) => {
-    setBulkWorkers(bulkWorkers.filter((_, i) => i !== idx));
+  const handleOpenEdit = (member: CrewMember) => {
+    setEditId(member.id);
+    setName(member.name);
+    setTrade(member.trade);
+    setDailyWage(member.dailyWage);
+    setPhone(member.phone || '');
+    setMemberStatus(member.status);
+    setNotes(member.notes || '');
+    setSubmitError(null);
+    setIsFormOpen(true);
   };
 
-  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      notify.warning('Worker name is required.');
+      return;
+    }
+
+    const payload = {
+      name: name.trim(),
+      trade,
+      dailyWage: Number(dailyWage),
+      phone,
+      status: memberStatus,
+      notes
+    };
+
+    try {
+      setSubmitError(null);
+      if (editId) {
+        await api.updateCrewMember(editId, payload);
+        notify.success('Crew member updated.');
+      } else {
+        await api.createCrewMember(payload);
+        notify.success('Crew member added.');
+      }
+      setIsFormOpen(false);
+      fetchCrew();
+    } catch (err: any) {
+      const message = err?.message || 'Failed to save crew member';
+      setSubmitError(message);
+      notify.error(message);
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const blob = new Blob([CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'crew_import_template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCsvFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsImporting(true);
+    setImportError(null);
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const lines = text.split('\n').filter(line => line.trim() !== '');
-      
-      // Assume CSV format: Worker Name, Daily Wage, Overtime, Status
-      // Skip header if it exists
-      const startIdx = (lines[0].toLowerCase().includes('name')) ? 1 : 0;
-      
-      const importedWorkers = lines.slice(startIdx).map(line => {
-        const [name, wage, overtime, status] = line.split(',').map(s => s.trim());
-        return {
-          workerName: name || '',
-          dailyWage: Number(wage) || 200,
-          overtimeAmount: Number(overtime) || 0,
-          status: (status === 'Absent' || status === 'Half Day') ? status : 'Present'
-        };
-      });
-
-      setBulkWorkers([...bulkWorkers, ...importedWorkers]);
-      setIsImporting(false);
+      const parsed = parseCrewCsv(text);
+      if (parsed.length === 0) {
+        setImportError('No valid crew rows found in the CSV file.');
+        setImportRows([]);
+      } else {
+        setImportRows(parsed);
+      }
+      e.target.value = '';
+    };
+    reader.onerror = () => {
+      setImportError('Failed to read the CSV file.');
     };
     reader.readAsText(file);
   };
 
-  const handleWorkerFieldChange = (idx: number, field: string, val: any) => {
-    const updated = [...bulkWorkers];
-    updated[idx] = { ...updated[idx], [field]: val };
-    setBulkWorkers(updated);
+  const handleOpenImport = () => {
+    setImportRows([]);
+    setImportError(null);
+    setIsImportOpen(true);
   };
 
-  const handleBulkSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectId || !taskId || !date) {
-      setSubmitError('Project, Task, and Check-in Date are required.');
-      return;
-    }
-
-    // Filter out blank worker names
-    const filteredWorkers = bulkWorkers.filter(w => w.workerName.trim() !== '');
-    if (filteredWorkers.length === 0) {
-      setSubmitError('At least one worker name must be registered.');
+  const handleBulkImport = async () => {
+    if (importRows.length === 0) {
+      notify.warning('Upload a CSV file with at least one crew member.');
       return;
     }
 
     try {
-      setSubmitError(null);
-      await api.bulkAttendance({
-        projectId,
-        taskId,
-        date,
-        workers: filteredWorkers
-      });
-      setIsBulkOpen(false);
-      fetchInitialData();
+      setIsImporting(true);
+      setImportError(null);
+      const res = await api.bulkCrew({ members: importRows });
+      const skippedMsg = res.skipped > 0 ? ` ${res.skipped} duplicate(s) skipped.` : '';
+      const errorMsg = res.errors?.length ? ` ${res.errors.length} row(s) had errors.` : '';
+      notify.success(`Imported ${res.added} crew member(s).${skippedMsg}${errorMsg}`);
+      setIsImportOpen(false);
+      setImportRows([]);
+      fetchCrew();
     } catch (err: any) {
-      setSubmitError(err?.message || 'Error occurred while batch-submitting workers check-in');
-    }
-  };
-
-  const handleOpenEditSingle = (record: any) => {
-    setEditingRecord(record);
-    setWorkerName(record.workerName);
-    setEditStatus(record.status);
-    setEditWage(record.dailyWage);
-    setEditOvertime(record.overtimeAmount || 0);
-    setEditPaymentStatus(record.paymentStatus);
-    setEditNotes(record.notes || '');
-    setSubmitError(null);
-    setIsEditOpen(true);
-  };
-
-  const handleSingleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingRecord) return;
-
-    try {
-      setSubmitError(null);
-      await api.updateAttendance(editingRecord.id, {
-        workerName,
-        status: editStatus,
-        dailyWage: Number(editWage),
-        overtimeAmount: Number(editOvertime),
-        paymentStatus: editPaymentStatus,
-        notes: editNotes
-      });
-      setIsEditOpen(false);
-      fetchInitialData();
-    } catch (err: any) {
-      setSubmitError(err?.message || 'Error syncing single attendance entry');
+      const message = err?.message || 'Bulk import failed';
+      setImportError(message);
+      notify.error(message);
+    } finally {
+      setIsImporting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Erase this labor check-in slot? This will reduce the calculated task labour cost.')) {
-      return;
-    }
+    const member = crew.find(c => c.id === id);
+    const ok = await confirm({
+      title: 'Remove crew member?',
+      message: member
+        ? `Remove ${member.name} from the roster? They will no longer appear in crew suggestions.`
+        : 'Remove this crew member from the roster?',
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
-      await api.deleteAttendance(id);
-      fetchInitialData();
+      await api.deleteCrewMember(id);
+      fetchCrew();
+      notify.success('Crew member removed.');
     } catch (err: any) {
-      alert(err.message || 'Error occurred');
+      notify.error(err?.message || 'Failed to remove crew member');
     }
   };
 
-  const togglePaymentStatus = async (record: any) => {
-    try {
-      const nextPayStatus = record.paymentStatus === 'Paid' ? 'Pending' : 'Paid';
-      await api.updateAttendance(record.id, {
-        status: record.status,
-        dailyWage: record.dailyWage,
-        overtimeAmount: record.overtimeAmount,
-        paymentStatus: nextPayStatus
-      });
-      fetchInitialData();
-    } catch (err: any) {
-      alert(err.message || 'Error updating payout status');
-    }
-  };
+  const formatCur = (num: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
 
-  // Calculations
-  const calculatedAttendanceCost = attendance.reduce((sum, att) => {
-    let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
-    return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
-  }, 0);
+  const filteredCrew = crew.filter(m => {
+    const matchesSearch =
+      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.trade.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.phone || '').includes(searchQuery);
+    const matchesStatus = statusFilter === 'All' || m.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
-  const formatCur = (num: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0
-    }).format(num);
-  };
+  const activeCount = crew.filter(m => m.status === 'active').length;
 
   return (
     <div className="space-y-6 font-sans">
-      
-      {!isBulkOpen && !isEditOpen && (
+      {!isFormOpen && !isImportOpen && (
         <>
-          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Daily Labor Crew</h1>
-              <p className="text-xs sm:text-sm text-zinc-500">Track on-site personnel attendance, overtime, wages, and payouts status</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Crew Roster</h1>
+              <p className="text-xs sm:text-sm text-zinc-500">Manage on-site workers, trades, and standard daily wages</p>
             </div>
-            
-            <button
-              onClick={handleOpenBulk}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
-            >
-              <CheckSquare className="w-4 h-4" />
-              <span>Mark Today’s Crew</span>
-            </button>
-          </div>
-
-          {/* Quick Stats banner */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white border rounded-xl p-4 flex flex-col justify-between shadow-sm">
-              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Logged present</span>
-              <span className="text-2xl font-black text-zinc-950 block mt-1">{attendance.filter(a => a.status !== 'Absent').length} workers</span>
-            </div>
-            <div className="bg-white border rounded-xl p-4 flex flex-col justify-between shadow-sm">
-              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Accumulated Wage Costs</span>
-              <span className="text-2xl font-black text-emerald-700 block mt-1">{formatCur(calculatedAttendanceCost)}</span>
-            </div>
-          </div>
-
-          {/* Filters */}
-          <div className="bg-white border rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-0.5">Filter project</label>
-              <select
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
-              >
-                <option value="All">All Projects</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.projectName}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-0.5">Focus Date</label>
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none text-zinc-950"
-              />
-            </div>
-
-            <div className="flex items-end">
+            <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => {
-                  setProjectFilter('All');
-                  setTaskFilter('All');
-                  setDateFilter(new Date().toISOString().split('T')[0]);
-                }}
-                className="w-full text-center py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs rounded-xl font-semibold transition-all"
+                onClick={handleOpenImport}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white border border-zinc-200 text-zinc-800 rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-50 transition-colors"
               >
-                Reset Focused Scope
+                <Upload className="w-4 h-4" />
+                <span>Import CSV</span>
+              </button>
+              <button
+                onClick={handleOpenAdd}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Crew</span>
               </button>
             </div>
           </div>
 
-          {/* Attendance Ledger entries */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white border rounded-xl p-4 flex flex-col justify-between shadow-sm">
+              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Total crew</span>
+              <span className="text-2xl font-black text-zinc-950 block mt-1">{crew.length}</span>
+            </div>
+            <div className="bg-white border rounded-xl p-4 flex flex-col justify-between shadow-sm">
+              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Active workers</span>
+              <span className="text-2xl font-black text-emerald-700 block mt-1">{activeCount}</span>
+            </div>
+          </div>
+
+          <div className="bg-white border rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400">
+                <Search className="w-4 h-4" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search by name, trade, or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full text-xs pl-9 pr-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl outline-none"
+              />
+            </div>
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'All' | CrewMemberStatus)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
+              >
+                <option value="All">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin" />
             </div>
-          ) : attendance.length === 0 ? (
+          ) : filteredCrew.length === 0 ? (
             <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
               <Users className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
-              <p className="text-xs text-zinc-500">No personnel booked for this selection on {dateFilter}. Click &quot;Mark Today&apos;s Crew&quot; to check workers in.</p>
+              <p className="text-xs text-zinc-500">
+                {crew.length === 0
+                  ? 'No crew members yet. Click "Add Crew" to register your first worker.'
+                  : 'No crew members match your search.'}
+              </p>
             </div>
           ) : (
             <div className="space-y-2.5">
-              {attendance.map((att) => {
-                const totalDue = (att.status === 'Present' ? att.dailyWage : att.status === 'Half Day' ? att.dailyWage * 0.5 : 0) + (att.overtimeAmount || 0);
-                return (
-                  <div 
-                    key={att.id}
-                    className="bg-white border rounded-xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${
-                          att.status === 'Present' ? 'bg-emerald-50 text-emerald-700' :
-                          att.status === 'Half Day' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
-                        }`}>
-                          {att.status}
-                        </span>
-                        <h4 className="text-sm font-extrabold text-zinc-950">{att.workerName}</h4>
-                      </div>
-                      <p className="text-[10px] text-zinc-400 font-semibold mt-1">
-                        Task: {att.taskName} • Project: {att.projectName}
-                      </p>
-                      {att.notes && (
-                        <p className="text-[11px] text-zinc-400 mt-1 italic">&quot;{att.notes}&quot;</p>
+              {filteredCrew.map((member) => (
+                <div
+                  key={member.id}
+                  className="bg-white border rounded-xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${
+                        member.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
+                      }`}>
+                        {member.status}
+                      </span>
+                      <h4 className="text-sm font-extrabold text-zinc-950">{member.name}</h4>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 font-semibold mt-1 flex items-center gap-2">
+                      <Briefcase className="w-3 h-3" />
+                      <span>{member.trade}</span>
+                      <span>•</span>
+                      <span>{formatCur(member.dailyWage)}/day</span>
+                      {member.phone && (
+                        <>
+                          <span>•</span>
+                          <Phone className="w-3 h-3" />
+                          <span>{member.phone}</span>
+                        </>
                       )}
-                    </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-0 pt-2.5 sm:pt-0 border-zinc-100">
-                      <div className="text-left sm:text-right">
-                        <span className="text-xs text-zinc-400 font-semibold block">Total Due:</span>
-                        <span className="text-sm sm:text-base font-extrabold text-zinc-950 block">{formatCur(totalDue)}</span>
-                      </div>
-
-                      {/* Payment Toggle Switch directly on interface */}
-                      <div>
-                        <button
-                          onClick={() => togglePaymentStatus(att)}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold w-24 text-center cursor-pointer transition-colors ${
-                            att.paymentStatus === 'Paid' 
-                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800' 
-                              : 'bg-amber-50 hover:bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {att.paymentStatus === 'Paid' ? 'Paid ✓' : 'Pending'}
-                        </button>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex gap-1.5">
-                        <button 
-                          onClick={() => handleOpenEditSingle(att)}
-                          className="p-1.5 bg-zinc-50 border text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
-                          title="Edit Personnel entry"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(att.id)}
-                          className="p-1.5 bg-zinc-50 border text-rose-500 hover:text-rose-900 rounded-lg hover:bg-rose-50 transition-colors"
-                          title="Erase check-in slot"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                    </p>
+                    {member.notes && (
+                      <p className="text-[11px] text-zinc-400 mt-1 italic">&quot;{member.notes}&quot;</p>
+                    )}
                   </div>
-                );
-              })}
+
+                  <div className="flex gap-1.5 justify-end">
+                    <button
+                      onClick={() => handleOpenEdit(member)}
+                      className="p-1.5 bg-zinc-50 border text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
+                      title="Edit crew member"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(member.id)}
+                      className="p-1.5 bg-zinc-50 border text-rose-500 hover:text-rose-900 rounded-lg hover:bg-rose-50 transition-colors"
+                      title="Remove crew member"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </>
       )}
 
-      {/* FORM MODAL: Bulk Check-in today */}
-      {isBulkOpen && (
+      {isImportOpen && (
         <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-2xl mx-auto space-y-4">
           <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
-            <h2 className="text-base sm:text-lg font-extrabold text-zinc-950 flex items-center gap-1.5">
-              <CheckSquare className="w-5 h-5 text-zinc-600" />
-              <span>Mark Attendance (On-Site Personnel)</span>
+            <h2 className="text-base font-extrabold text-zinc-950 flex items-center gap-1.5">
+              <Upload className="w-5 h-5 text-zinc-600" />
+              <span>Bulk Import Crew (CSV)</span>
             </h2>
-            <button 
-              onClick={() => setIsBulkOpen(false)}
+            <button
+              onClick={() => setIsImportOpen(false)}
+              className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <p className="text-xs text-zinc-500">
+            CSV columns: <span className="font-semibold text-zinc-700">Name, Trade, Daily Wage, Phone, Status, Notes</span>.
+            Header row is optional. Status accepts <code className="text-[10px] bg-zinc-100 px-1 rounded">active</code> or <code className="text-[10px] bg-zinc-100 px-1 rounded">inactive</code>.
+          </p>
+
+          {importError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{importError}</div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors">
+              <Upload className="w-4 h-4" />
+              <span>Choose CSV File</span>
+              <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileSelect} />
+            </label>
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download Template</span>
+            </button>
+          </div>
+
+          {importRows.length > 0 && (
+            <div className="space-y-3">
+              <div className="hidden sm:grid bg-zinc-50 p-2.5 border rounded-t-xl font-bold text-[10px] text-zinc-400 uppercase tracking-wider grid-cols-6 gap-2">
+                <div className="col-span-2">Name</div>
+                <div>Trade</div>
+                <div>Wage</div>
+                <div>Phone</div>
+                <div>Status</div>
+              </div>
+              <div className="border rounded-xl sm:rounded-t-none sm:border-t-0 max-h-[280px] overflow-y-auto divide-y">
+                {importRows.map((row, idx) => (
+                  <div key={idx} className="p-2.5 sm:grid sm:grid-cols-6 gap-2 text-xs items-center">
+                    <div className="sm:col-span-2 font-bold text-zinc-900">{row.name}</div>
+                    <div className="text-zinc-600">{row.trade}</div>
+                    <div className="text-zinc-600">₹{row.dailyWage}</div>
+                    <div className="text-zinc-500 truncate">{row.phone || '—'}</div>
+                    <div className="text-zinc-600 capitalize">{row.status}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-zinc-400 font-semibold">{importRows.length} worker(s) ready to import. Duplicates will be skipped.</p>
+            </div>
+          )}
+
+          <button
+            onClick={handleBulkImport}
+            disabled={isImporting || importRows.length === 0}
+            className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+          >
+            <BookmarkCheck className="w-4 h-4" />
+            <span>{isImporting ? 'Importing...' : `Import ${importRows.length || ''} Crew Member${importRows.length === 1 ? '' : 's'}`}</span>
+          </button>
+        </div>
+      )}
+
+      {isFormOpen && (
+        <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md mx-auto space-y-4">
+          <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+            <h2 className="text-base font-extrabold text-zinc-950">
+              {editId ? 'Edit Crew Member' : 'Add Crew Member'}
+            </h2>
+            <button
+              onClick={() => setIsFormOpen(false)}
               className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
             >
               Cancel
@@ -421,219 +493,43 @@ export default function AttendancePage({ initialProjectId, initialTaskId }: Atte
           </div>
 
           {submitError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs sm:text-sm">
-              {submitError}
-            </div>
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{submitError}</div>
           )}
 
-          <form onSubmit={handleBulkSubmit} className="space-y-4 text-xs sm:text-sm">
-            
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                  Active Project Scope
-                </label>
-                <select
-                  required
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none"
-                >
-                  <option value="" disabled>Select project...</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.projectName}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                  Task Segment
-                </label>
-                <select
-                  required
-                  value={taskId}
-                  onChange={(e) => setTaskId(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none"
-                >
-                  <option value="" disabled>Select task...</option>
-                  {tasks.map(t => (
-                    <option key={t.id} value={t.id}>{t.taskName}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                  Work Check-In Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Attendance Roster */}
-            <div className="space-y-3 sm:space-y-0 sm:border sm:border-zinc-200 sm:rounded-2xl sm:overflow-hidden">
-              <div className="hidden sm:grid bg-zinc-50 p-2.5 border-b font-bold text-[10px] text-zinc-400 uppercase tracking-wider grid-cols-12 gap-2 text-center">
-                <div className="col-span-4 text-left pl-1">Worker Name</div>
-                <div className="col-span-3">Status</div>
-                <div className="col-span-2">Daily Wage (₹)</div>
-                <div className="col-span-2">Overtime (₹)</div>
-                <div className="col-span-1">Action</div>
-              </div>
-
-              <div className="space-y-3 sm:space-y-0 sm:divide-y max-h-[350px] sm:max-h-[250px] overflow-y-auto">
-                {bulkWorkers.map((w, idx) => (
-                  <div key={idx} className="bg-white border sm:border-0 rounded-xl p-3.5 sm:p-2 flex flex-col sm:grid sm:grid-cols-12 gap-3 sm:gap-2 items-stretch sm:items-center text-center shadow-sm sm:shadow-none">
-                    <div className="sm:col-span-4 text-left">
-                      <label className="block sm:hidden text-[9px] font-bold text-zinc-400 uppercase mb-1">Worker Name</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Worker name"
-                        value={w.workerName}
-                        onChange={(e) => handleWorkerFieldChange(idx, 'workerName', e.target.value)}
-                        className="w-full px-3 py-2 sm:py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-semibold focus:ring-1 focus:ring-zinc-900"
-                      />
-                    </div>
-                    <div className="sm:col-span-3 text-left sm:text-center">
-                      <label className="block sm:hidden text-[9px] font-bold text-zinc-400 uppercase mb-1">Status</label>
-                      <select
-                        value={w.status}
-                        onChange={(e) => handleWorkerFieldChange(idx, 'status', e.target.value as AttendanceStatus)}
-                        className="w-full px-3 py-2 sm:py-1.5 border border-zinc-200 rounded-xl text-xs font-semibold bg-white cursor-pointer focus:ring-1 focus:ring-zinc-900"
-                      >
-                        <option value="Present">Present</option>
-                        <option value="Absent">Absent</option>
-                        <option value="Half Day">Half Day</option>
-                      </select>
-                    </div>
-                    <div className="sm:col-span-2 text-left sm:text-center">
-                      <label className="block sm:hidden text-[9px] font-bold text-zinc-400 uppercase mb-1">Daily Wage (₹)</label>
-                      <input
-                        type="number"
-                        required
-                        min="0"
-                        value={w.dailyWage}
-                        onChange={(e) => handleWorkerFieldChange(idx, 'dailyWage', Number(e.target.value))}
-                        className="w-full px-3 py-2 sm:py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-semibold text-left sm:text-center focus:ring-1 focus:ring-zinc-900"
-                      />
-                    </div>
-                    <div className="sm:col-span-2 text-left sm:text-center">
-                      <label className="block sm:hidden text-[9px] font-bold text-zinc-400 uppercase mb-1">Overtime (₹)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={w.overtimeAmount}
-                        onChange={(e) => handleWorkerFieldChange(idx, 'overtimeAmount', Number(e.target.value))}
-                        className="w-full px-3 py-2 sm:py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-semibold text-left sm:text-center focus:ring-1 focus:ring-zinc-900"
-                      />
-                    </div>
-                    <div className="sm:col-span-1 flex justify-end items-center mt-1 sm:mt-0">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveWorkerRow(idx)}
-                        disabled={bulkWorkers.length <= 1}
-                        className="p-1 px-3 sm:px-1 py-1.5 rounded bg-rose-50 text-rose-600 sm:bg-transparent sm:text-zinc-300 hover:text-red-600 disabled:opacity-40 transition-colors cursor-pointer w-full sm:w-auto text-xs font-bold sm:font-normal flex items-center justify-center gap-1"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span className="sm:hidden">Remove Worker</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-             <div className="flex justify-between items-center">
-               <button
-                 type="button"
-                 onClick={handleAddWorkerRow}
-                 className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
-               >
-                 <PlusCircle className="w-4 h-4 text-zinc-600" />
-                 <span>Add On-Site Laborer</span>
-               </button>
-
-               <div className="flex items-center gap-2">
-                 <label className="cursor-pointer px-3 py-1.5 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 border border-zinc-200">
-                   <Users className="w-4 h-4" />
-                   <span>{isImporting ? 'Importing...' : 'Import CSV'}</span>
-                   <input 
-                     type="file" 
-                     accept=".csv" 
-                     className="hidden" 
-                     onChange={handleImportCSV} 
-                     disabled={isImporting}
-                   />
-                 </label>
-                 
-                 <button
-                   type="submit"
-                   className="px-5 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-zinc-800"
-                 >
-                   <BookmarkCheck className="w-4 h-4" />
-                   <span>Synchronize Attendances</span>
-                 </button>
-               </div>
-             </div>
-
-          </form>
-        </div>
-      )}
-
-      {/* SINGLE FORM MODAL: Edit personnel check-in */}
-      {isEditOpen && editingRecord && (
-        <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md mx-auto space-y-4 font-sans">
-          <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
-            <h2 className="text-base font-extrabold text-zinc-950">Modify Worker Entry</h2>
-            <button 
-              onClick={() => setIsEditOpen(false)}
-              className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold"
-            >
-              Cancel
-            </button>
-          </div>
-
-          <form onSubmit={handleSingleSubmit} className="space-y-4 text-xs sm:text-sm">
+          <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Worker Name</label>
+              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Full Name</label>
               <input
                 type="text"
                 required
-                value={workerName}
-                onChange={(e) => setWorkerName(e.target.value)}
+                placeholder="Worker name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Trade / Role</label>
                 <select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value as AttendanceStatus)}
+                  value={trade}
+                  onChange={(e) => setTrade(e.target.value as CrewTrade)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
                 >
-                  <option value="Present">Present</option>
-                  <option value="Absent">Absent</option>
-                  <option value="Half Day">Half Day</option>
+                  {TRADE_OPTIONS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
                 </select>
               </div>
-
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Daily Standard Wage (₹)</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Daily Wage (₹)</label>
                 <input
                   type="number"
                   required
-                  min="0"
-                  value={editWage}
-                  onChange={(e) => setEditWage(Number(e.target.value))}
+                  min={0}
+                  value={dailyWage}
+                  onChange={(e) => setDailyWage(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
                 />
               </div>
@@ -641,36 +537,35 @@ export default function AttendancePage({ initialProjectId, initialTaskId }: Atte
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Overtime amount (₹)</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Phone</label>
                 <input
-                  type="number"
-                  min="0"
-                  value={editOvertime}
-                  onChange={(e) => setEditOvertime(Number(e.target.value))}
+                  type="tel"
+                  placeholder="Optional"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
                 />
               </div>
-
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment status</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
                 <select
-                  value={editPaymentStatus}
-                  onChange={(e) => setEditPaymentStatus(e.target.value as 'Paid' | 'Pending')}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  value={memberStatus}
+                  onChange={(e) => setMemberStatus(e.target.value as CrewMemberStatus)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
                 >
-                  <option value="Pending">Pending</option>
-                  <option value="Paid">Paid</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Internal Notes</label>
+              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Notes</label>
               <textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                placeholder="masonry helper, overtime explanation, etc."
+                placeholder="Skills, certifications, etc."
                 className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-xs"
               />
             </div>
@@ -679,12 +574,11 @@ export default function AttendancePage({ initialProjectId, initialTaskId }: Atte
               type="submit"
               className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white font-bold rounded-xl transition-colors"
             >
-              Verify Personnel updates
+              {editId ? 'Save Changes' : 'Add to Roster'}
             </button>
           </form>
         </div>
       )}
-
     </div>
   );
 }

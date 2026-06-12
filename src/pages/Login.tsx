@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LogIn, Key, Mail, ShieldAlert } from 'lucide-react';
 import { api, setAuthToken, setCurrentUser } from '../api/client';
+import { notify } from '../utils/toast';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -15,7 +16,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setError('Please fill in all fields');
+      const message = 'Please fill in all fields';
+      setError(message);
+      notify.warning(message);
       return;
     }
 
@@ -26,8 +29,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setAuthToken(res.token);
       setCurrentUser(res.user);
       onLoginSuccess(res.user);
+      notify.success('Signed in successfully.');
     } catch (err: any) {
-      setError(err?.message || 'Failed to authenticate');
+      const message = err?.message || 'Failed to authenticate';
+      setError(message);
+      notify.error(message);
     } finally {
       setLoading(false);
     }
