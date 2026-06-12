@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, CheckSquare, Users, BookmarkCheck } from 'lucide-react';
+import { Calendar, CheckSquare, Users, BookmarkCheck, Banknote } from 'lucide-react';
 import { api } from '../api/client';
 import { AttendanceStatus, CrewMember } from '../types';
 import { notify } from '../utils/toast';
@@ -21,6 +21,12 @@ interface TaskAttendanceSectionProps {
   onSaved?: () => void;
 }
 
+function calcDue(w: WorkerAttendanceRow): number {
+  const base =
+    w.status === 'Present' ? w.dailyWage : w.status === 'Half Day' ? w.dailyWage * 0.5 : 0;
+  return base + (w.overtimeAmount || 0);
+}
+
 export default function TaskAttendanceSection({
   projectId,
   taskId,
@@ -32,7 +38,8 @@ export default function TaskAttendanceSection({
   const [workers, setWorkers] = useState<WorkerAttendanceRow[]>([]);
   const [crewRoster, setCrewRoster] = useState<CrewMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [actionWorker, setActionWorker] = useState<string | null>(null);
+  const [actionType, setActionType] = useState<'attendance' | 'pay' | null>(null);
 
   const assignedWorkers = (assignedStaff || '')
     .split(',')
@@ -90,44 +97,108 @@ export default function TaskAttendanceSection({
     });
   };
 
-  const handleSave = async () => {
-    if (workers.length === 0) return;
+  const formatCur = (num: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
 
-    const presentCount = workers.filter(w => w.status !== 'Absent').length;
+  const handleMarkAttendance = async (idx: number) => {
+    const w = workers[idx];
+    const due = calcDue(w);
+
     const ok = await confirm({
-      title: 'Save attendance?',
-      message: `Record attendance for ${workers.length} assigned worker(s) on ${date}? ${presentCount} marked present or half day.`,
-      confirmLabel: 'Save Attendance',
+      title: 'Mark attendance?',
+      message: `Record ${w.status} for ${w.workerName} on ${date}? Wage due: ${formatCur(due)}.`,
+      confirmLabel: 'Mark Attendance',
       variant: 'default',
     });
     if (!ok) return;
 
     try {
-      setSaving(true);
-      await api.bulkAttendance({
-        projectId,
-        taskId,
-        date,
-        workers: workers.map(w => ({
+      setActionWorker(w.workerName);
+      setActionType('attendance');
+
+      if (w.recordId) {
+        await api.updateAttendance(w.recordId, {
           workerName: w.workerName,
           status: w.status,
           dailyWage: w.dailyWage,
           overtimeAmount: w.overtimeAmount,
-          paymentStatus: w.paymentStatus
-        }))
-      });
-      notify.success('Attendance saved for assigned workers.');
+          paymentStatus: w.paymentStatus,
+        });
+      } else {
+        await api.bulkAttendance({
+          projectId,
+          taskId,
+          date,
+          workers: [{
+            workerName: w.workerName,
+            status: w.status,
+            dailyWage: w.dailyWage,
+            overtimeAmount: w.overtimeAmount,
+            paymentStatus: w.paymentStatus,
+          }]
+        });
+      }
+
+      notify.success(`Attendance marked for ${w.workerName}.`);
       loadAttendance();
       onSaved?.();
     } catch (err: any) {
-      notify.error(err?.message || 'Failed to save attendance');
+      notify.error(err?.message || 'Failed to mark attendance');
     } finally {
-      setSaving(false);
+      setActionWorker(null);
+      setActionType(null);
     }
   };
 
-  const formatCur = (num: number) =>
-    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
+  const handlePay = async (idx: number) => {
+    const w = workers[idx];
+
+    if (!w.recordId) {
+      notify.warning('Mark attendance first before processing payment.');
+      return;
+    }
+
+    if (w.paymentStatus === 'Paid') {
+      notify.info(`${w.workerName} is already marked as paid.`);
+      return;
+    }
+
+    const due = calcDue(w);
+    if (due <= 0) {
+      notify.warning('No wages due for this worker on this date.');
+      return;
+    }
+
+    const ok = await confirm({
+      title: 'Mark as paid?',
+      message: `Record ${formatCur(due)} payout for ${w.workerName} on ${date}?`,
+      confirmLabel: 'Mark Paid',
+      variant: 'default',
+    });
+    if (!ok) return;
+
+    try {
+      setActionWorker(w.workerName);
+      setActionType('pay');
+
+      await api.updateAttendance(w.recordId, {
+        workerName: w.workerName,
+        status: w.status,
+        dailyWage: w.dailyWage,
+        overtimeAmount: w.overtimeAmount,
+        paymentStatus: 'Paid',
+      });
+
+      updateWorker(idx, 'paymentStatus', 'Paid');
+      notify.success(`${w.workerName} marked as paid.`);
+      onSaved?.();
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to mark payment');
+    } finally {
+      setActionWorker(null);
+      setActionType(null);
+    }
+  };
 
   if (assignedWorkers.length === 0) {
     return (
@@ -168,77 +239,109 @@ export default function TaskAttendanceSection({
           <div className="w-5 h-5 border-2 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin" />
         </div>
       ) : (
-        <>
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-            {workers.map((w, idx) => {
-              const crewMember = crewRoster.find(c => c.name.toLowerCase() === w.workerName.toLowerCase());
-              const due =
-                (w.status === 'Present' ? w.dailyWage : w.status === 'Half Day' ? w.dailyWage * 0.5 : 0) +
-                (w.overtimeAmount || 0);
+        <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full text-[10px] text-left border-collapse min-w-[640px]">
+            <thead>
+              <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
+                <th className="py-2 px-2">Worker</th>
+                <th className="py-2 px-2">Status</th>
+                <th className="py-2 px-2">Wage</th>
+                <th className="py-2 px-2">OT</th>
+                <th className="py-2 px-2 text-right">Due</th>
+                <th className="py-2 px-2 text-center">Payout</th>
+                <th className="py-2 px-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {workers.map((w, idx) => {
+                const crewMember = crewRoster.find(c => c.name.toLowerCase() === w.workerName.toLowerCase());
+                const due = calcDue(w);
+                const isBusy = actionWorker === w.workerName;
+                const isMarked = Boolean(w.recordId);
 
-              return (
-                <div key={w.workerName} className="p-2.5 bg-zinc-50 border rounded-lg space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-[11px] font-bold text-zinc-900 block">{w.workerName}</span>
+                return (
+                  <tr key={w.workerName} className="hover:bg-zinc-50/60">
+                    <td className="py-2 px-2 align-middle">
+                      <span className="font-bold text-zinc-900 block leading-tight">{w.workerName}</span>
                       {crewMember && (
                         <span className="text-[9px] text-zinc-400 font-semibold">{crewMember.trade}</span>
                       )}
-                    </div>
-                    <span className="text-[10px] font-bold text-zinc-700">{formatCur(due)}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                    <select
-                      value={w.status}
-                      onChange={(e) => updateWorker(idx, 'status', e.target.value as AttendanceStatus)}
-                      className="text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
-                    >
-                      <option value="Present">Present</option>
-                      <option value="Absent">Absent</option>
-                      <option value="Half Day">Half Day</option>
-                    </select>
-                    <input
-                      type="number"
-                      min={0}
-                      value={w.dailyWage}
-                      onChange={(e) => updateWorker(idx, 'dailyWage', Number(e.target.value))}
-                      placeholder="Wage"
-                      className="text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
-                      title="Daily wage"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      value={w.overtimeAmount}
-                      onChange={(e) => updateWorker(idx, 'overtimeAmount', Number(e.target.value))}
-                      placeholder="OT"
-                      className="text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
-                      title="Overtime"
-                    />
-                    <select
-                      value={w.paymentStatus}
-                      onChange={(e) => updateWorker(idx, 'paymentStatus', e.target.value)}
-                      className="text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Paid">Paid</option>
-                    </select>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full py-2 bg-zinc-950 hover:bg-zinc-800 disabled:opacity-60 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <BookmarkCheck className="w-3.5 h-3.5" />
-            <span>{saving ? 'Saving...' : 'Save Attendance'}</span>
-          </button>
-        </>
+                    </td>
+                    <td className="py-2 px-2 align-middle">
+                      <select
+                        value={w.status}
+                        onChange={(e) => updateWorker(idx, 'status', e.target.value as AttendanceStatus)}
+                        className="w-full min-w-[88px] text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
+                      >
+                        <option value="Present">Present</option>
+                        <option value="Absent">Absent</option>
+                        <option value="Half Day">Half Day</option>
+                      </select>
+                    </td>
+                    <td className="py-2 px-2 align-middle">
+                      <input
+                        type="number"
+                        min={0}
+                        value={w.dailyWage}
+                        onChange={(e) => updateWorker(idx, 'dailyWage', Number(e.target.value))}
+                        className="w-16 text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
+                        title="Daily wage"
+                      />
+                    </td>
+                    <td className="py-2 px-2 align-middle">
+                      <input
+                        type="number"
+                        min={0}
+                        value={w.overtimeAmount}
+                        onChange={(e) => updateWorker(idx, 'overtimeAmount', Number(e.target.value))}
+                        className="w-14 text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
+                        title="Overtime"
+                      />
+                    </td>
+                    <td className="py-2 px-2 align-middle text-right font-bold text-zinc-800 whitespace-nowrap">
+                      {formatCur(due)}
+                    </td>
+                    <td className="py-2 px-2 align-middle text-center">
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                        w.paymentStatus === 'Paid'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : isMarked
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-zinc-100 text-zinc-500'
+                      }`}>
+                        {w.paymentStatus === 'Paid' ? 'Paid' : isMarked ? 'Pending' : 'Unmarked'}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 align-middle">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleMarkAttendance(idx)}
+                          disabled={isBusy}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-lg text-[9px] font-bold transition-colors whitespace-nowrap"
+                          title="Save attendance for this worker"
+                        >
+                          <BookmarkCheck className="w-3 h-3 shrink-0" />
+                          <span>{isBusy && actionType === 'attendance' ? 'Saving...' : 'Mark'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePay(idx)}
+                          disabled={isBusy || w.paymentStatus === 'Paid' || !isMarked || due <= 0}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-zinc-200 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-800 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-zinc-200 disabled:hover:text-inherit text-zinc-700 rounded-lg text-[9px] font-bold transition-colors whitespace-nowrap"
+                          title="Mark wages as paid"
+                        >
+                          <Banknote className="w-3 h-3 shrink-0" />
+                          <span>{isBusy && actionType === 'pay' ? 'Paying...' : 'Pay'}</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

@@ -33,6 +33,31 @@ export function setCurrentUser(user: any): void {
   }
 }
 
+async function parseResponseBody(response: Response): Promise<any> {
+  const text = await response.text();
+  if (!text) return null;
+
+  const trimmed = text.trim();
+  const looksLikeJson =
+    trimmed.startsWith('{') ||
+    trimmed.startsWith('[') ||
+    (response.headers.get('content-type') || '').includes('application/json');
+
+  if (looksLikeJson) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Server returned an invalid response. Try restarting the dev server.');
+    }
+  }
+
+  if (trimmed.startsWith('<!') || trimmed.toLowerCase().startsWith('<!doctype')) {
+    throw new Error('API unavailable. Restart the dev server (npm run dev) and reload the page.');
+  }
+
+  throw new Error('Unexpected response from server.');
+}
+
 async function request(endpoint: string, options: RequestInit = {}) {
   const token = getAuthToken();
   const headers = new Headers(options.headers || {});
@@ -50,18 +75,17 @@ async function request(endpoint: string, options: RequestInit = {}) {
     headers,
   });
 
+  const data = await parseResponseBody(response);
+
   if (!response.ok) {
-    let errMsg = 'Something went wrong';
-    try {
-      const data = await response.json();
-      errMsg = data.error || errMsg;
-    } catch {
-      // ignore
-    }
+    const errMsg =
+      data && typeof data === 'object' && 'error' in data && data.error
+        ? String(data.error)
+        : 'Something went wrong';
     throw new Error(errMsg);
   }
 
-  return response.json();
+  return data;
 }
 
 export const api = {
