@@ -189,6 +189,20 @@ export default function TaskAttendanceSection({
         paymentStatus: 'Paid',
       });
 
+      await api.createPaymentRequest({
+        projectId,
+        taskId,
+        payeeName: w.workerName,
+        category: 'Worker',
+        amount: due,
+        description: `Payment for ${w.workerName} on ${date} (Task: ${taskId})`,
+        dueDate: date,
+        priority: 'Medium',
+        paymentMethod: 'Bank Transfer',
+        status: 'Paid',
+        createdAt: new Date().toISOString()
+      });
+
       updateWorker(idx, 'paymentStatus', 'Paid');
       notify.success(`${w.workerName} marked as paid.`);
       onSaved?.();

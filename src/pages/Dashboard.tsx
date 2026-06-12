@@ -150,78 +150,82 @@ export default function Dashboard({ onNavigate, userRole }: DashboardProps) {
           </div>
         </div>
 
-        {/* Total expenses */}
-        <div className={cardClass}>
-          <div className="flex items-center justify-between mb-3">
-            <span className={cardLabelClass}>Total Expenses</span>
-            <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-700">
-              <Receipt className="w-4 h-4" />
-            </span>
+        {userRole !== 'manager' && (
+          <div className={cardClass}>
+            <div className="flex items-center justify-between mb-3">
+              <span className={cardLabelClass}>Total Expenses</span>
+              <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-700">
+                <Receipt className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-auto">
+              <span className={`${cardValueClass} block`}>{formatCur(stats?.totalExpenses || 0)}</span>
+              <span className="text-[10px] text-amber-600 font-medium block mt-1">
+                {(stats?.totalAssignedBudget && stats.totalExpenses) ? Math.round((stats.totalExpenses / stats.totalAssignedBudget) * 100) : 0}% of budget utilized
+              </span>
+            </div>
           </div>
-          <div className="mt-auto">
-            <span className={`${cardValueClass} block`}>{formatCur(stats?.totalExpenses || 0)}</span>
-            <span className="text-[10px] text-amber-600 font-medium block mt-1">
-              {(stats?.totalAssignedBudget && stats.totalExpenses) ? Math.round((stats.totalExpenses / stats.totalAssignedBudget) * 100) : 0}% of budget utilized
-            </span>
-          </div>
-        </div>
+        )}
         
-        {/* Office Balance */}
-        <div className={cardClass}>
-          <div className="flex items-center justify-between mb-3">
-            <span className={cardLabelClass}>Office Balance</span>
-            <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-700">
-              <Landmark className="w-4 h-4" />
-            </span>
+        {userRole !== 'manager' && (
+          <div className={cardClass}>
+            <div className="flex items-center justify-between mb-3">
+              <span className={cardLabelClass}>Office Balance</span>
+              <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-700">
+                <Landmark className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-auto">
+              <span className={`${cardValueClass} block`}>{formatCur(stats?.officeBalance || 0)}</span>
+              <span className="text-[10px] text-zinc-400 font-medium block mt-1">Available funds</span>
+            </div>
           </div>
-          <div className="mt-auto">
-            <span className={`${cardValueClass} block`}>{formatCur(stats?.officeBalance || 0)}</span>
-            <span className="text-[10px] text-zinc-400 font-medium block mt-1">Available funds</span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Financial Health Checks */}
-      <div className={`${sectionGridClass} grid-cols-1 md:grid-cols-2`}>
-        {/* Profit/Loss Card */}
-        <div className={`${cardClass} gap-3`}>
-          <h2 className={cardLabelClass}>Operating Margin</h2>
-          <div className="flex items-baseline gap-2">
-            <span className={`${cardValueClass} tracking-tight ${isProfit ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {formatCur(profitLoss)}
-            </span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isProfit ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-              {isProfit ? <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> : <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />}
-            </span>
+      {userRole !== 'manager' && (
+        <div className={`${sectionGridClass} grid-cols-1 md:grid-cols-2`}>
+          {/* Profit/Loss Card */}
+          <div className={`${cardClass} gap-3`}>
+            <h2 className={cardLabelClass}>Operating Margin</h2>
+            <div className="flex items-baseline gap-2">
+              <span className={`${cardValueClass} tracking-tight ${isProfit ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {formatCur(profitLoss)}
+              </span>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isProfit ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                {isProfit ? <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> : <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed mt-auto">
+              Calculated as total assigned budget less combined hardware, labor overheads, transport and materials costs.
+            </p>
           </div>
-          <p className="text-xs text-zinc-400 leading-relaxed mt-auto">
-            Calculated as total assigned budget less combined hardware, labor overheads, transport and materials costs.
-          </p>
-        </div>
 
-        {/* Today's Labor Telemetry Card */}
-        <div className={`${cardClass} gap-3`}>
-          <h2 className={cardLabelClass}>Labor Attendance (Today)</h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className={`${cardValueClass} block`}>{stats?.todaysAttendanceCount || 0}</span>
-              <span className="text-[10px] text-zinc-400 font-medium block mt-1">Workers logged present</span>
+          {/* Today's Labor Telemetry Card */}
+          <div className={`${cardClass} gap-3`}>
+            <h2 className={cardLabelClass}>Labor Attendance (Today)</h2>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className={`${cardValueClass} block`}>{stats?.todaysAttendanceCount || 0}</span>
+                <span className="text-[10px] text-zinc-400 font-medium block mt-1">Workers logged present</span>
+              </div>
+              <div className="text-right">
+                <span className={`${cardValueClass} block`}>{formatCur(stats?.todaysLabourCost || 0)}</span>
+                <span className="text-[10px] text-zinc-400 font-medium block mt-1">Direct labor invoice today</span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className={`${cardValueClass} block`}>{formatCur(stats?.todaysLabourCost || 0)}</span>
-              <span className="text-[10px] text-zinc-400 font-medium block mt-1">Direct labor invoice today</span>
-            </div>
+            {(userRole === 'admin' || userRole === 'manager') && (
+              <button 
+                onClick={() => onNavigate('attendance')}
+                className="w-full text-center py-2 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 text-xs font-semibold rounded-lg border border-zinc-200/40 transition-colors mt-auto"
+              >
+                Manage Crew Roster
+              </button>
+            )}
           </div>
-          {(userRole === 'admin' || userRole === 'manager') && (
-            <button 
-              onClick={() => onNavigate('attendance')}
-              className="w-full text-center py-2 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 text-xs font-semibold rounded-lg border border-zinc-200/40 transition-colors mt-auto"
-            >
-              Manage Crew Roster
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
       {/* Task wise progress summary and lists */}
       <div className={`${sectionGridClass} grid-cols-1 lg:grid-cols-2`}>
@@ -265,7 +269,7 @@ export default function Dashboard({ onNavigate, userRole }: DashboardProps) {
                       <div className="flex items-center justify-between text-[11px] text-zinc-500">
                         <span>Work Done: <b className="text-zinc-950 font-medium">{t.progress}%</b></span>
                         <span className={isOver ? 'text-red-600 font-semibold' : 'text-zinc-500'}>
-                          Spent: <b>{formatCur(t.expenses)}</b> / {formatCur(t.budget)}
+                          {userRole !== 'manager' && <>Spent: <b>{formatCur(t.expenses)}</b> / {formatCur(t.budget)}</>}
                         </span>
                       </div>
                       <div className="w-full bg-zinc-200/80 rounded-full h-1.5 overflow-hidden">

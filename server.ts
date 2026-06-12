@@ -3,8 +3,17 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
-import { readDb, writeDb, hashPassword } from './server/db';
+import { getTenantDb } from './server/tenantDb';
+import { registerCompany, getRegistryDb } from './server/registry';
+import { ObjectId } from 'mongodb';
 import { Project, Task, Expense, Attendance, Payment, PaymentRequest, UserRole, ProjectStatus, TaskStatus, ExpenseCategory, PayeeType, PaymentStatus, AttendanceStatus, CrewMember, CrewTrade, CrewMemberStatus, OfficeTransaction } from './src/types';
+import crypto from 'crypto';
+
+export function hashPassword(password: string): string {
+  const salt = 'construction_salt_2026';
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha256');
+  return hash.toString('hex');
+}
 
 // Initialize environment variables from .env
 dotenv.config();
@@ -29,7 +38,7 @@ app.use('/api', (req, res, next) => {
 // cryptography-based token verification method. A token is: Base64(payload) + '.' + Signature(Base64(payload))
 const JWT_SECRET = 'construction_jwt_secret_key_2026';
 
-function signToken(payload: { userId: string; role: UserRole; name: string }): string {
+function signToken(payload: { userId: string; role: UserRole; name: string; companyName: string }): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto
@@ -39,7 +48,7 @@ function signToken(payload: { userId: string; role: UserRole; name: string }): s
   return `${header}.${body}.${signature}`;
 }
 
-function verifyToken(token: string): { userId: string; role: UserRole; name: string } | null {
+function verifyToken(token: string): { userId: string; role: UserRole; name: string; companyName: string } | null {
   try {
     const [header, body, signature] = token.split('.');
     if (!header || !body || !signature) return null;
@@ -105,10 +114,31 @@ const MAX_ATTEMPTS = 5;
 const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
 
 // 1. Auth API
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Please provide email and password' });
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password, companyName } = req.body;
+  
+  // Superadmin bypass
+  if (email === process.env.SUPERADMIN_EMAIL && password === process.env.SUPERADMIN_PASSWORD) {
+      const token = signToken({
+        userId: 'superadmin',
+        role: 'admin',
+        name: 'Super Admin',
+        companyName: 'SUPERADMIN'
+      });
+      return res.json({
+        token,
+        user: {
+          id: 'superadmin',
+          name: 'Super Admin',
+          email: process.env.SUPERADMIN_EMAIL,
+          role: 'admin',
+          status: 'active'
+        }
+      });
+  }
+
+  if (!email || !password || !companyName) {
+    return res.status(400).json({ error: 'Please provide email, password, and company name' });
   }
 
   const emailKey = email.toLowerCase().trim();
@@ -122,8 +152,9 @@ app.post('/api/auth/login', (req, res) => {
     });
   }
 
-  const db = readDb();
-  const user = db.users.find(u => u.email.toLowerCase() === emailKey);
+  const tenantDb = await getTenantDb(companyName);
+  const user: any = await tenantDb.collection('users').findOne({ email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
+  
   if (!user) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
@@ -161,7 +192,8 @@ app.post('/api/auth/login', (req, res) => {
   const token = signToken({
     userId: user.id,
     role: user.role,
-    name: user.name
+    name: user.name,
+    companyName
   });
 
   res.json({
@@ -177,20 +209,78 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-// User/Roles screen - List and Manage Users for Admin
-app.get('/api/users', requireAuth, (req, res) => {
-  const db = readDb();
-  res.json({ users: db.users });
+
+// Superadmin: Company Management
+app.get('/api/superadmin/companies', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const db = await getRegistryDb();
+    const companies = await db.collection('companies').find({}).toArray();
+    res.json(companies);
 });
 
-app.post('/api/users', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/superadmin/companies', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    
+    const { companyName, status, trialUntil, validUntil } = req.body;
+    if (!companyName) return res.status(400).json({ error: 'Company name required' });
+    
+    try {
+        const company = await registerCompany(companyName, status, trialUntil, validUntil);
+        res.status(201).json(company);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to register company' });
+    }
+});
+
+app.patch('/api/superadmin/companies/:id/status', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const { status } = req.body;
+    const db = await getRegistryDb();
+    const result = await db.collection('companies').findOneAndUpdate(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { status } },
+        { returnDocument: 'after' }
+    );
+    res.json(result);
+});
+
+app.patch('/api/superadmin/companies/:id/subscription', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const { months } = req.body;
+    const db = await getRegistryDb();
+    const company = await db.collection('companies').findOne({ _id: new ObjectId(req.params.id) });
+    
+    if (!company) return res.status(404).json({ error: 'Company not found' });
+    
+    let currentValidUntil = company.validUntil ? new Date(company.validUntil) : new Date();
+    if (currentValidUntil < new Date()) currentValidUntil = new Date();
+    
+    currentValidUntil.setMonth(currentValidUntil.getMonth() + months);
+    
+    const result = await db.collection('companies').findOneAndUpdate(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { validUntil: currentValidUntil.toISOString() } },
+        { returnDocument: 'after' }
+    );
+    res.json(result);
+});
+
+// User/Roles screen - List and Manage Users for Admin
+app.get('/api/users', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const users = await tenantDb.collection('users').find({}).toArray();
+  res.json({ users });
+});
+
+app.post('/api/users', requireAuth, requireAdmin, async (req: any, res) => {
   const { name, email, role, phone } = req.body;
   if (!name || !email || !role) {
     return res.status(400).json({ error: 'Name, email, and role are required' });
   }
 
-  const db = readDb();
-  if (db.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const existing = await tenantDb.collection('users').findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+  if (existing) {
     return res.status(400).json({ error: 'A user with this email already exists' });
   }
 
@@ -200,50 +290,47 @@ app.post('/api/users', requireAuth, requireAdmin, (req, res) => {
     email,
     role: role as UserRole,
     phone,
-    status: 'active' as const
+    status: 'active'
   };
 
-  db.users.push(newUser);
-  writeDb(db);
+  await tenantDb.collection('users').insertOne(newUser);
   res.status(201).json(newUser);
 });
 
 // Toggle User status (Active/Inactive)
-app.patch('/api/users/:id/status', requireAuth, requireAdmin, (req, res) => {
+app.patch('/api/users/:id/status', requireAuth, requireAdmin, async (req: any, res) => {
   const { status } = req.body;
   if (status !== 'active' && status !== 'inactive') {
     return res.status(400).json({ error: 'Invalid status value' });
   }
 
-  const db = readDb();
-  const userIndex = db.users.findIndex(u => u.id === req.params.id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-
-  db.users[userIndex].status = status;
-  writeDb(db);
-  res.json(db.users[userIndex]);
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const result = await tenantDb.collection('users').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { status } },
+      { returnDocument: 'after' }
+  );
+  
+  if (!result) return res.status(404).json({ error: 'User not found' });
+  res.json(result);
 });
 
 // Update Profile API for Settings
-app.put('/api/users/profile', requireAuth, (req: any, res) => {
+app.put('/api/users/profile', requireAuth, async (req: any, res) => {
   const { name, phone } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
 
-  const db = readDb();
-  const userIndex = db.users.findIndex(u => u.id === req.user.userId);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'User not found' });
-  }
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const result = await tenantDb.collection('users').findOneAndUpdate(
+      { id: req.user.userId },
+      { $set: { name, phone: phone !== undefined ? phone : undefined } },
+      { returnDocument: 'after' }
+  );
 
-  db.users[userIndex].name = name;
-  if (phone !== undefined) db.users[userIndex].phone = phone;
-
-  writeDb(db);
-  res.json(db.users[userIndex]);
+  if (!result) return res.status(404).json({ error: 'User not found' });
+  res.json(result);
 });
 
 const REQUEST_TO_EXPENSE_CATEGORY: Record<string, ExpenseCategory> = {
@@ -260,71 +347,12 @@ function expenseCategoryToRequestCategory(category: ExpenseCategory | string): P
   return 'Other';
 }
 
-// Admin expenses submitted after office-fund workflow should be payment requests, not direct expenses.
-const ORPHAN_EXPENSE_MIGRATION_CUTOFF = 1781190000000;
 
-function expenseIdToTimestamp(id: string): number {
-  const n = Number(id.replace('exp_', ''));
-  return Number.isFinite(n) ? n : 0;
-}
+// Helper for paymentRequestToExpenseItem - REFACTORED
 
-function migrateOrphanAdminExpenses(db: ReturnType<typeof readDb>): boolean {
-  if (!db.paymentRequests) db.paymentRequests = [];
-  const toRemove = new Set<string>();
-
-  for (const exp of db.expenses) {
-    if (expenseIdToTimestamp(exp.id) < ORPHAN_EXPENSE_MIGRATION_CUTOFF) continue;
-
-    const creator = db.users.find(u => u.id === exp.createdBy);
-    if (creator?.role === 'accountant') continue;
-
-    const hasMatchingRequest = db.paymentRequests.some(pr =>
-      pr.taskId === exp.taskId &&
-      pr.amount === exp.amount &&
-      pr.payeeName === exp.paidTo &&
-      pr.dueDate === exp.date
-    );
-    if (hasMatchingRequest) continue;
-
-    const ts = expenseIdToTimestamp(exp.id);
-    db.paymentRequests.push({
-      id: `pr_migrated_${exp.id.replace('exp_', '')}`,
-      projectId: exp.projectId,
-      taskId: exp.taskId,
-      payeeName: exp.paidTo,
-      category: expenseCategoryToRequestCategory(exp.category),
-      amount: exp.amount,
-      description: exp.notes || `${exp.category} expense for ${exp.paidTo}`,
-      fromLocation: exp.fromLocation || '',
-      toLocation: exp.toLocation || '',
-      dueDate: exp.date,
-      priority: 'Medium',
-      status: 'Pending',
-      paymentMethod: exp.paymentMethod,
-      billImage: exp.billImage,
-      createdBy: exp.createdBy,
-      createdAt: new Date(ts).toISOString(),
-    });
-    toRemove.add(exp.id);
-  }
-
-  if (toRemove.size === 0) return false;
-  db.expenses = db.expenses.filter(e => !toRemove.has(e.id));
-  return true;
-}
-
-function loadDbWithSync(): ReturnType<typeof readDb> {
-  const db = readDb();
-  if (!db.paymentRequests) db.paymentRequests = [];
-  if (migrateOrphanAdminExpenses(db)) {
-    writeDb(db);
-  }
-  return db;
-}
-
-function paymentRequestToExpenseItem(pr: PaymentRequest, db: ReturnType<typeof readDb>) {
-  const prj = db.projects.find(p => p.id === pr.projectId);
-  const tsk = db.tasks.find(t => t.id === pr.taskId);
+function paymentRequestToExpenseItem(pr: any, projects: any[], tasks: any[]) {
+  const prj = projects.find(p => p.id === pr.projectId);
+  const tsk = tasks.find(t => t.id === pr.taskId);
   return {
     id: pr.id,
     projectId: pr.projectId,
@@ -346,15 +374,20 @@ function paymentRequestToExpenseItem(pr: PaymentRequest, db: ReturnType<typeof r
   };
 }
 
-// Helper for Calculations
-function calculateMetrics() {
-  const db = readDb();
 
-  // Calculate Task-level and Project-level expenses, budgets, workers, wages
-  // 1. Task wages from labor attendance: status 'Present' or 'Half Day'
-  // Present = 1.0 * wage, Half Day = 0.5 * wage. Add overtime.
+// Helper for Calculations - REFACTORED FOR MULTI-TENANT
+async function calculateMetrics(companyName: string) {
+  const tenantDb = await getTenantDb(companyName);
+
+  // Fetch necessary data
+  const attendance = await tenantDb.collection('attendance').find({}).toArray();
+  const expenses = await tenantDb.collection('expenses').find({}).toArray();
+  const paymentRequests = await tenantDb.collection('paymentRequests').find({}).toArray();
+  const payments = await tenantDb.collection('payments').find({}).toArray();
+
+  // 1. Task wages from labor attendance
   const taskToLabourCost: Record<string, number> = {};
-  db.attendance.forEach(att => {
+  attendance.forEach((att: any) => {
     let wagePortion = 0;
     if (att.status === 'Present') {
       wagePortion = att.dailyWage;
@@ -365,21 +398,21 @@ function calculateMetrics() {
     taskToLabourCost[att.taskId] = (taskToLabourCost[att.taskId] || 0) + cost;
   });
 
-  // 2. Task regular expenses (paid / recorded)
+  // 2. Task regular expenses
   const taskToExpensesCost: Record<string, number> = {};
-  db.expenses.forEach(exp => {
+  expenses.forEach((exp: any) => {
     taskToExpensesCost[exp.taskId] = (taskToExpensesCost[exp.taskId] || 0) + exp.amount;
   });
 
-  // 2b. Pending payment requests tied to tasks (awaiting office fund approval)
+  // 2b. Pending payment requests
   const taskToPendingExpenseCost: Record<string, number> = {};
-  (db.paymentRequests || []).filter(pr => pr.status === 'Pending').forEach(pr => {
+  paymentRequests.filter((pr: any) => pr.status === 'Pending').forEach((pr: any) => {
     taskToPendingExpenseCost[pr.taskId] = (taskToPendingExpenseCost[pr.taskId] || 0) + pr.amount;
   });
 
   // 3. Task payments made
   const taskToPaymentsMade: Record<string, number> = {};
-  db.payments.forEach(pay => {
+  payments.forEach((pay: any) => {
     if (pay.paymentStatus === 'Paid') {
       taskToPaymentsMade[pay.taskId] = (taskToPaymentsMade[pay.taskId] || 0) + pay.amount;
     }
@@ -394,37 +427,43 @@ function calculateMetrics() {
 }
 
 // 2. Project routes
-app.get('/api/projects', requireAuth, (req, res) => {
-  const db = readDb();
-  const { taskToLabourCost, taskToExpensesCost, taskToPaymentsMade } = calculateMetrics();
+app.get('/api/projects', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const projects = await tenantDb.collection('projects').find({}).toArray();
+  const tasks = await tenantDb.collection('tasks').find({}).toArray();
+  const expenses = await tenantDb.collection('expenses').find({}).toArray();
+  const attendance = await tenantDb.collection('attendance').find({}).toArray();
+  const paymentRequests = await tenantDb.collection('paymentRequests').find({}).toArray();
+  const payments = await tenantDb.collection('payments').find({}).toArray();
 
   // Calculate project statistics on-the-fly
-  const projectsWithStats = db.projects.map(prj => {
-    const projectTasks = db.tasks.filter(t => t.projectId === prj.id);
-    const totalBudget = projectTasks.reduce((acc, t) => acc + t.assignedBudget, 0);
+  const projectsWithStats = projects.map((prj: any) => {
+    const projectTasks = tasks.filter((t: any) => t.projectId === prj.id);
+    const totalBudget = projectTasks.reduce((acc: number, t: any) => acc + t.assignedBudget, 0);
 
     // Total expenses of this project layout
-    const projectExpenses = db.expenses.filter(e => e.projectId === prj.id);
-    const regularExpenseAmt = projectExpenses.reduce((acc, e) => acc + e.amount, 0);
+    const projectExpenses = expenses.filter((e: any) => e.projectId === prj.id);
+    const regularExpenseAmt = projectExpenses.reduce((acc: number, e: any) => acc + e.amount, 0);
 
     // Project labour cost
-    const projectAttendance = db.attendance.filter(a => a.projectId === prj.id);
-    const labourCostAmt = projectAttendance.reduce((acc, att) => {
+    const projectAttendance = attendance.filter((a: any) => a.projectId === prj.id);
+    const labourCostAmt = projectAttendance.reduce((acc: number, att: any) => {
       let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
       return acc + (att.dailyWage * portion) + (att.overtimeAmount || 0);
     }, 0);
 
-    const pendingRequestAmt = db.paymentRequests
-      .filter(pr => pr.projectId === prj.id && pr.status === 'Pending')
-      .reduce((acc, pr) => acc + pr.amount, 0);
+    const pendingRequestAmt = paymentRequests
+      .filter((pr: any) => pr.projectId === prj.id && pr.status === 'Pending')
+      .reduce((acc: number, pr: any) => acc + pr.amount, 0);
 
     const totalActualExpense = regularExpenseAmt + labourCostAmt;
     const totalCommittedExpense = totalActualExpense + pendingRequestAmt;
 
     // Total payments of this project
-    const projectPayments = db.payments.filter(p => p.projectId === prj.id);
-    const totalPaidAmount = projectPayments.filter(p => p.paymentStatus === 'Paid').reduce((acc, p) => acc + p.amount, 0);
-    const pendingPaymentsAmt = projectPayments.filter(p => p.paymentStatus === 'Pending').reduce((acc, p) => acc + p.amount, 0);
+    const projectPayments = payments.filter((p: any) => p.projectId === prj.id);
+    const totalPaidAmount = projectPayments.filter((p: any) => p.paymentStatus === 'Paid').reduce((acc: number, p: any) => acc + p.amount, 0);
+    const pendingPaymentsAmt = projectPayments.filter((p: any) => p.paymentStatus === 'Pending').reduce((acc: number, p: any) => acc + p.amount, 0);
 
     const profitLoss = totalBudget - totalCommittedExpense;
     const profitPercentage = totalBudget > 0 ? (profitLoss / totalBudget) * 100 : 0;
@@ -446,91 +485,85 @@ app.get('/api/projects', requireAuth, (req, res) => {
   res.json({ projects: projectsWithStats });
 });
 
-app.post('/api/projects', requireAuth, (req: any, res) => {
+app.post('/api/projects', requireAuth, async (req: any, res) => {
   const { projectName, clientName, location, startDate, expectedEndDate, status, notes } = req.body;
   if (!projectName || !clientName || !location || !startDate || !expectedEndDate) {
     return res.status(400).json({ error: 'All core project fields are required' });
   }
 
-  const db = readDb();
-  const newProject: Project = {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const newProject = {
     id: 'prj_' + Date.now(),
     projectName,
     clientName,
     location,
     startDate,
     expectedEndDate,
-    status: (status || 'Pending') as ProjectStatus,
+    status: (status || 'Pending'),
     notes,
     createdBy: req.user.userId,
     createdAt: new Date().toISOString()
   };
 
-  db.projects.push(newProject);
-  writeDb(db);
+  await tenantDb.collection('projects').insertOne(newProject);
   res.status(201).json(newProject);
 });
 
-app.put('/api/projects/:id', requireAuth, (req, res) => {
+app.put('/api/projects/:id', requireAuth, async (req: any, res) => {
   const { projectName, clientName, location, startDate, expectedEndDate, status, notes } = req.body;
   if (!projectName || !clientName || !location || !startDate || !expectedEndDate) {
     return res.status(400).json({ error: 'All core project fields are required' });
   }
 
-  const db = readDb();
-  const prjIdx = db.projects.findIndex(p => p.id === req.params.id);
-  if (prjIdx === -1) {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const result = await tenantDb.collection('projects').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { projectName, clientName, location, startDate, expectedEndDate, status, notes } },
+      { returnDocument: 'after' }
+  );
+  
+  if (!result) {
     return res.status(404).json({ error: 'Project not found' });
   }
 
-  db.projects[prjIdx] = {
-    ...db.projects[prjIdx],
-    projectName,
-    clientName,
-    location,
-    startDate,
-    expectedEndDate,
-    status: status as ProjectStatus,
-    notes
-  };
-
-  writeDb(db);
-  res.json(db.projects[prjIdx]);
+  res.json(result);
 });
 
-app.delete('/api/projects/:id', requireAuth, (req, res) => {
-  const db = readDb();
-  const prjIdx = db.projects.findIndex(p => p.id === req.params.id);
-  if (prjIdx === -1) {
+app.delete('/api/projects/:id', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const result = await tenantDb.collection('projects').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) {
     return res.status(404).json({ error: 'Project not found' });
   }
 
   // Do cascade delete of tasks, expenses, payments, attendance
-  db.projects.splice(prjIdx, 1);
-  db.tasks = db.tasks.filter(t => t.projectId !== req.params.id);
-  db.expenses = db.expenses.filter(e => e.projectId !== req.params.id);
-  db.payments = db.payments.filter(p => p.projectId !== req.params.id);
-  db.attendance = db.attendance.filter(a => a.projectId !== req.params.id);
+  await tenantDb.collection('tasks').deleteMany({ projectId: req.params.id });
+  await tenantDb.collection('expenses').deleteMany({ projectId: req.params.id });
+  await tenantDb.collection('payments').deleteMany({ projectId: req.params.id });
+  await tenantDb.collection('attendance').deleteMany({ projectId: req.params.id });
 
-  writeDb(db);
   res.json({ success: true, message: 'Project and all related data deleted successfully' });
 });
 
 // 3. Task routes
-app.get('/api/tasks', requireAuth, (req, res) => {
+app.get('/api/tasks', requireAuth, async (req: any, res) => {
   try {
-    const db = readDb();
+    const tenantDb = await getTenantDb(req.user.companyName);
     const { projectId } = req.query;
 
-    let tasks = db.tasks || [];
+    const query: any = {};
     if (projectId) {
-      tasks = tasks.filter(t => t.projectId === projectId);
+      query.projectId = projectId;
     }
 
-    // Calculate task statistics
-    const { taskToLabourCost, taskToExpensesCost, taskToPendingExpenseCost, taskToPaymentsMade } = calculateMetrics();
+    const tasks = await tenantDb.collection('tasks').find(query).toArray();
+    const projects = await tenantDb.collection('projects').find({}).toArray();
 
-    const tasksWithStats = tasks.map(tsk => {
+    // Calculate task statistics
+    const { taskToLabourCost, taskToExpensesCost, taskToPendingExpenseCost, taskToPaymentsMade } = await calculateMetrics(req.user.companyName);
+
+    const tasksWithStats = tasks.map((tsk: any) => {
       const labourCost = taskToLabourCost[tsk.id] || 0;
       const directExpenses = taskToExpensesCost[tsk.id] || 0;
       const pendingExpenses = taskToPendingExpenseCost[tsk.id] || 0;
@@ -542,7 +575,7 @@ app.get('/api/tasks', requireAuth, (req, res) => {
       const isOverBudget = totalCommitted > tsk.assignedBudget;
 
       // Find matching project details
-      const prj = db.projects.find(p => p.id === tsk.projectId);
+      const prj = projects.find((p: any) => p.id === tsk.projectId);
 
       return {
         ...tsk,
@@ -566,14 +599,14 @@ app.get('/api/tasks', requireAuth, (req, res) => {
   }
 });
 
-app.post('/api/tasks', requireAuth, (req, res) => {
+app.post('/api/tasks', requireAuth, async (req: any, res) => {
   const { projectId, taskName, description, assignedBudget, assignedStaff, startDate, endDate, progress, status, notes } = req.body;
   if (!projectId || !taskName || assignedBudget === undefined || !startDate || !endDate) {
     return res.status(400).json({ error: 'Project, Task Name, Budget, Start Date, and End Date are required' });
   }
 
-  const db = readDb();
-  const newTask: Task = {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const newTask = {
     id: 'tsk_' + Date.now(),
     projectId,
     taskName,
@@ -583,76 +616,82 @@ app.post('/api/tasks', requireAuth, (req, res) => {
     startDate,
     endDate,
     progress: progress !== undefined ? Number(progress) : 0,
-    status: (status || 'Pending') as TaskStatus,
+    status: (status || 'Pending'),
     notes
   };
 
-  db.tasks.push(newTask);
-  writeDb(db);
+  await tenantDb.collection('tasks').insertOne(newTask);
   res.status(201).json(newTask);
 });
 
-app.put('/api/tasks/:id', requireAuth, (req, res) => {
+app.put('/api/tasks/:id', requireAuth, async (req: any, res) => {
   const { taskName, description, assignedBudget, assignedStaff, startDate, endDate, progress, status, notes } = req.body;
   if (!taskName || assignedBudget === undefined || !startDate || !endDate) {
     return res.status(400).json({ error: 'Task Name, Budget, Start and End dates are required' });
   }
 
-  const db = readDb();
-  const tskIdx = db.tasks.findIndex(t => t.id === req.params.id);
-  if (tskIdx === -1) {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const result = await tenantDb.collection('tasks').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { 
+          taskName,
+          description,
+          assignedBudget: Number(assignedBudget),
+          assignedStaff,
+          startDate,
+          endDate,
+          progress: progress !== undefined ? Number(progress) : undefined, // Handled slightly differently
+          status,
+          notes
+      } },
+      { returnDocument: 'after' }
+  );
+  
+  if (!result) {
     return res.status(404).json({ error: 'Task not found' });
   }
+  
+  // If progress wasn't updated, handle it
+  if (progress === undefined) {
+      // Need to find existing to keep progress
+      const existing = await tenantDb.collection('tasks').findOne({ id: req.params.id });
+      await tenantDb.collection('tasks').updateOne({ id: req.params.id }, { $set: { progress: existing?.progress } });
+  }
 
-  db.tasks[tskIdx] = {
-    ...db.tasks[tskIdx],
-    taskName,
-    description,
-    assignedBudget: Number(assignedBudget),
-    assignedStaff,
-    startDate,
-    endDate,
-    progress: progress !== undefined ? Number(progress) : db.tasks[tskIdx].progress,
-    status: status as TaskStatus,
-    notes
-  };
-
-  writeDb(db);
-  res.json(db.tasks[tskIdx]);
+  res.json(result);
 });
 
-app.delete('/api/tasks/:id', requireAuth, (req, res) => {
-  const db = readDb();
-  const tskIdx = db.tasks.findIndex(t => t.id === req.params.id);
-  if (tskIdx === -1) {
+app.delete('/api/tasks/:id', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const result = await tenantDb.collection('tasks').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) {
     return res.status(404).json({ error: 'Task not found' });
   }
 
-  db.tasks.splice(tskIdx, 1);
-  db.expenses = db.expenses.filter(e => e.taskId !== req.params.id);
-  db.payments = db.payments.filter(p => p.taskId !== req.params.id);
-  db.attendance = db.attendance.filter(a => a.taskId !== req.params.id);
+  await tenantDb.collection('expenses').deleteMany({ taskId: req.params.id });
+  await tenantDb.collection('payments').deleteMany({ taskId: req.params.id });
+  await tenantDb.collection('attendance').deleteMany({ taskId: req.params.id });
 
-  writeDb(db);
   res.json({ success: true, message: 'Task and related entries deleted' });
 });
 
 // 4. Expense routes (Linked to task & project)
-app.get('/api/expenses', requireAuth, (req, res) => {
-  const db = loadDbWithSync();
+app.get('/api/expenses', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
   const { projectId, taskId } = req.query;
 
-  let expenses = db.expenses;
-  if (projectId) {
-    expenses = expenses.filter(e => e.projectId === projectId);
-  }
-  if (taskId) {
-    expenses = expenses.filter(e => e.taskId === taskId);
-  }
+  const query: any = {};
+  if (projectId) query.projectId = projectId;
+  if (taskId) query.taskId = taskId;
 
-  const hydrated = expenses.map(e => {
-    const prj = db.projects.find(p => p.id === e.projectId);
-    const tsk = db.tasks.find(t => t.id === e.taskId);
+  const expenses = await tenantDb.collection('expenses').find(query).toArray();
+  const projects = await tenantDb.collection('projects').find({}).toArray();
+  const tasks = await tenantDb.collection('tasks').find({}).toArray();
+
+  const hydrated = expenses.map((e: any) => {
+    const prj = projects.find((p: any) => p.id === e.projectId);
+    const tsk = tasks.find((t: any) => t.id === e.taskId);
     return {
       ...e,
       projectName: prj ? prj.projectName : 'Unknown Project',
@@ -661,15 +700,13 @@ app.get('/api/expenses', requireAuth, (req, res) => {
     };
   });
 
-  let pendingRequests = db.paymentRequests.filter(pr => pr.status === 'Pending');
-  if (projectId) {
-    pendingRequests = pendingRequests.filter(pr => pr.projectId === projectId);
-  }
-  if (taskId) {
-    pendingRequests = pendingRequests.filter(pr => pr.taskId === taskId);
-  }
+  const pendingRequestsQuery: any = { status: 'Pending' };
+  if (projectId) pendingRequestsQuery.projectId = projectId;
+  if (taskId) pendingRequestsQuery.taskId = taskId;
 
-  const pendingAsExpenses = pendingRequests.map(pr => paymentRequestToExpenseItem(pr, db));
+  const pendingRequests = await tenantDb.collection('paymentRequests').find(pendingRequestsQuery).toArray();
+
+  const pendingAsExpenses = pendingRequests.map((pr: any) => paymentRequestToExpenseItem(pr, projects, tasks));
   const combined = [...pendingAsExpenses, ...hydrated].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
@@ -677,298 +714,218 @@ app.get('/api/expenses', requireAuth, (req, res) => {
   res.json({ expenses: combined });
 });
 
-app.post('/api/expenses', requireAuth, (req: any, res) => {
-  try {
-    const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation } = req.body;
-    if (!projectId || !taskId || !category || amount === undefined || !paidTo || !paymentMethod || !date) {
-      return res.status(400).json({ error: 'All core expense fields are required' });
-    }
-
-    const db = loadDbWithSync();
-    const newRequest: PaymentRequest = {
-      id: 'pr_' + Date.now(),
-      projectId,
-      taskId,
-      payeeName: String(paidTo).trim(),
-      category: expenseCategoryToRequestCategory(category),
-      amount: Number(amount),
-      description: notes || `${category} expense for ${paidTo}`,
-      fromLocation: fromLocation || '',
-      toLocation: toLocation || '',
-      dueDate: date,
-      priority: 'Medium',
-      status: 'Pending',
-      paymentMethod,
-      billImage,
-      createdBy: req.user.userId,
-      createdAt: new Date().toISOString(),
-    };
-
-    db.paymentRequests.push(newRequest);
-    writeDb(db);
-
-    const expenseView = paymentRequestToExpenseItem(newRequest, db);
-    res.status(201).json({
-      paymentRequest: newRequest,
-      expense: expenseView,
-      message: 'Expense submitted as a payment request. It will be paid from office funds after accountant approval.',
-    });
-  } catch (err) {
-    console.error('Error in POST /api/expenses:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-app.put('/api/expenses/:id', requireAuth, (req, res) => {
+app.put('/api/expenses/:id', requireAuth, async (req: any, res) => {
   const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation } = req.body;
   if (!category || amount === undefined || !paidTo || !paymentMethod || !date) {
     return res.status(400).json({ error: 'All core fields are required' });
   }
 
-  const db = readDb();
+  const tenantDb = await getTenantDb(req.user.companyName);
 
   if (req.params.id.startsWith('pr_')) {
-    const reqIdx = db.paymentRequests.findIndex(r => r.id === req.params.id);
-    if (reqIdx === -1) {
-      return res.status(404).json({ error: 'Payment request not found' });
-    }
-    if (db.paymentRequests[reqIdx].status !== 'Pending') {
-      return res.status(400).json({ error: 'Only pending payment requests can be edited' });
-    }
-
-    db.paymentRequests[reqIdx] = {
-      ...db.paymentRequests[reqIdx],
-      projectId: projectId || db.paymentRequests[reqIdx].projectId,
-      taskId: taskId || db.paymentRequests[reqIdx].taskId,
-      payeeName: String(paidTo).trim(),
-      category: expenseCategoryToRequestCategory(category),
-      amount: Number(amount),
-      description: notes || db.paymentRequests[reqIdx].description,
-      fromLocation: fromLocation ?? db.paymentRequests[reqIdx].fromLocation,
-      toLocation: toLocation ?? db.paymentRequests[reqIdx].toLocation,
-      dueDate: date,
-      paymentMethod,
-      billImage: billImage !== undefined ? billImage : db.paymentRequests[reqIdx].billImage,
-    };
-
-    writeDb(db);
-    return res.json(paymentRequestToExpenseItem(db.paymentRequests[reqIdx], db));
+    const result = await tenantDb.collection('paymentRequests').findOneAndUpdate(
+        { id: req.params.id },
+        { $set: {
+            projectId: projectId || null,
+            taskId: taskId || null,
+            payeeName: String(paidTo).trim(),
+            category: expenseCategoryToRequestCategory(category),
+            amount: Number(amount),
+            description: notes || '',
+            fromLocation: fromLocation ?? null,
+            toLocation: toLocation ?? null,
+            dueDate: date,
+            paymentMethod,
+            billImage: billImage !== undefined ? billImage : null,
+        }},
+        { returnDocument: 'after' }
+    );
+    if (!result) return res.status(404).json({ error: 'Payment request not found' });
+    
+    // Need projects/tasks for the expense view
+    const project = await tenantDb.collection('projects').findOne({ id: result.projectId });
+    const task = await tenantDb.collection('tasks').findOne({ id: result.taskId });
+    
+    return res.json(paymentRequestToExpenseItem(result, [project].filter(Boolean), [task].filter(Boolean)));
   }
 
-  const expIdx = db.expenses.findIndex(e => e.id === req.params.id);
-  if (expIdx === -1) {
-    return res.status(404).json({ error: 'Expense not found' });
-  }
+  const result = await tenantDb.collection('expenses').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: {
+          category: category,
+          amount: Number(amount),
+          paidTo,
+          paymentMethod,
+          date,
+          notes,
+          billImage: billImage !== undefined ? billImage : null
+      }},
+      { returnDocument: 'after' }
+  );
 
-  db.expenses[expIdx] = {
-    ...db.expenses[expIdx],
-    category: category as ExpenseCategory,
-    amount: Number(amount),
-    paidTo,
-    paymentMethod,
-    date,
-    notes,
-    billImage: billImage !== undefined ? billImage : db.expenses[expIdx].billImage
-  };
-
-  writeDb(db);
-  res.json(db.expenses[expIdx]);
+  if (!result) return res.status(404).json({ error: 'Expense not found' });
+  res.json(result);
 });
 
-app.delete('/api/expenses/:id', requireAuth, (req, res) => {
-  const db = readDb();
+app.delete('/api/expenses/:id', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
 
   if (req.params.id.startsWith('pr_')) {
-    const reqIdx = db.paymentRequests.findIndex(r => r.id === req.params.id);
-    if (reqIdx === -1) {
-      return res.status(404).json({ error: 'Payment request not found' });
-    }
-    if (db.paymentRequests[reqIdx].status !== 'Pending') {
-      return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
-    }
-    db.paymentRequests.splice(reqIdx, 1);
-    writeDb(db);
+    const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
+    if (!existing) return res.status(404).json({ error: 'Payment request not found' });
+    if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
+    
+    await tenantDb.collection('paymentRequests').deleteOne({ id: req.params.id });
     return res.json({ success: true, message: 'Payment request cancelled' });
   }
 
-  const expIdx = db.expenses.findIndex(e => e.id === req.params.id);
-  if (expIdx === -1) {
-    return res.status(404).json({ error: 'Expense not found' });
-  }
-  db.expenses.splice(expIdx, 1);
-  writeDb(db);
+  const result = await tenantDb.collection('expenses').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: 'Expense not found' });
+  
   res.json({ success: true, message: 'Expense deleted successfully' });
 });
 
 // 5. Crew roster routes
-app.get('/api/crew', requireAuth, (req, res) => {
-  const db = readDb();
-  if (!db.crew) db.crew = [];
+app.get('/api/crew', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
   const { status } = req.query;
-  let crew = db.crew;
+  
+  const query: any = {};
   if (status === 'active' || status === 'inactive') {
-    crew = crew.filter(c => c.status === status);
+    query.status = status;
   }
-  res.json({ crew: crew.sort((a, b) => a.name.localeCompare(b.name)) });
+  
+  const crew = await tenantDb.collection('crew').find(query).sort({ name: 1 }).toArray();
+  res.json({ crew });
 });
 
-app.post('/api/crew', requireAuth, (req, res) => {
+app.post('/api/crew', requireAuth, async (req: any, res) => {
   const { name, trade, dailyWage, phone, status, notes } = req.body;
   if (!name || !trade || dailyWage === undefined) {
     return res.status(400).json({ error: 'Name, trade, and daily wage are required' });
   }
 
-  const db = readDb();
-  if (!db.crew) db.crew = [];
-
-  const duplicate = db.crew.find(c => c.name.toLowerCase() === String(name).toLowerCase().trim());
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const duplicate = await tenantDb.collection('crew').findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
   if (duplicate) {
     return res.status(400).json({ error: 'A crew member with this name already exists' });
   }
 
-  const newMember: CrewMember = {
+  const newMember = {
     id: 'crew_' + Date.now(),
     name: String(name).trim(),
-    trade: trade as CrewTrade,
+    trade,
     dailyWage: Number(dailyWage),
     phone: phone || '',
-    status: (status || 'active') as CrewMemberStatus,
+    status: (status || 'active'),
     notes: notes || '',
     createdAt: new Date().toISOString()
   };
 
-  db.crew.push(newMember);
-  writeDb(db);
+  await tenantDb.collection('crew').insertOne(newMember);
   res.status(201).json(newMember);
 });
 
-app.put('/api/crew/:id', requireAuth, (req, res) => {
+app.put('/api/crew/:id', requireAuth, async (req: any, res) => {
   const { name, trade, dailyWage, phone, status, notes } = req.body;
   if (!name || !trade || dailyWage === undefined) {
     return res.status(400).json({ error: 'Name, trade, and daily wage are required' });
   }
 
-  const db = readDb();
-  if (!db.crew) db.crew = [];
-  const idx = db.crew.findIndex(c => c.id === req.params.id);
-  if (idx === -1) {
-    return res.status(404).json({ error: 'Crew member not found' });
-  }
-
-  const duplicate = db.crew.find(c => c.id !== req.params.id && c.name.toLowerCase() === String(name).toLowerCase().trim());
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const duplicate = await tenantDb.collection('crew').findOne({ 
+      id: { $ne: req.params.id }, 
+      name: { $regex: new RegExp(`^${name}$`, 'i') } 
+  });
   if (duplicate) {
     return res.status(400).json({ error: 'A crew member with this name already exists' });
   }
 
-  db.crew[idx] = {
-    ...db.crew[idx],
-    name: String(name).trim(),
-    trade: trade as CrewTrade,
-    dailyWage: Number(dailyWage),
-    phone: phone || '',
-    status: (status || 'active') as CrewMemberStatus,
-    notes: notes || ''
-  };
+  const result = await tenantDb.collection('crew').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { 
+          name: String(name).trim(),
+          trade,
+          dailyWage: Number(dailyWage),
+          phone: phone || '',
+          status,
+          notes: notes || ''
+      } },
+      { returnDocument: 'after' }
+  );
 
-  writeDb(db);
-  res.json(db.crew[idx]);
+  if (!result) return res.status(404).json({ error: 'Crew member not found' });
+  res.json(result);
 });
 
-app.delete('/api/crew/:id', requireAuth, (req, res) => {
-  const db = readDb();
-  if (!db.crew) db.crew = [];
-  const idx = db.crew.findIndex(c => c.id === req.params.id);
-  if (idx === -1) {
-    return res.status(404).json({ error: 'Crew member not found' });
-  }
-  db.crew.splice(idx, 1);
-  writeDb(db);
+app.delete('/api/crew/:id', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const result = await tenantDb.collection('crew').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: 'Crew member not found' });
+  
   res.json({ success: true, message: 'Crew member removed' });
 });
 
-const VALID_TRADES: CrewTrade[] = ['Mason', 'Electrician', 'Plumber', 'Carpenter', 'Helper', 'Supervisor', 'Other'];
-
-app.post('/api/crew/bulk', requireAuth, (req, res) => {
+app.post('/api/crew/bulk', requireAuth, async (req: any, res) => {
   const { members } = req.body;
   if (!Array.isArray(members) || members.length === 0) {
     return res.status(400).json({ error: 'A non-empty members array is required' });
   }
 
-  const db = readDb();
-  if (!db.crew) db.crew = [];
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const crewCol = tenantDb.collection('crew');
 
-  const added: CrewMember[] = [];
-  const skipped: string[] = [];
+  const added: any[] = [];
   const errors: string[] = [];
 
-  members.forEach((m: any, idx: number) => {
+  for (const [idx, m] of members.entries()) {
     const name = String(m.name || '').trim();
     if (!name) {
       errors.push(`Row ${idx + 1}: name is required`);
-      return;
+      continue;
     }
 
-    const duplicate = db.crew.find(c => c.name.toLowerCase() === name.toLowerCase());
-    if (duplicate) {
-      skipped.push(name);
-      return;
-    }
+    const duplicate = await crewCol.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+    if (duplicate) continue; // Skip
 
-    const tradeRaw = String(m.trade || 'Helper').trim();
-    const trade = VALID_TRADES.find(t => t.toLowerCase() === tradeRaw.toLowerCase()) || 'Other';
-    const dailyWage = Number(m.dailyWage);
-    if (Number.isNaN(dailyWage) || dailyWage < 0) {
-      errors.push(`Row ${idx + 1} (${name}): invalid daily wage`);
-      return;
-    }
-
-    const statusRaw = String(m.status || 'active').toLowerCase();
-    const status: CrewMemberStatus = statusRaw === 'inactive' ? 'inactive' : 'active';
-
-    const newMember: CrewMember = {
-      id: 'crew_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      name,
-      trade,
-      dailyWage,
-      phone: m.phone ? String(m.phone).trim() : '',
-      status,
-      notes: m.notes ? String(m.notes).trim() : '',
-      createdAt: new Date().toISOString()
+    const newMember = {
+        id: 'crew_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        name,
+        trade: m.trade || 'Other',
+        dailyWage: Number(m.dailyWage) || 0,
+        phone: m.phone ? String(m.phone).trim() : '',
+        status: m.status === 'inactive' ? 'inactive' : 'active',
+        notes: m.notes ? String(m.notes).trim() : '',
+        createdAt: new Date().toISOString()
     };
 
-    db.crew.push(newMember);
+    await crewCol.insertOne(newMember);
     added.push(newMember);
-  });
+  }
 
-  writeDb(db);
-  res.status(201).json({
-    success: true,
-    added: added.length,
-    skipped: skipped.length,
-    errors,
-    records: added
-  });
+  res.status(201).json({ success: true, added: added.length, errors });
 });
 
 // 6. Attendance routes
-app.get('/api/attendance', requireAuth, (req, res) => {
-  const db = readDb();
+app.get('/api/attendance', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
   const { projectId, taskId, date } = req.query;
 
-  let attendance = db.attendance;
-  if (projectId) {
-    attendance = attendance.filter(a => a.projectId === projectId);
-  }
-  if (taskId) {
-    attendance = attendance.filter(a => a.taskId === taskId);
-  }
-  if (date) {
-    attendance = attendance.filter(a => a.date === date);
-  }
+  const query: any = {};
+  if (projectId) query.projectId = projectId;
+  if (taskId) query.taskId = taskId;
+  if (date) query.date = date;
 
-  const hydrated = attendance.map(a => {
-    const prj = db.projects.find(p => p.id === a.projectId);
-    const tsk = db.tasks.find(t => t.id === a.taskId);
+  const attendance = await tenantDb.collection('attendance').find(query).toArray();
+  const projects = await tenantDb.collection('projects').find({}).toArray();
+  const tasks = await tenantDb.collection('tasks').find({}).toArray();
+
+  const hydrated = attendance.map((a: any) => {
+    const prj = projects.find((p: any) => p.id === a.projectId);
+    const tsk = tasks.find((t: any) => t.id === a.taskId);
     return {
       ...a,
       projectName: prj ? prj.projectName : 'Unknown Project',
@@ -979,123 +936,117 @@ app.get('/api/attendance', requireAuth, (req, res) => {
   res.json({ attendance: hydrated });
 });
 
-app.post('/api/attendance', requireAuth, (req, res) => {
+app.post('/api/attendance', requireAuth, async (req: any, res) => {
   const { projectId, taskId, workerName, date, status, dailyWage, overtimeAmount, paymentStatus, notes } = req.body;
   if (!projectId || !taskId || !workerName || !date || !status || dailyWage === undefined) {
     return res.status(400).json({ error: 'Project, Task, Worker Name, Date, Status and Daily Wage are required' });
   }
 
-  const db = readDb();
-  const newAttendance: Attendance = {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const newAttendance = {
     id: 'att_' + Date.now(),
     projectId,
     taskId,
     workerName,
     date,
-    status: status as AttendanceStatus,
+    status,
     dailyWage: Number(dailyWage),
     overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : 0,
-    paymentStatus: (paymentStatus || 'Pending') as 'Paid' | 'Pending',
+    paymentStatus: (paymentStatus || 'Pending'),
     notes
   };
 
-  db.attendance.push(newAttendance);
-  writeDb(db);
+  await tenantDb.collection('attendance').insertOne(newAttendance);
   res.status(201).json(newAttendance);
 });
 
 // bulk marking for fast on-site labor checks
-app.post('/api/attendance/bulk', requireAuth, (req, res) => {
-  const { projectId, taskId, date, workers } = req.body; // workers: Array of { workerName, status, dailyWage, overtimeAmount }
+app.post('/api/attendance/bulk', requireAuth, async (req: any, res) => {
+  const { projectId, taskId, date, workers } = req.body; 
   if (!projectId || !taskId || !date || !Array.isArray(workers)) {
     return res.status(400).json({ error: 'Valid Project, Task, Date and workers array are required' });
   }
 
-  const db = readDb();
-  const addedRecords: Attendance[] = [];
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const attCol = tenantDb.collection('attendance');
+  const addedRecords: any[] = [];
 
-  workers.forEach((w: any) => {
-    if (!w.workerName || !w.status || w.dailyWage === undefined) return;
+  for (const w of workers) {
+    if (!w.workerName || !w.status || w.dailyWage === undefined) continue;
 
-    // Remove if there's an existing record for same worker, same task, same date to prevent duplicates
-    db.attendance = db.attendance.filter(a =>
-      !(a.workerName === w.workerName && a.taskId === taskId && a.date === date)
-    );
+    // Remove if there's an existing record for same worker, same task, same date
+    await attCol.deleteMany({ workerName: w.workerName, taskId: taskId, date: date });
 
-    const newAtt: Attendance = {
+    const newAtt = {
       id: 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       projectId,
       taskId,
       workerName: w.workerName,
       date,
-      status: w.status as AttendanceStatus,
+      status: w.status,
       dailyWage: Number(w.dailyWage),
       overtimeAmount: w.overtimeAmount !== undefined ? Number(w.overtimeAmount) : 0,
-      paymentStatus: (w.paymentStatus || 'Pending') as 'Paid' | 'Pending',
+      paymentStatus: (w.paymentStatus || 'Pending'),
       notes: w.notes
     };
 
-    db.attendance.push(newAtt);
+    await attCol.insertOne(newAtt);
     addedRecords.push(newAtt);
-  });
+  }
 
-  writeDb(db);
   res.status(201).json({ success: true, count: addedRecords.length, records: addedRecords });
 });
 
-app.put('/api/attendance/:id', requireAuth, (req, res) => {
+app.put('/api/attendance/:id', requireAuth, async (req: any, res) => {
   const { status, dailyWage, overtimeAmount, paymentStatus, notes, workerName } = req.body;
   if (!status || dailyWage === undefined) {
     return res.status(400).json({ error: 'Status and daily wage are required' });
   }
 
-  const db = readDb();
-  const attIdx = db.attendance.findIndex(a => a.id === req.params.id);
-  if (attIdx === -1) {
-    return res.status(404).json({ error: 'Attendance record not found' });
-  }
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const result = await tenantDb.collection('attendance').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { 
+          workerName,
+          status,
+          dailyWage: Number(dailyWage),
+          overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : 0,
+          paymentStatus,
+          notes
+      } },
+      { returnDocument: 'after' }
+  );
 
-  db.attendance[attIdx] = {
-    ...db.attendance[attIdx],
-    workerName: workerName || db.attendance[attIdx].workerName,
-    status: status as AttendanceStatus,
-    dailyWage: Number(dailyWage),
-    overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : db.attendance[attIdx].overtimeAmount,
-    paymentStatus: (paymentStatus || db.attendance[attIdx].paymentStatus) as 'Paid' | 'Pending',
-    notes
-  };
-
-  writeDb(db);
-  res.json(db.attendance[attIdx]);
+  if (!result) return res.status(404).json({ error: 'Attendance record not found' });
+  res.json(result);
 });
 
-app.delete('/api/attendance/:id', requireAuth, (req, res) => {
-  const db = readDb();
-  const attIdx = db.attendance.findIndex(a => a.id === req.params.id);
-  if (attIdx === -1) {
-    return res.status(404).json({ error: 'Attendance record not found' });
-  }
-  db.attendance.splice(attIdx, 1);
-  writeDb(db);
+app.delete('/api/attendance/:id', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const result = await tenantDb.collection('attendance').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: 'Attendance record not found' });
+  
   res.json({ success: true });
 });
 
 // 6. Payment tracking
-app.get('/api/payments', requireAuth, (req, res) => {
-  const db = readDb();
+app.get('/api/payments', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
   const { projectId, taskId } = req.query;
 
-  let payments = db.payments;
-  if (projectId) {
-    payments = payments.filter(p => p.projectId === projectId);
-  }
-  if (taskId) {
-    payments = payments.filter(p => p.taskId === taskId);
-  }
+  const query: any = {};
+  if (projectId) query.projectId = projectId;
+  if (taskId) query.taskId = taskId;
 
-  const hydrated = payments.map(p => {
-    const prj = db.projects.find(pr => pr.id === p.projectId);
-    const tsk = db.tasks.find(ts => ts.id === p.taskId);
+  const payments = await tenantDb.collection('payments').find(query).sort({ _id: -1 }).toArray();
+  const projects = await tenantDb.collection('projects').find({}).toArray();
+  const tasks = await tenantDb.collection('tasks').find({}).toArray();
+
+  const hydrated = payments.map((p: any) => {
+    const prj = projects.find((pr: any) => pr.id === p.projectId);
+    const tsk = tasks.find((ts: any) => ts.id === p.taskId);
     return {
       ...p,
       projectName: prj ? prj.projectName : 'Unknown Project',
@@ -1103,7 +1054,7 @@ app.get('/api/payments', requireAuth, (req, res) => {
     };
   });
 
-  res.json({ payments: hydrated.reverse() });
+  res.json({ payments: hydrated });
 });
 
 app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any, res) => {
@@ -1113,43 +1064,44 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
   }
 
   // SECURITY: Prevent manual payments by non-admins. 
-  // If no requestId is provided, it's a manual payment.
   if (!requestId && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Manual payments can only be created by administrators. Please submit a request first.' });
   }
 
-  const db = readDb();
+  const tenantDb = await getTenantDb(req.user.companyName);
   
   // 1. Balance Validation
-  const currentFund = db.officeFunds[0] || { id: 'fund_main', balance: 0, updatedAt: '' };
+  const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
+  const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
+  
   if (paymentStatus === 'Paid' && currentFund.balance < Number(amount)) {
     return res.status(400).json({ error: 'Insufficient office balance for this payment.' });
   }
 
   // 2. Perform Payment and Update Balance
-  const newPayment: Payment = {
+  const newPayment = {
     id: 'pay_' + Date.now(),
     projectId,
     taskId,
-    payeeType: payeeType as PayeeType,
+    payeeType,
     payeeName,
     amount: Number(amount),
     paymentDate,
     paymentMethod,
-    paymentStatus: paymentStatus as PaymentStatus,
+    paymentStatus,
     notes
   };
 
-  db.payments.push(newPayment);
+  await tenantDb.collection('payments').insertOne(newPayment);
 
   // If Paid, deduct from Office Balance
   if (paymentStatus === 'Paid') {
     currentFund.balance -= Number(amount);
     currentFund.updatedAt = new Date().toISOString();
-    db.officeFunds[0] = currentFund;
+    await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
 
     // Add Transaction Record
-    db.officeTransactions.push({
+    await tenantDb.collection('officeTransactions').insertOne({
         id: 'tx_' + Date.now(),
         type: 'Cash Out',
         amount: Number(amount),
@@ -1161,20 +1113,22 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
 
   // 3. Update Request Status if linked
   if (requestId) {
-      const reqIdx = db.paymentRequests.findIndex(r => r.id === requestId);
-      if (reqIdx !== -1) {
-          const pr = db.paymentRequests[reqIdx];
-          pr.status = paymentStatus === 'Paid' ? 'Paid' : 'Partially Paid';
+      const pr = await tenantDb.collection('paymentRequests').findOne({ id: requestId });
+      if (pr) {
+          await tenantDb.collection('paymentRequests').updateOne(
+              { id: requestId },
+              { $set: { status: paymentStatus === 'Paid' ? 'Paid' : 'Partially Paid' } }
+          );
           
           // Auto-create Expense
-          const categoryMap: Record<string, ExpenseCategory> = {
+          const categoryMap: Record<string, string> = {
             'Worker': 'Labour',
             'Vendor': 'Material',
             'Transportation': 'Transport',
             'Other': 'Other'
           };
           
-           db.expenses.push({
+           await tenantDb.collection('expenses').insertOne({
              id: 'exp_' + Date.now(),
              projectId: pr.projectId,
              taskId: pr.taskId,
@@ -1193,7 +1147,7 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
   }
 
   // 4. Audit Trail
-  db.auditLogs.push({
+  await tenantDb.collection('auditLogs').insertOne({
       id: 'audit_' + Date.now(),
       action: 'Create',
       entity: 'Payment',
@@ -1203,61 +1157,51 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
       details: `Processed payment of ${amount} to ${payeeName}`
   });
 
-  writeDb(db);
   res.status(201).json(newPayment);
 });
 
-app.put('/api/payments/:id', requireAuth, requireAdminOrAccountant, (req, res) => {
+app.put('/api/payments/:id', requireAuth, requireAdminOrAccountant, async (req: any, res) => {
   const { payeeType, payeeName, amount, paymentDate, paymentMethod, paymentStatus, notes } = req.body;
   if (!payeeType || !payeeName || amount === undefined || !paymentDate || !paymentMethod || !paymentStatus) {
     return res.status(400).json({ error: 'All core fields are required' });
   }
 
-  const db = readDb();
-  const payIdx = db.payments.findIndex(p => p.id === req.params.id);
-  if (payIdx === -1) {
-    return res.status(404).json({ error: 'Payment not found' });
-  }
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const result = await tenantDb.collection('payments').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { payeeType, payeeName, amount: Number(amount), paymentDate, paymentMethod, paymentStatus, notes } },
+      { returnDocument: 'after' }
+  );
 
-  db.payments[payIdx] = {
-    ...db.payments[payIdx],
-    payeeType: payeeType as PayeeType,
-    payeeName,
-    amount: Number(amount),
-    paymentDate,
-    paymentMethod,
-    paymentStatus: paymentStatus as PaymentStatus,
-    notes
-  };
-
-  writeDb(db);
-  res.json(db.payments[payIdx]);
+  if (!result) return res.status(404).json({ error: 'Payment not found' });
+  res.json(result);
 });
 
-app.delete('/api/payments/:id', requireAuth, (req, res) => {
-  const db = readDb();
-  const payIdx = db.payments.findIndex(p => p.id === req.params.id);
-  if (payIdx === -1) {
-    return res.status(404).json({ error: 'Payment not found' });
-  }
-  db.payments.splice(payIdx, 1);
-  writeDb(db);
+app.delete('/api/payments/:id', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const result = await tenantDb.collection('payments').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: 'Payment not found' });
+  
   res.json({ success: true, message: 'Payment deleted' });
 });
 
 // 8. Accountant Module Routes
-app.get('/api/office/funds', requireAuth, (req, res) => {
-    const db = readDb();
-    res.json({ officeFunds: db.officeFunds, officeTransactions: db.officeTransactions });
+app.get('/api/office/funds', requireAuth, async (req: any, res) => {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    const officeFunds = await tenantDb.collection('officeFunds').find({}).toArray();
+    const officeTransactions = await tenantDb.collection('officeTransactions').find({}).sort({ _id: -1 }).toArray();
+    res.json({ officeFunds, officeTransactions });
 });
 
-app.post('/api/office/funds', requireAuth, requireAdminOrAccountant, (req: any, res) => {
+app.post('/api/office/funds', requireAuth, requireAdminOrAccountant, async (req: any, res) => {
     const { type, amount, description, date, projectId, source, paymentMethod, reference } = req.body;
-    const db = readDb();
-    const newTransaction: OfficeTransaction = {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    
+    const newTransaction = {
         id: 'tx_' + Date.now(),
         type,
-        amount,
+        amount: Number(amount),
         description,
         date: date || new Date().toISOString(),
         createdBy: req.user.userId,
@@ -1265,17 +1209,20 @@ app.post('/api/office/funds', requireAuth, requireAdminOrAccountant, (req: any, 
         paymentMethod,
         reference
     };
-    db.officeTransactions.push(newTransaction);
+    await tenantDb.collection('officeTransactions').insertOne(newTransaction);
     
     // Update balance
-    const currentFund = db.officeFunds[0] || { id: 'fund_main', balance: 0, updatedAt: '' };
+    let currentFund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
+    if (!currentFund) currentFund = { id: 'fund_main', balance: 0, updatedAt: '' };
+    
     if (type === 'Cash In') currentFund.balance += Number(amount);
     else currentFund.balance -= Number(amount);
     currentFund.updatedAt = new Date().toISOString();
-    db.officeFunds[0] = currentFund;
+    
+    await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
     
     // Log Audit
-    db.auditLogs.push({
+    await tenantDb.collection('auditLogs').insertOne({
         id: 'audit_' + Date.now(),
         action: 'Transaction',
         entity: 'OfficeFund',
@@ -1285,26 +1232,23 @@ app.post('/api/office/funds', requireAuth, requireAdminOrAccountant, (req: any, 
         details: `${type} of ${amount} from ${source || 'unknown'} for project ${projectId || 'General'}`
     });
     
-    writeDb(db);
     res.status(201).json(newTransaction);
 });
 
-app.get('/api/payment-requests', requireAuth, (req, res) => {
-    const db = loadDbWithSync();
-    const paymentRequests = [...db.paymentRequests].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+app.get('/api/payment-requests', requireAuth, async (req: any, res) => {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    const paymentRequests = await tenantDb.collection('paymentRequests').find({}).sort({ createdAt: -1 }).toArray();
     res.json({ paymentRequests });
 });
 
-app.post('/api/payment-requests', requireAuth, (req: any, res) => {
+app.post('/api/payment-requests', requireAuth, async (req: any, res) => {
     const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
 
-    const db = readDb();
-    const newRequest: PaymentRequest = {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    const newRequest = {
         id: 'pr_' + Date.now(),
         projectId,
         taskId,
@@ -1322,98 +1266,94 @@ app.post('/api/payment-requests', requireAuth, (req: any, res) => {
         createdBy: req.user.userId,
         createdAt: new Date().toISOString()
     };
-    db.paymentRequests.push(newRequest);
-    writeDb(db);
+    await tenantDb.collection('paymentRequests').insertOne(newRequest);
     res.status(201).json(newRequest);
 });
 
-app.put('/api/payment-requests/:id', requireAuth, (req, res) => {
+app.put('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
     const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
 
-    const db = readDb();
-    const idx = db.paymentRequests.findIndex(r => r.id === req.params.id);
-    if (idx === -1) {
-        return res.status(404).json({ error: 'Payment request not found' });
-    }
+    const tenantDb = await getTenantDb(req.user.companyName);
+    
+    const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
+    if (!existing) return res.status(404).json({ error: 'Payment request not found' });
+    if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be edited' });
 
-    const existing = db.paymentRequests[idx];
-    if (existing.status !== 'Pending') {
-        return res.status(400).json({ error: 'Only pending payment requests can be edited' });
-    }
-
-    db.paymentRequests[idx] = {
-        ...existing,
-        projectId,
-        taskId,
-        payeeName: String(payeeName).trim(),
-        category,
-        amount: Number(amount),
-        description: description || '',
-        fromLocation: fromLocation || '',
-        toLocation: toLocation || '',
-        dueDate,
-        priority: priority || existing.priority || 'Medium',
-        paymentMethod: paymentMethod ?? existing.paymentMethod,
-        billImage: billImage !== undefined ? billImage : existing.billImage,
-    };
-
-    writeDb(db);
-    res.json(db.paymentRequests[idx]);
+    const result = await tenantDb.collection('paymentRequests').findOneAndUpdate(
+        { id: req.params.id },
+        { $set: { 
+            projectId,
+            taskId,
+            payeeName: String(payeeName).trim(),
+            category,
+            amount: Number(amount),
+            description: description || '',
+            fromLocation: fromLocation || '',
+            toLocation: toLocation || '',
+            dueDate,
+            priority: priority || existing.priority || 'Medium',
+            paymentMethod: paymentMethod ?? existing.paymentMethod,
+            billImage: billImage !== undefined ? billImage : existing.billImage,
+        } },
+        { returnDocument: 'after' }
+    );
+    res.json(result);
 });
 
-app.delete('/api/payment-requests/:id', requireAuth, (req, res) => {
-    const db = readDb();
-    const idx = db.paymentRequests.findIndex(r => r.id === req.params.id);
-    if (idx === -1) {
-        return res.status(404).json({ error: 'Payment request not found' });
-    }
+app.delete('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    
+    const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
+    if (!existing) return res.status(404).json({ error: 'Payment request not found' });
+    if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
 
-    const existing = db.paymentRequests[idx];
-    if (existing.status !== 'Pending') {
-        return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
-    }
-
-    db.paymentRequests.splice(idx, 1);
-    writeDb(db);
+    await tenantDb.collection('paymentRequests').deleteOne({ id: req.params.id });
     res.json({ success: true, message: 'Payment request deleted' });
 });
 
 // 7. General ERP reports and stats endpoint
-app.get('/api/reports/summary', requireAuth, (req, res) => {
-  const db = readDb();
+app.get('/api/reports/summary', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
 
   // Calculate aggregate metrics across everything
-  const { taskToLabourCost, taskToExpensesCost } = calculateMetrics();
+  const { taskToLabourCost, taskToExpensesCost } = await calculateMetrics(req.user.companyName);
+  
+  const projects = await tenantDb.collection('projects').find({}).toArray();
+  const tasks = await tenantDb.collection('tasks').find({}).toArray();
+  const expenses = await tenantDb.collection('expenses').find({}).toArray();
+  const attendance = await tenantDb.collection('attendance').find({}).toArray();
+  const payments = await tenantDb.collection('payments').find({}).toArray();
+  const officeFunds = await tenantDb.collection('officeFunds').find({}).toArray();
 
-  const totalProjects = db.projects.length;
-  const totalTasks = db.tasks.length;
-  const activeTasks = db.tasks.filter(t => t.status === 'In Progress').length;
-  const completedTasks = db.tasks.filter(t => t.status === 'Completed').length;
+  const totalProjects = projects.length;
+  const totalTasks = tasks.length;
+  const activeTasks = tasks.filter((t: any) => t.status === 'In Progress').length;
+  const completedTasks = tasks.filter((t: any) => t.status === 'Completed').length;
 
-  const totalAssignedBudget = db.tasks.reduce((sum, t) => sum + t.assignedBudget, 0);
+  const totalAssignedBudget = tasks.reduce((sum: number, t: any) => sum + t.assignedBudget, 0);
 
   // Direct materials/equipment/etc
-  const directExpensesSum = db.expenses.reduce((sum, e) => sum + e.amount, 0);
+  const directExpensesSum = expenses.reduce((sum: number, e: any) => sum + e.amount, 0);
   // Wages attendance sum
-  const labourWagesSum = db.attendance.reduce((sum, att) => {
+  const labourWagesSum = attendance.reduce((sum: number, att: any) => {
     let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
     return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
   }, 0);
 
   const totalExpenses = directExpensesSum + labourWagesSum;
 
-  const totalPaidAmount = db.payments.filter(p => p.paymentStatus === 'Paid').reduce((sum, p) => sum + p.amount, 0);
-  const pendingPayments = db.payments.filter(p => p.paymentStatus === 'Pending' || p.paymentStatus === 'Partial').reduce((sum, p) => sum + p.amount, 0);
+  const totalPaidAmount = payments.filter((p: any) => p.paymentStatus === 'Paid').reduce((sum: number, p: any) => sum + p.amount, 0);
+  const pendingPayments = payments.filter((p: any) => p.paymentStatus === 'Pending' || p.paymentStatus === 'Partial').reduce((sum: number, p: any) => sum + p.amount, 0);
 
   const overallProfitLoss = totalAssignedBudget - totalExpenses;
 
   // Task level details
-  const taskSummary = db.tasks.map(t => {
-    const dExp = db.expenses.filter(e => e.taskId === t.id).reduce((sum, e) => sum + e.amount, 0);
-    const lExp = db.attendance.filter(a => a.taskId === t.id).reduce((sum, att) => {
+  const taskSummary = tasks.map((t: any) => {
+    const dExp = expenses.filter((e: any) => e.taskId === t.id).reduce((sum: number, e: any) => sum + e.amount, 0);
+    const lExp = attendance.filter((a: any) => a.taskId === t.id).reduce((sum: number, att: any) => {
       let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
       return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
     }, 0);
@@ -1422,7 +1362,7 @@ app.get('/api/reports/summary', requireAuth, (req, res) => {
       taskId: t.id,
       taskName: t.taskName,
       projectId: t.projectId,
-      projectName: db.projects.find(p => p.id === t.projectId)?.projectName || 'Unknown',
+      projectName: projects.find((p: any) => p.id === t.projectId)?.projectName || 'Unknown',
       budget: t.assignedBudget,
       expenses: totalExp,
       remaining: t.assignedBudget - totalExp,
@@ -1432,28 +1372,28 @@ app.get('/api/reports/summary', requireAuth, (req, res) => {
   });
 
   // Recent expenses hydrated
-  const recentExpenses = db.expenses.slice(-5).reverse().map(e => ({
+  const recentExpenses = expenses.slice(-5).reverse().map((e: any) => ({
     ...e,
-    projectName: db.projects.find(p => p.id === e.projectId)?.projectName || 'Unknown',
-    taskName: db.tasks.find(t => t.id === e.taskId)?.taskName || 'Unknown'
+    projectName: projects.find((p: any) => p.id === e.projectId)?.projectName || 'Unknown',
+    taskName: tasks.find((t: any) => t.id === e.taskId)?.taskName || 'Unknown'
   }));
 
   // Recent payments
-  const recentPayments = db.payments.slice(-5).reverse().map(p => ({
+  const recentPayments = payments.slice(-5).reverse().map((p: any) => ({
     ...p,
-    projectName: db.projects.find(pr => pr.id === p.projectId)?.projectName || 'Unknown',
-    taskName: db.tasks.find(t => t.id === p.taskId)?.taskName || 'Unknown'
+    projectName: projects.find((pr: any) => pr.id === p.projectId)?.projectName || 'Unknown',
+    taskName: tasks.find((t: any) => t.id === p.taskId)?.taskName || 'Unknown'
   }));
 
   // Today's attendance summary
   const todayStr = new Date().toISOString().split('T')[0];
-  const todaysAttendanceCount = db.attendance.filter(a => a.date === todayStr).length;
-  const todaysLabourCost = db.attendance.filter(a => a.date === todayStr).reduce((sum, att) => {
+  const todaysAttendanceCount = attendance.filter((a: any) => a.date === todayStr).length;
+  const todaysLabourCost = attendance.filter((a: any) => a.date === todayStr).reduce((sum: number, att: any) => {
     let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
     return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
   }, 0);
 
-  const officeBalance = db.officeFunds[0]?.balance || 0;
+  const officeBalance = officeFunds[0]?.balance || 0;
 
   res.json({
     stats: {

@@ -169,5 +169,11 @@ export const api = {
   deletePaymentRequest: (id: string) => request(`/payment-requests/${id}`, { method: 'DELETE' }),
 
   // Reports Summary
-  getReportSummary: () => request('/reports/summary')
+  getReportSummary: () => request('/reports/summary'),
+  
+  // Superadmin
+  getSuperadminCompanies: () => request('/superadmin/companies'),
+  createCompany: (data: any) => request('/superadmin/companies', { method: 'POST', body: JSON.stringify(data) }),
+  updateCompanyStatus: (id: string, status: string) => request(`/superadmin/companies/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  extendSubscription: (id: string, months: number) => request(`/superadmin/companies/${id}/subscription`, { method: 'PATCH', body: JSON.stringify({ months }) }),
 };

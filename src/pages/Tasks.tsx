@@ -419,22 +419,24 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                       )}
 
                       {/* Cost Details bar */}
-                      <div className="grid grid-cols-3 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-semibold border border-zinc-100">
-                        <div>
-                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
-                          <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
+                      {userRole !== 'manager' && (
+                        <div className="grid grid-cols-3 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-semibold border border-zinc-100">
+                          <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
+                            <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Actual Costs</span>
+                            <span className="text-zinc-900 block">{formatCur(totalExpenses)}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
+                            <span className={`block ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
+                              {formatCur(t.assignedBudget - totalExpenses)}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Actual Costs</span>
-                          <span className="text-zinc-900 block">{formatCur(totalExpenses)}</span>
-                        </div>
-                        <div>
-                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
-                          <span className={`block ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
-                            {formatCur(t.assignedBudget - totalExpenses)}
-                          </span>
-                        </div>
-                      </div>
+                      )}
 
                       {/* Progress controller - directly slidable slider for instant progress adjustment */}
                       <div className="space-y-1.5">
@@ -510,39 +512,43 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Scoped Budget</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.assignedBudget)}</span>
+            {userRole !== 'manager' && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Scoped Budget</span>
+                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.assignedBudget)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Materials & Tools</span>
+                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.directExpenses || 0)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Site Attendance Cost</span>
+                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.labourCost || 0)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments</span>
+                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.paymentsPaid || 0)}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Materials & Tools</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.directExpenses || 0)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Site Attendance Cost</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.labourCost || 0)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.paymentsPaid || 0)}</span>
-              </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-3 bg-zinc-900 text-white rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Task Profit / Loss</span>
-                  <span className="text-sm sm:text-base font-bold">
-                    {formatCur(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0)))}
+              {userRole !== 'manager' && (
+                <div className="p-3 bg-zinc-900 text-white rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Task Profit / Loss</span>
+                    <span className="text-sm sm:text-base font-bold">
+                      {formatCur(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0)))}
+                    </span>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold text-zinc-900 ${
+                    (selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0))) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
+                  }`}>
+                    {(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0))) >= 0 ? 'Profitable' : 'Deficit'}
                   </span>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold text-zinc-900 ${
-                  (selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0))) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
-                }`}>
-                  {(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0))) >= 0 ? 'Profitable' : 'Deficit'}
-                </span>
-              </div>
+              )}
 
               <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-xl flex items-center justify-between">
                 <div>

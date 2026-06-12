@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Building2, Briefcase, FileText, Users, DollarSign,
-  Receipt, BarChart3, LogOut, ShieldAlert, ChevronDown, Landmark
+  Receipt, BarChart3, LogOut, ShieldAlert, ChevronDown, Landmark,
+  ShieldCheck
 } from 'lucide-react';
+import SuperadminDashboard from './pages/SuperadminDashboard';
 import { getAuthToken, getCurrentUser, setAuthToken, setCurrentUser as setClientUser } from './api/client';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -46,9 +48,12 @@ export default function App() {
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);
+    const isSuper = user.id === 'superadmin';
     // Only set default tab if no tab is stored, otherwise keep the one from localStorage
-    if (!localStorage.getItem('erp_activeTab')) {
-      if (user.role === 'accountant') {
+    if (!localStorage.getItem('erp_activeTab') || isSuper) {
+      if (isSuper) {
+        setActiveTab('superadmin');
+      } else if (user.role === 'accountant') {
         setActiveTab('dashboard');
       } else if (user.role === 'manager') {
         setActiveTab('projects');
@@ -81,6 +86,7 @@ export default function App() {
   }, []);
 
   const userRole = currentUser?.role || 'manager';
+  const isSuperAdmin = currentUser?.userId === 'superadmin';
 
   const projectsComponent = useMemo(() => (
     <Projects
@@ -89,6 +95,10 @@ export default function App() {
       initialParams={tabParams}
     />
   ), [userRole, tabParams, navigateTo]);
+  
+  const superadminComponent = useMemo(() => (
+    <SuperadminDashboard />
+  ), []);
 
   const dashboardComponent = useMemo(() => (
     <Dashboard onNavigate={navigateTo} userRole={userRole} />
@@ -106,7 +116,9 @@ export default function App() {
   const displayName = userRole === 'admin' ? 'Admin' : (currentUser.name || 'User');
 
   const navItems = [
-    ...(userRole === 'admin' ? [
+    ...(isSuperAdmin ? [
+      { id: 'superadmin', label: 'System Admin', icon: ShieldCheck },
+    ] : userRole === 'admin' ? [
       { id: 'dashboard', label: 'Overview', icon: BarChart3 },
       { id: 'projects', label: 'Projects', icon: Building2 },
       { id: 'attendance', label: 'Crew', icon: Users },
@@ -124,6 +136,7 @@ export default function App() {
   ];
 
   const renderContent = () => {
+    if (isSuperAdmin) return superadminComponent;
     switch (activeTab) {
       case 'dashboard':
         if (userRole === 'admin') return dashboardComponent;

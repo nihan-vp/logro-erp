@@ -25,7 +25,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     try {
       setError(null);
       setLoading(true);
-      const res = await api.login({ email, password });
+      // Defaulting companyName as the UI field has been removed
+      const res = await api.login({ email, password, companyName: 'DefaultCompany' });
       setAuthToken(res.token);
       setCurrentUser(res.user);
       onLoginSuccess(res.user);

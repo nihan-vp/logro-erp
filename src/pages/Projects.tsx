@@ -740,6 +740,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                         </div>
                       </div>
 
+                      {userRole !== 'manager' && (
                       <div className="grid grid-cols-2 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[11px] font-bold border border-zinc-100">
                         <div>
                           <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Project Budget</span>
@@ -750,15 +751,18 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                           <span className="text-zinc-900">{formatCur(p.totalExpenses || 0)}</span>
                         </div>
                       </div>
+                    )}
                     </div>
 
                     <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-100 text-xs">
-                      <div className="flex items-center gap-1">
-                        <span className="text-zinc-400 font-semibold">Net Profit/Loss: </span>
-                        <span className={`font-bold ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
-                          {formatCur(profit)}
-                        </span>
-                      </div>
+                      {userRole !== 'manager' && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-zinc-400 font-semibold">Net Profit/Loss: </span>
+                          <span className={`font-bold ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
+                            {formatCur(profit)}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-2">
                         <button
@@ -838,31 +842,35 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             </div>
 
             {/* Micro financials overview ledger */}
-            <div className="grid grid-cols-2 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Budgets</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalBudget || 0)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Outflow spent</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalExpenses || 0)}</span>
-              </div>
-            </div>
+            {userRole !== 'manager' && (
+              <>
+                <div className="grid grid-cols-2 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Budgets</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalBudget || 0)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Outflow spent</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalExpenses || 0)}</span>
+                  </div>
+                </div>
 
-            <div className="flex items-center justify-between text-xs bg-zinc-900 text-white p-3.5 rounded-xl">
-              <div>
-                <span className="block text-[9px] text-zinc-400 font-bold uppercase">Combined Performance Margin</span>
-                <span className={`text-sm sm:text-base font-extrabold ${selectedProject.profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {formatCur(selectedProject.profitLoss || 0)}
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="block text-[9px] text-zinc-400 font-bold uppercase">Operating Profit</span>
-                <span className="text-sm font-bold text-zinc-100">
-                  {selectedProject.profitPercentage ? selectedProject.profitPercentage.toFixed(1) : '0.0'}%
-                </span>
-              </div>
-            </div>
+                <div className="flex items-center justify-between text-xs bg-zinc-900 text-white p-3.5 rounded-xl">
+                  <div>
+                    <span className="block text-[9px] text-zinc-400 font-bold uppercase">Combined Performance Margin</span>
+                    <span className={`text-sm sm:text-base font-extrabold ${selectedProject.profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {formatCur(selectedProject.profitLoss || 0)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-[9px] text-zinc-400 font-bold uppercase">Operating Profit</span>
+                    <span className="text-sm font-bold text-zinc-100">
+                      {selectedProject.profitPercentage ? selectedProject.profitPercentage.toFixed(1) : '0.0'}%
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
 
             {selectedProject.notes && (
               <div className="text-xs bg-zinc-50 border border-zinc-100 rounded-xl p-3 text-zinc-650">
@@ -882,14 +890,16 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               <Briefcase className="w-4 h-4" />
               <span>Tasks ({projectTasks.length})</span>
             </button>
-            <button
-              onClick={() => setViewTab('expenses')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${viewTab === 'expenses' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
-                }`}
-            >
-              <Receipt className="w-4 h-4" />
-              <span>Expenses ({projectExpenses.length})</span>
-            </button>
+            {userRole !== 'manager' && (
+              <button
+                onClick={() => setViewTab('expenses')}
+                className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${viewTab === 'expenses' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
+                  }`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>Expenses ({projectExpenses.length})</span>
+              </button>
+            )}
           </div>
 
           {/* TAB 1: INTEGRATED CHILD TASKS LIST */}
@@ -982,39 +992,41 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                             </p>
                           )}
 
-                          {isOver && (
+                          {userRole !== 'manager' && isOver && (
                             <div className="bg-red-50 text-red-700 text-[10px] p-2 rounded-lg flex items-center gap-1.5 font-bold">
                               <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
                               <span>Overbudget Spent {formatCur(taskCommitted - t.assignedBudget)} extra.</span>
                             </div>
                           )}
 
-                          {isNearing && (
+                          {userRole !== 'manager' && isNearing && (
                             <div className="bg-amber-50 text-amber-800 text-[10px] p-2 rounded-lg flex items-center gap-1.5 font-bold">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                               <span>Ceiling reached ({(taskCommitted / t.assignedBudget * 100).toFixed(0)}% committed)</span>
                             </div>
                           )}
 
-                          <div className="grid grid-cols-3 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-bold border border-zinc-100">
-                            <div>
-                              <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
-                              <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
+                          {userRole !== 'manager' && (
+                            <div className="grid grid-cols-3 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-bold border border-zinc-100">
+                              <div>
+                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
+                                <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
+                              </div>
+                              <div>
+                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Actual Cost</span>
+                                <span className="text-zinc-900 block">{formatCur(taskCommitted)}</span>
+                                {(t.pendingExpenses || 0) > 0 && (
+                                  <span className="text-[9px] text-amber-600 block">{formatCur(t.pendingExpenses)} pending</span>
+                                )}
+                              </div>
+                              <div>
+                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
+                                <span className={`block ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                  {formatCur(t.assignedBudget - taskCommitted)}
+                                </span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Actual Cost</span>
-                              <span className="text-zinc-900 block">{formatCur(taskCommitted)}</span>
-                              {(t.pendingExpenses || 0) > 0 && (
-                                <span className="text-[9px] text-amber-600 block">{formatCur(t.pendingExpenses)} pending</span>
-                              )}
-                            </div>
-                            <div>
-                              <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
-                              <span className={`block ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                {formatCur(t.assignedBudget - taskCommitted)}
-                              </span>
-                            </div>
-                          </div>
+                          )}
 
                           {/* Instant Slider */}
                           <div className="space-y-1.5">
@@ -1131,15 +1143,17 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               </div>
 
               {/* Total Aggregate box */}
-              <div className="bg-zinc-900 text-white px-4 py-3 rounded-2xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Filtered Total Cost</span>
-                  <span className="text-lg font-black">{formatCur(totalFilteredExpense)}</span>
+              {userRole !== 'manager' && (
+                <div className="bg-zinc-900 text-white px-4 py-3 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Filtered Total Cost</span>
+                    <span className="text-lg font-black">{formatCur(totalFilteredExpense)}</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 font-bold bg-white/10 px-2 py-0.5 rounded">
+                    {filteredExpensesList.length} logs
+                  </span>
                 </div>
-                <span className="text-[10px] text-zinc-400 font-bold bg-white/10 px-2 py-0.5 rounded">
-                  {filteredExpensesList.length} logs
-                </span>
-              </div>
+              )}
 
               {filteredExpensesList.length === 0 ? (
                 <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
@@ -1251,34 +1265,51 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             </div>
 
             {/* Quick stats specific to this active task */}
-            <div className="grid grid-cols-3 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Budget</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.assignedBudget)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Overheads</span>
-                <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.totalExpenses || 0)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Difference</span>
-                <span className={`text-base font-bold block ${(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                  {formatCur(activeTask.assignedBudget - (activeTask.totalExpenses || 0))}
-                </span>
-              </div>
-            </div>
+            {userRole !== 'manager' && (
+              <>
+                <div className="grid grid-cols-3 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Budget</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.assignedBudget)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Overheads</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.totalExpenses || 0)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Difference</span>
+                    <span className={`text-base font-bold block ${(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {formatCur(activeTask.assignedBudget - (activeTask.totalExpenses || 0))}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-zinc-950 text-white rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="block text-[8.5px] text-zinc-400 font-bold uppercase tracking-wider">Sub-Contract Margin</span>
+                    <span className="text-sm font-bold block">{formatCur(activeTask.assignedBudget - (activeTask.totalExpenses || 0))}</span>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold text-zinc-900 ${(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
+                    }`}>
+                    {(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'Profitable' : 'Deficit'}
+                  </span>
+                </div>
+              </>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div className="p-3 bg-zinc-950 text-white rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="block text-[8.5px] text-zinc-400 font-bold uppercase tracking-wider">Sub-Contract Margin</span>
-                  <span className="text-sm font-bold block">{formatCur(activeTask.assignedBudget - (activeTask.totalExpenses || 0))}</span>
+              {userRole !== 'manager' && (
+                <div className="p-3 bg-zinc-950 text-white rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="block text-[8.5px] text-zinc-400 font-bold uppercase tracking-wider">Sub-Contract Margin</span>
+                    <span className="text-sm font-bold block">{formatCur(activeTask.assignedBudget - (activeTask.totalExpenses || 0))}</span>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold text-zinc-900 ${(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
+                    }`}>
+                    {(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'Profitable' : 'Deficit'}
+                  </span>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold text-zinc-900 ${(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
-                  }`}>
-                  {(activeTask.assignedBudget - (activeTask.totalExpenses || 0)) >= 0 ? 'Profitable' : 'Deficit'}
-                </span>
-              </div>
+              )}
 
               <div className="p-3 bg-zinc-100 border border-zinc-200/40 rounded-xl flex items-center justify-between">
                 <div>
@@ -1292,61 +1323,73 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             </div>
 
             {/* NESTED MANAGEMENT INSIDE SPECIFIED TASK */}
-            <div className="space-y-4 border-t border-zinc-150 pt-4">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
-                    <Receipt className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
-                  </span>
-                  {userRole === 'admin' && (
-                    <button
-                      onClick={() => handleOpenCreateExpense(activeTask.id)}
-                      className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
-                    >
-                      <Plus className="w-3 h-3" /> Expense
-                    </button>
-                  )}
+            {userRole !== 'manager' && (
+              <div className="space-y-4 border-t border-zinc-150 pt-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide flex items-center gap-1">
+                      <Receipt className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Expenses ({projectExpenses.filter(e => e.taskId === activeTask.id).length})</span>
+                    </span>
+                    {userRole === 'admin' && (
+                      <button
+                        onClick={() => handleOpenCreateExpense(activeTask.id)}
+                        className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-[9.5px] text-zinc-700 font-bold flex items-center gap-0.5 transition"
+                      >
+                        <Plus className="w-3 h-3" /> Expense
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {projectExpenses.filter(e => e.taskId === activeTask.id).length === 0 ? (
+                      <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No expenses recorded for this task scope.</p>
+                    ) : (
+                      projectExpenses.filter(e => e.taskId === activeTask.id).map(e => (
+                        <div key={e.id} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="font-bold text-zinc-800 block">{e.paidTo}</span>
+                            <span className="text-[9.5px] text-zinc-400">{e.category} • {e.date}</span>
+                            {e.isPendingRequest && (
+                              <span className="text-[8.5px] font-bold text-amber-700 uppercase">Pending office fund</span>
+                            )}
+                          </div>
+                          <div className="text-right flex items-center gap-1.5">
+                            <span className="font-black text-zinc-950">{formatCur(e.amount)}</span>
+                            {e.isPendingRequest && userRole === 'admin' && (
+                              <button
+                                onClick={() => handleOpenEditExpense(e)}
+                                className="p-0.5 hover:bg-zinc-200 rounded"
+                                title="Edit request"
+                              >
+                                <Edit2 className="w-3 h-3 text-zinc-500" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {projectExpenses.filter(e => e.taskId === activeTask.id).length === 0 ? (
-                    <p className="text-[10px] text-zinc-400 italic text-center py-4 select-none">No expenses recorded for this task scope.</p>
-                  ) : (
-                    projectExpenses.filter(e => e.taskId === activeTask.id).map(e => (
-                      <div key={e.id} className="p-2 bg-zinc-50 border rounded-lg flex items-center justify-between text-[11px]">
-                        <div>
-                          <span className="font-bold text-zinc-800 block">{e.paidTo}</span>
-                          <span className="text-[9.5px] text-zinc-400">{e.category} • {e.date}</span>
-                          {e.isPendingRequest && (
-                            <span className="text-[8.5px] font-bold text-amber-700 uppercase">Pending office fund</span>
-                          )}
-                        </div>
-                        <div className="text-right flex items-center gap-1.5">
-                          <span className="font-black text-zinc-950">{formatCur(e.amount)}</span>
-                          {e.isPendingRequest && userRole === 'admin' && (
-                            <button
-                              onClick={() => handleOpenEditExpense(e)}
-                              className="p-0.5 hover:bg-zinc-200 rounded"
-                              title="Edit request"
-                            >
-                              <Edit2 className="w-3 h-3 text-zinc-500" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <TaskAttendanceSection
+                  projectId={selectedProject.id}
+                  taskId={activeTask.id}
+                  assignedStaff={activeTask.assignedStaff}
+                  onSaved={() => selectedProject && reloadProjectData(selectedProject.id)}
+                />
               </div>
-
-              <TaskAttendanceSection
-                projectId={selectedProject.id}
-                taskId={activeTask.id}
-                assignedStaff={activeTask.assignedStaff}
-                onSaved={() => selectedProject && reloadProjectData(selectedProject.id)}
-              />
-            </div>
+            )}
+            {userRole === 'manager' && (
+              <div className="border-t border-zinc-150 pt-4">
+                <TaskAttendanceSection
+                  projectId={selectedProject.id}
+                  taskId={activeTask.id}
+                  assignedStaff={activeTask.assignedStaff}
+                  onSaved={() => selectedProject && reloadProjectData(selectedProject.id)}
+                />
+              </div>
+            )}
 
                     <div className="flex justify-end gap-2 border-t pt-4">
                       {userRole === 'admin' && (
