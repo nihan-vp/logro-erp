@@ -159,11 +159,69 @@ export default function AttendancePage() {
   const [isPayWagesOpen, setIsPayWagesOpen] = useState(false);
   const [payWagesAmount, setPayWagesAmount] = useState<string>('');
   const [isSubmittingPayWages, setIsSubmittingPayWages] = useState(false);
+  const [showSidebarCalendars, setShowSidebarCalendars] = useState(true);
 
   useEffect(() => {
     fetchCrew();
     fetchVendors();
   }, []);
+
+  
+  const renderDottedCalendar = (workerName: string, compact: boolean = false) => {
+    let days: Date[] = [];
+    if (overviewFilterType === 'weekly') {
+      const curr = new Date();
+      const dayOffset = curr.getDay();
+      const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
+      const start = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        days.push(d);
+      }
+    } else {
+      const daysInMonth = new Date(selectedYearVal, selectedMonthVal + 1, 0).getDate();
+      for (let i = 1; i <= daysInMonth; i++) {
+        days.push(new Date(selectedYearVal, selectedMonthVal, i));
+      }
+    }
+
+    return (
+      <div className={`flex flex-wrap gap-1 ${compact ? 'justify-end' : 'justify-start'}`}>
+        {days.map((d, i) => {
+          const dateStr = d.toISOString().split('T')[0];
+          const log = attendanceLogs.find(a => a.workerName === workerName && a.date === dateStr);
+          
+          let colorClass = 'bg-zinc-100 border border-zinc-200';
+          if (log) {
+            if (log.status === 'Present') colorClass = 'bg-emerald-500 shadow-sm';
+            else if (log.status === 'Half Day') colorClass = 'bg-blue-500 shadow-sm';
+            else if (log.status === 'Absent') colorClass = 'bg-rose-500 shadow-sm';
+          }
+
+          const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+          if (compact) {
+            return (
+              <div 
+                key={i} 
+                className={`w-2 h-2 rounded-full ${colorClass} ${isToday ? 'ring-1 ring-zinc-900 ring-offset-1' : ''}`}
+                title={`${dateStr}: ${log?.status || 'No Log'}`}
+              />
+            );
+          }
+
+          return (
+            <div 
+              key={i} 
+              className={`w-4 h-4 sm:w-5 sm:h-5 rounded-md ${colorClass} ${isToday ? 'ring-2 ring-zinc-900 ring-offset-1' : ''} transition-all hover:scale-110 cursor-help`}
+              title={`${dateStr}: ${log?.status || 'No Log'}`}
+            />
+          );
+        })}
+      </div>
+    );
+  };
 
   const fetchOverviewLogs = async () => {
     try {
@@ -1618,6 +1676,22 @@ export default function AttendancePage() {
                               </button>
                             )}
                           </div>
+                        </div>
+                                            </div>
+
+                      {/* Attendance Calendar Visualizer */}
+                      <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Attendance Calendar Visualizer</h3>
+                          <div className="flex flex-wrap items-center gap-3 text-[10px] font-semibold text-zinc-500">
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block shadow-sm" /> Present</span>
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 block shadow-sm" /> Half Day</span>
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 block shadow-sm" /> Absent</span>
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-zinc-100 block border border-zinc-200" /> No Log</span>
+                          </div>
+                        </div>
+                        <div className="border border-zinc-100 rounded-xl p-4 flex justify-center bg-zinc-50/20">
+                          {renderDottedCalendar(worker.name, false)}
                         </div>
                       </div>
 
