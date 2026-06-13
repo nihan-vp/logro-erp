@@ -18,6 +18,7 @@ import FinanceHub from './pages/FinanceHub';
 import OfflineScreen from './pages/OfflineScreen';
 import AppToasts from './components/AppToasts';
 import { useConfirm } from './context/ConfirmContext';
+import { initSocket, disconnectSocket } from './api/socket';
 
 export default function App() {
   const confirm = useConfirm();
@@ -45,6 +46,18 @@ export default function App() {
       setCurrentUser(user);
     }
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      const companyName = currentUser.companyName || 'DefaultCompany';
+      initSocket(companyName);
+    } else {
+      disconnectSocket();
+    }
+    return () => {
+      disconnectSocket();
+    };
+  }, [currentUser]);
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);

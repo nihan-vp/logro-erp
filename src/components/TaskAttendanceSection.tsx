@@ -10,7 +10,7 @@ interface WorkerAttendanceRow {
   status: AttendanceStatus;
   dailyWage: number;
   overtimeAmount: number;
-  paymentStatus: 'Paid' | 'Pending';
+  paymentStatus: 'Paid' | 'Pending' | 'Unpaid';
   recordId?: string;
 }
 
@@ -72,7 +72,7 @@ export default function TaskAttendanceSection({
           status: record?.status || 'Present',
           dailyWage: record?.dailyWage ?? crewMember?.dailyWage ?? 200,
           overtimeAmount: record?.overtimeAmount || 0,
-          paymentStatus: record?.paymentStatus || 'Pending',
+          paymentStatus: record?.paymentStatus || 'Unpaid',
           recordId: record?.id
         };
       });
@@ -186,7 +186,7 @@ export default function TaskAttendanceSection({
         status: w.status,
         dailyWage: w.dailyWage,
         overtimeAmount: w.overtimeAmount,
-        paymentStatus: 'Paid',
+        paymentStatus: 'Pending',
       });
 
       await api.createPaymentRequest({
@@ -199,12 +199,12 @@ export default function TaskAttendanceSection({
         dueDate: date,
         priority: 'Medium',
         paymentMethod: 'Bank Transfer',
-        status: 'Paid',
+        status: 'Pending',
         createdAt: new Date().toISOString()
       });
 
-      updateWorker(idx, 'paymentStatus', 'Paid');
-      notify.success(`${w.workerName} marked as paid.`);
+      updateWorker(idx, 'paymentStatus', 'Pending');
+      notify.success(`Payment request submitted for ${w.workerName}.`);
       onSaved?.();
     } catch (err: any) {
       notify.error(err?.message || 'Failed to mark payment');
@@ -319,11 +319,11 @@ export default function TaskAttendanceSection({
                       <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                         w.paymentStatus === 'Paid'
                           ? 'bg-emerald-50 text-emerald-700'
-                          : isMarked
+                          : w.paymentStatus === 'Pending'
                             ? 'bg-amber-50 text-amber-700'
                             : 'bg-zinc-100 text-zinc-500'
                       }`}>
-                        {w.paymentStatus === 'Paid' ? 'Paid' : isMarked ? 'Pending' : 'Unmarked'}
+                        {w.paymentStatus === 'Paid' ? 'Paid' : w.paymentStatus === 'Pending' ? 'Pending' : 'Unpaid'}
                       </span>
                     </td>
                     <td className="py-2 px-2 align-middle">
@@ -341,12 +341,12 @@ export default function TaskAttendanceSection({
                         <button
                           type="button"
                           onClick={() => handlePay(idx)}
-                          disabled={isBusy || w.paymentStatus === 'Paid' || !isMarked || due <= 0}
+                          disabled={isBusy || w.paymentStatus === 'Paid' || w.paymentStatus === 'Pending' || !isMarked || due <= 0}
                           className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-zinc-200 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-800 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-zinc-200 disabled:hover:text-inherit text-zinc-700 rounded-lg text-[9px] font-bold transition-colors whitespace-nowrap"
-                          title="Mark wages as paid"
+                          title={w.paymentStatus === 'Pending' ? 'Payment request is pending review' : 'Mark wages as paid'}
                         >
                           <Banknote className="w-3 h-3 shrink-0" />
-                          <span>{isBusy && actionType === 'pay' ? 'Paying...' : 'Pay'}</span>
+                          <span>{isBusy && actionType === 'pay' ? 'Paying...' : w.paymentStatus === 'Pending' ? 'Pending' : 'Pay'}</span>
                         </button>
                       </div>
                     </td>

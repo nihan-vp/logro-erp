@@ -7,6 +7,7 @@ import { api } from '../api/client';
 import { ExpenseCategory, PaymentRequest, PurchaseLineItem } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
+import { onRequestsUpdate, offRequestsUpdate } from '../api/socket';
 
 type EnrichedPaymentRequest = PaymentRequest & { projectName: string; taskName: string };
 
@@ -27,6 +28,7 @@ const getStatusStyle = (status: PaymentRequest['status']) => {
     case 'Pending': return 'bg-amber-50 text-amber-700 border-amber-200';
     case 'Partially Paid': return 'bg-blue-50 text-blue-700 border-blue-200';
     case 'Cancelled': return 'bg-zinc-100 text-zinc-500 border-zinc-200';
+    case 'Deleted': return 'bg-rose-50 text-rose-700 border-rose-200';
     default: return 'bg-zinc-50 text-zinc-600 border-zinc-200';
   }
 };
@@ -37,6 +39,7 @@ const getStatusIcon = (status: PaymentRequest['status']) => {
     case 'Pending': return Clock;
     case 'Partially Paid': return AlertCircle;
     case 'Cancelled': return XCircle;
+    case 'Deleted': return XCircle;
     default: return Clock;
   }
 };
@@ -65,6 +68,7 @@ const getStatusMessage = (status: PaymentRequest['status']) => {
     case 'Pending': return 'Submitted and awaiting accountant review.';
     case 'Partially Paid': return 'A partial payment has been processed for this request.';
     case 'Cancelled': return 'This request was cancelled and will not be processed.';
+    case 'Deleted': return 'This request was approved for deletion and the amount has been refunded to office funds.';
     default: return 'Status update pending.';
   }
 };
@@ -87,6 +91,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [projects, setProjects] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Payment Requests State
@@ -100,6 +105,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [currentPage, setCurrentPage] = useState(1);
   const [isReqFormOpen, setIsReqFormOpen] = useState(false);
   const [reqEditId, setReqEditId] = useState<string | null>(null);
+  const [isEditingPaidExpense, setIsEditingPaidExpense] = useState(false);
   const [reqPriority, setReqPriority] = useState<PaymentRequest['priority']>('Medium');
   const [selectedPaymentRequest, setSelectedPaymentRequest] = useState<EnrichedPaymentRequest | null>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -133,7 +139,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const selectedReqProjectName = projects.find(p => p.id === reqProjectId)?.projectName;
 
   const fetchInitialData = async () => {
-    setLoading(true);
+    if (!hasLoaded) setLoading(true);
     try {
       const [projectsRes, tasksRes, paymentRequestsRes, crewRes, vendorsRes] = await Promise.all([
         api.getProjects(),
@@ -153,6 +159,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       })));
       setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
       setVendorsList(vendorsRes.vendors || []);
+      setHasLoaded(true);
     } catch (err: any) {
       const message = err?.message || 'Failed to load finance data';
       setError(message);
@@ -166,6 +173,17 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     if (isActive) {
       fetchInitialData();
     }
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const handleUpdate = () => {
+      fetchInitialData();
+    };
+    onRequestsUpdate(handleUpdate);
+    return () => {
+      offRequestsUpdate(handleUpdate);
+    };
   }, [isActive]);
 
   useEffect(() => {
@@ -202,6 +220,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
 
   const resetRequestForm = () => {
     setReqEditId(null);
+    setIsEditingPaidExpense(false);
     setReqProjectId(projects[0]?.id || '');
     setReqCategory('Material');
     setReqAmount(0);
@@ -232,9 +251,13 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   };
 
   const handleOpenEditRequest = async (request: EnrichedPaymentRequest) => {
-    if (request.status !== 'Pending') {
-      notify.warning('Only pending requests can be edited.');
+    if (request.status === 'Paid') {
+      setIsEditingPaidExpense(true);
+    } else if (request.status !== 'Pending') {
+      notify.warning('Only pending requests can be edited directly.');
       return;
+    } else {
+      setIsEditingPaidExpense(false);
     }
 
     setReqEditId(request.id);
@@ -286,6 +309,36 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   };
 
   const handleDeleteRequest = async (request: EnrichedPaymentRequest) => {
+    if (request.status === 'Paid') {
+      const ok = await confirm({
+        title: 'Request deletion of paid expense?',
+        message: `Submit a request to delete and refund the paid ${request.category} expense of ${formatCur(request.amount)} for ${request.payeeName}? It will require review and approval by the accountant/admin.`,
+        confirmLabel: 'Submit Delete Request',
+        variant: 'danger',
+      });
+      if (!ok) return;
+
+      try {
+        await api.createPaymentRequest({
+          projectId: request.projectId,
+          taskId: request.taskId,
+          payeeName: request.payeeName,
+          category: 'Other',
+          amount: request.amount,
+          description: `Delete request: Cancel and refund paid expense ${request.id} of ${formatCur(request.amount)}.`,
+          dueDate: request.dueDate,
+          priority: 'Medium',
+          status: 'Pending',
+          adjustmentType: 'Delete',
+          targetExpenseId: request.id
+        });
+        notify.success('Deletion request submitted to Finance Hub for approval.');
+      } catch (err: any) {
+        notify.error(err?.message || 'Error submitting deletion request.');
+      }
+      return;
+    }
+
     if (request.status !== 'Pending') {
       notify.warning('Only pending requests can be deleted.');
       return;
@@ -346,12 +399,28 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     }
 
     const amountLabel = formatCur(reqAmount);
-    const ok = await confirm({
-      title: reqEditId ? 'Update payment request?' : 'Submit payment request?',
-      message: reqEditId
+    const titleText = isEditingPaidExpense
+      ? 'Submit edit approval request?'
+      : reqEditId
+        ? 'Update payment request?'
+        : 'Submit payment request?';
+
+    const messageText = isEditingPaidExpense
+      ? `Submit a request to edit the paid expense ${reqEditId} to ${amountLabel}? It will require review and approval by the accountant/admin.`
+      : reqEditId
         ? `Save changes to the ${amountLabel} request for ${reqPaidTo}?`
-        : `Submit a request for ${amountLabel} to ${reqPaidTo}? The accountant will review it.`,
-      confirmLabel: reqEditId ? 'Save Changes' : 'Submit Request',
+        : `Submit a request for ${amountLabel} to ${reqPaidTo}? The accountant will review it.`;
+
+    const confirmLabelText = isEditingPaidExpense
+      ? 'Submit Edit Request'
+      : reqEditId
+        ? 'Save Changes'
+        : 'Submit Request';
+
+    const ok = await confirm({
+      title: titleText,
+      message: messageText,
+      confirmLabel: confirmLabelText,
       variant: 'warning',
     });
     if (!ok) return;
@@ -382,7 +451,25 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     };
     try {
       setReqSubmitError(null);
-      if (reqEditId) {
+      if (isEditingPaidExpense) {
+        const adjustmentRequestPayload = {
+          projectId: reqProjectId,
+          taskId: reqTaskId,
+          payeeName: reqPaidTo,
+          category: 'Other' as const,
+          amount: Number(reqAmount),
+          description: `Edit request: Modify approved expense ${reqEditId}. Notes: ${reqNotes}`,
+          dueDate: reqDate,
+          priority: 'Medium' as const,
+          paymentMethod: reqPaymentMethod,
+          status: 'Pending' as const,
+          adjustmentType: 'Edit' as const,
+          targetExpenseId: reqEditId!,
+          adjustmentData: JSON.stringify(payload)
+        };
+        await api.createPaymentRequest(adjustmentRequestPayload);
+        notify.success('Edit request submitted to Finance Hub for approval.');
+      } else if (reqEditId) {
         await api.updatePaymentRequest(reqEditId, payload);
         notify.success('Payment request updated.');
       } else {
@@ -423,8 +510,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
 
   const insufficientOfficeFunds = userRole === 'admin' && reqAmount > 0 && reqAmount > officeBalance;
 
-  const pendingRequests = requests.filter(r => r.status === 'Pending');
-  const paidRequests = requests.filter(r => r.status === 'Paid');
+  const pendingRequests = requests.filter(r => r.status === 'Pending' && !r.adjustmentType);
+  const paidRequests = requests.filter(r => r.status === 'Paid' && !r.adjustmentType);
   const totalPendingAmount = pendingRequests.reduce((sum, r) => sum + r.amount, 0);
   const totalPaidAmount = paidRequests.reduce((sum, r) => sum + r.amount, 0);
 
@@ -599,13 +686,13 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
-                          {userRole === 'admin' && r.status === 'Pending' && (
+                          {userRole === 'admin' && (r.status === 'Pending' || r.status === 'Paid') && (
                             <>
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditRequest(r)}
                                 className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border text-[10px] font-semibold transition-all"
-                                title="Edit request"
+                                title={r.status === 'Paid' ? "Request Edit (Paid Expense)" : "Edit request"}
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
@@ -613,7 +700,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                                 type="button"
                                 onClick={() => handleDeleteRequest(r)}
                                 className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 text-[10px] font-semibold transition-all"
-                                title="Delete request"
+                                title={r.status === 'Paid' ? "Request Delete (Paid Expense)" : "Delete request"}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

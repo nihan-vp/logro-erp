@@ -35,7 +35,7 @@ export interface PaymentRequest {
     toLocation?: string;
     dueDate: string;
     priority: 'Low' | 'Medium' | 'High';
-    status: 'Pending' | 'Paid' | 'Partially Paid' | 'Cancelled';
+    status: 'Pending' | 'Paid' | 'Partially Paid' | 'Cancelled' | 'Deleted';
     paymentMethod?: string;
     billImage?: string;
     createdBy?: string;
@@ -50,6 +50,9 @@ export interface PaymentRequest {
     purchaseTotalFull?: number;
     purchaseTotal?: number;
     purchaseItems?: PurchaseLineItem[];
+    adjustmentType?: 'Edit' | 'Delete';
+    targetExpenseId?: string;
+    adjustmentData?: string;
 }
 export interface AuditLog {
     id: string;
@@ -166,7 +169,7 @@ export interface Attendance {
   status: AttendanceStatus;
   dailyWage: number;
   overtimeAmount: number;
-  paymentStatus: 'Paid' | 'Pending';
+  paymentStatus: 'Paid' | 'Pending' | 'Unpaid';
   notes?: string;
 }
 

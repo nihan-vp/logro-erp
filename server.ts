@@ -17,7 +17,36 @@ export function hashPassword(password: string): string {
 // Initialize environment variables from .env
 dotenv.config();
 
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.on('join-tenant', (companyName: string) => {
+    if (companyName) {
+      const roomName = `tenant_${companyName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      socket.join(roomName);
+      console.log(`[Socket] Socket ${socket.id} joined room: ${roomName}`);
+    }
+  });
+});
+
+function notifyTenantRequestsUpdate(companyName: string) {
+  if (companyName) {
+    const roomName = `tenant_${companyName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+    io.to(roomName).emit('requests-updated');
+    console.log(`[Socket] Broadcast 'requests-updated' to room: ${roomName}`);
+  }
+}
+
 const PORT = Number(process.env.PORT) || 5000;
 
 // Set up server-side JSON and Form data limit (generous for base-64 bill images)
@@ -246,7 +275,8 @@ app.post('/api/auth/login', async (req, res) => {
       email: user.email,
       role: user.role,
       phone: user.phone,
-      status: user.status
+      status: user.status,
+      companyName: targetCompanyName
     }
   });
 });
@@ -1227,7 +1257,7 @@ app.post('/api/attendance', requireAuth, async (req: any, res) => {
     status,
     dailyWage: Number(dailyWage),
     overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : 0,
-    paymentStatus: (paymentStatus || 'Pending'),
+    paymentStatus: (paymentStatus || 'Unpaid'),
     notes
   };
 
@@ -1261,7 +1291,7 @@ app.post('/api/attendance/bulk', requireAuth, async (req: any, res) => {
       status: w.status,
       dailyWage: Number(w.dailyWage),
       overtimeAmount: w.overtimeAmount !== undefined ? Number(w.overtimeAmount) : 0,
-      paymentStatus: (w.paymentStatus || 'Pending'),
+      paymentStatus: (w.paymentStatus || 'Unpaid'),
       notes: w.notes
     };
 
@@ -1344,8 +1374,274 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
+
+  // 1. Fetch Payment Request if linked
+  let pr: any = null;
+  if (requestId) {
+      pr = await tenantDb.collection('paymentRequests').findOne({ id: requestId });
+  }
+
+  if (pr && pr.adjustmentType) {
+      // This is an adjustment request (Edit or Delete)
+      if (paymentStatus !== 'Paid') {
+          // If declined or cancelled
+          await tenantDb.collection('paymentRequests').updateOne(
+              { id: requestId },
+              { $set: { status: paymentStatus } }
+          );
+          notifyTenantRequestsUpdate(req.user.companyName);
+          return res.json({ success: true, message: 'Adjustment request status updated' });
+      }
+
+      const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
+      const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
+
+      if (pr.adjustmentType === 'Delete') {
+          let targetExpense = await tenantDb.collection('expenses').findOne({
+              $or: [
+                  { id: pr.targetExpenseId },
+                  { requestId: pr.targetExpenseId }
+              ]
+          });
+          
+          if (!targetExpense && pr.targetExpenseId) {
+              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+              if (origReq) {
+                  targetExpense = await tenantDb.collection('expenses').findOne({
+                      projectId: origReq.projectId,
+                      taskId: origReq.taskId,
+                      paidTo: origReq.payeeName,
+                      amount: origReq.amount
+                  });
+              }
+          }
+
+          if (targetExpense) {
+              await tenantDb.collection('expenses').deleteOne({ id: targetExpense.id });
+          }
+
+          let targetPayment = await tenantDb.collection('payments').findOne({
+              $or: [
+                  { id: pr.targetExpenseId },
+                  { requestId: pr.targetExpenseId }
+              ]
+          });
+          
+          if (!targetPayment && pr.targetExpenseId) {
+              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+              if (origReq) {
+                  targetPayment = await tenantDb.collection('payments').findOne({
+                      projectId: origReq.projectId,
+                      taskId: origReq.taskId,
+                      payeeName: origReq.payeeName,
+                      amount: origReq.amount
+                  });
+              } else if (targetExpense) {
+                  targetPayment = await tenantDb.collection('payments').findOne({
+                      projectId: targetExpense.projectId,
+                      taskId: targetExpense.taskId,
+                      payeeName: targetExpense.paidTo,
+                      amount: targetExpense.amount
+                  });
+              }
+          }
+
+          if (targetPayment) {
+              await tenantDb.collection('payments').deleteOne({ id: targetPayment.id });
+          }
+
+          const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+          const refundAmount = targetExpense ? targetExpense.amount : (origReq ? origReq.amount : pr.amount);
+          currentFund.balance += Number(refundAmount);
+          currentFund.updatedAt = new Date().toISOString();
+          await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
+
+          // Add Transaction Record representing the Refund (Cash In)
+          await tenantDb.collection('officeTransactions').insertOne({
+              id: 'tx_' + Date.now(),
+              type: 'Cash In',
+              amount: Number(refundAmount),
+              description: `Refund: Deleted expense of ${refundAmount} to ${pr.payeeName}`,
+              date: new Date().toISOString(),
+              createdBy: req.user.userId
+          });
+
+          // Revert attendance to Unpaid if this was labor wage
+          if (pr.category === 'Worker' || (targetExpense && targetExpense.category === 'Labour')) {
+              await tenantDb.collection('attendance').updateOne(
+                  {
+                      projectId: pr.projectId,
+                      taskId: pr.taskId,
+                      workerName: pr.payeeName,
+                      date: pr.dueDate
+                  },
+                  { $set: { paymentStatus: 'Unpaid' } }
+              );
+          }
+
+          if (pr.targetExpenseId) {
+              await tenantDb.collection('paymentRequests').updateOne(
+                  { id: pr.targetExpenseId },
+                  { $set: { status: 'Deleted' } }
+              );
+          }
+
+          await tenantDb.collection('paymentRequests').updateOne(
+              { id: requestId },
+              { $set: { status: 'Paid' } }
+          );
+
+          notifyTenantRequestsUpdate(req.user.companyName);
+          return res.json({ success: true, message: 'Delete adjustment request approved and processed' });
+      }
+
+      if (pr.adjustmentType === 'Edit') {
+          let editData: any = {};
+          try {
+              editData = JSON.parse(pr.adjustmentData || '{}');
+          } catch (e) {
+              return res.status(400).json({ error: 'Invalid adjustment data format' });
+          }
+
+          let targetExpense = await tenantDb.collection('expenses').findOne({
+              $or: [
+                  { id: pr.targetExpenseId },
+                  { requestId: pr.targetExpenseId }
+              ]
+          });
+          
+          if (!targetExpense && pr.targetExpenseId) {
+              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+              if (origReq) {
+                  targetExpense = await tenantDb.collection('expenses').findOne({
+                      projectId: origReq.projectId,
+                      taskId: origReq.taskId,
+                      paidTo: origReq.payeeName,
+                      amount: origReq.amount
+                  });
+              }
+          }
+
+          let targetPayment = await tenantDb.collection('payments').findOne({
+              $or: [
+                  { id: pr.targetExpenseId },
+                  { requestId: pr.targetExpenseId }
+              ]
+          });
+          
+          if (!targetPayment && pr.targetExpenseId) {
+              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+              if (origReq) {
+                  targetPayment = await tenantDb.collection('payments').findOne({
+                      projectId: origReq.projectId,
+                      taskId: origReq.taskId,
+                      payeeName: origReq.payeeName,
+                      amount: origReq.amount
+                  });
+              } else if (targetExpense) {
+                  targetPayment = await tenantDb.collection('payments').findOne({
+                      projectId: targetExpense.projectId,
+                      taskId: targetExpense.taskId,
+                      payeeName: targetExpense.paidTo,
+                      amount: targetExpense.amount
+                  });
+              }
+          }
+
+          const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+          const oldAmount = targetExpense ? targetExpense.amount : (origReq ? origReq.amount : pr.amount);
+          const newAmount = Number(pr.amount);
+          const diff = newAmount - oldAmount;
+
+          if (diff > 0 && currentFund.balance < diff) {
+              return res.status(400).json({ error: `Insufficient office balance for the additional cost of ₹${diff.toFixed(2)}` });
+          }
+
+          if (diff > 0) {
+              currentFund.balance -= diff;
+              await tenantDb.collection('officeTransactions').insertOne({
+                  id: 'tx_' + Date.now(),
+                  type: 'Cash Out',
+                  amount: Number(diff),
+                  description: `Adjustment: Additional cost for edited expense to ${pr.payeeName}`,
+                  date: new Date().toISOString(),
+                  createdBy: req.user.userId
+              });
+          } else if (diff < 0) {
+              currentFund.balance += Math.abs(diff);
+              await tenantDb.collection('officeTransactions').insertOne({
+                  id: 'tx_' + Date.now(),
+                  type: 'Cash In',
+                  amount: Number(Math.abs(diff)),
+                  description: `Adjustment Refund: Reduced cost for edited expense to ${pr.payeeName}`,
+                  date: new Date().toISOString(),
+                  createdBy: req.user.userId
+              });
+          }
+
+          currentFund.updatedAt = new Date().toISOString();
+          await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
+
+          if (targetExpense) {
+              await tenantDb.collection('expenses').updateOne(
+                  { id: targetExpense.id },
+                  { $set: {
+                      amount: newAmount,
+                      paidTo: editData.paidTo || pr.payeeName,
+                      category: editData.category || targetExpense.category,
+                      notes: editData.notes || targetExpense.notes,
+                      paymentMethod: editData.paymentMethod || targetExpense.paymentMethod,
+                      date: editData.date || targetExpense.date,
+                      materialName: editData.materialName,
+                      materialQty: editData.materialQty,
+                      tools: editData.tools,
+                      vendorTotalToPay: editData.vendorTotalToPay,
+                      vendorPaid: editData.vendorPaid,
+                      vendorRemaining: editData.vendorRemaining,
+                      purchasePricePerCount: editData.purchasePricePerCount,
+                      purchaseTotalFull: editData.purchaseTotalFull,
+                      purchaseItems: editData.purchaseItems
+                  }}
+              );
+          }
+
+          if (targetPayment) {
+              await tenantDb.collection('payments').updateOne(
+                  { id: targetPayment.id },
+                  { $set: {
+                      amount: newAmount,
+                      payeeName: editData.paidTo || pr.payeeName,
+                      paymentDate: editData.date || targetPayment.paymentDate,
+                      paymentMethod: editData.paymentMethod || targetPayment.paymentMethod,
+                      notes: editData.notes || targetPayment.notes
+                  }}
+              );
+          }
+
+          if (pr.targetExpenseId) {
+              await tenantDb.collection('paymentRequests').updateOne(
+                  { id: pr.targetExpenseId },
+                  { $set: { 
+                      amount: newAmount,
+                      payeeName: editData.paidTo || pr.payeeName,
+                      description: editData.notes || pr.description,
+                      paymentMethod: editData.paymentMethod || pr.paymentMethod,
+                      dueDate: editData.date || pr.dueDate
+                  } }
+              );
+          }
+
+          await tenantDb.collection('paymentRequests').updateOne(
+              { id: requestId },
+              { $set: { status: 'Paid' } }
+          );
+
+          notifyTenantRequestsUpdate(req.user.companyName);
+          return res.json({ success: true, message: 'Edit adjustment request approved and processed' });
+      }
+  }
   
-  // 1. Balance Validation
+  // 2. Balance Validation
   const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
   const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
   
@@ -1364,7 +1660,8 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
     paymentDate,
     paymentMethod,
     paymentStatus,
-    notes
+    notes,
+    requestId: requestId || undefined
   };
 
   await tenantDb.collection('payments').insertOne(newPayment);
@@ -1394,6 +1691,18 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
               { id: requestId },
               { $set: { status: paymentStatus === 'Paid' ? 'Paid' : 'Partially Paid' } }
           );
+
+          if (pr.category === 'Worker' && paymentStatus === 'Paid') {
+              await tenantDb.collection('attendance').updateOne(
+                  {
+                      projectId: pr.projectId,
+                      taskId: pr.taskId,
+                      workerName: pr.payeeName,
+                      date: pr.dueDate
+                  },
+                  { $set: { paymentStatus: 'Paid' } }
+              );
+          }
           
           // Auto-create Expense
           const categoryMap: Record<string, string> = {
@@ -1429,6 +1738,7 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
              purchaseTotalFull: pr.purchaseTotalFull,
              purchaseTotal: pr.purchaseTotal,
              purchaseItems: pr.purchaseItems,
+             requestId: pr.id
            });
       }
   }
@@ -1444,6 +1754,7 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
       details: `Processed payment of ${amount} to ${payeeName}`
   });
 
+  notifyTenantRequestsUpdate(req.user.companyName);
   res.status(201).json(newPayment);
 });
 
@@ -1467,10 +1778,33 @@ app.put('/api/payments/:id', requireAuth, requireAdminOrAccountant, async (req: 
 app.delete('/api/payments/:id', requireAuth, async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
   
+  const payment = await tenantDb.collection('payments').findOne({ id: req.params.id });
+  if (!payment) return res.status(404).json({ error: 'Payment not found' });
+
   const result = await tenantDb.collection('payments').deleteOne({ id: req.params.id });
   if (result.deletedCount === 0) return res.status(404).json({ error: 'Payment not found' });
+
+  // If the deleted payment was Paid, refund the amount to the Office Fund
+  if (payment.paymentStatus === 'Paid') {
+    const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
+    const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
+    
+    currentFund.balance += Number(payment.amount);
+    currentFund.updatedAt = new Date().toISOString();
+    await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
+
+    // Add Transaction Record representing the Refund (Cash In)
+    await tenantDb.collection('officeTransactions').insertOne({
+        id: 'tx_' + Date.now(),
+        type: 'Cash In',
+        amount: Number(payment.amount),
+        description: `Refund: Deleted payment of ${payment.amount} to ${payment.payeeName}`,
+        date: new Date().toISOString(),
+        createdBy: req.user.userId
+    });
+  }
   
-  res.json({ success: true, message: 'Payment deleted' });
+  res.json({ success: true, message: 'Payment deleted and refunded successfully' });
 });
 
 // 8. Accountant Module Routes
@@ -1529,7 +1863,7 @@ app.get('/api/payment-requests', requireAuth, async (req: any, res) => {
 });
 
 app.post('/api/payment-requests', requireAuth, async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems } = req.body;
+    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, adjustmentType, targetExpenseId, adjustmentData } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
@@ -1562,8 +1896,12 @@ app.post('/api/payment-requests', requireAuth, async (req: any, res) => {
         purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : undefined,
         purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : undefined,
         purchaseItems: purchaseItems ?? undefined,
+        adjustmentType: adjustmentType || undefined,
+        targetExpenseId: targetExpenseId || undefined,
+        adjustmentData: adjustmentData || undefined,
     };
     await tenantDb.collection('paymentRequests').insertOne(newRequest);
+    notifyTenantRequestsUpdate(req.user.companyName);
     res.status(201).json(newRequest);
 });
 
@@ -1607,6 +1945,7 @@ app.put('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
         } },
         { returnDocument: 'after' }
     );
+    notifyTenantRequestsUpdate(req.user.companyName);
     res.json(result);
 });
 
@@ -1617,7 +1956,20 @@ app.delete('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
     if (!existing) return res.status(404).json({ error: 'Payment request not found' });
     if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
 
+    if (existing.category === 'Worker') {
+        await tenantDb.collection('attendance').updateOne(
+            {
+                projectId: existing.projectId,
+                taskId: existing.taskId,
+                workerName: existing.payeeName,
+                date: existing.dueDate
+            },
+            { $set: { paymentStatus: 'Unpaid' } }
+        );
+    }
+
     await tenantDb.collection('paymentRequests').deleteOne({ id: req.params.id });
+    notifyTenantRequestsUpdate(req.user.companyName);
     res.json({ success: true, message: 'Payment request deleted' });
 });
 
@@ -1739,7 +2091,7 @@ async function initServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`ERP custom fullstack server running on http://0.0.0.0:${PORT}`);
   });
 }

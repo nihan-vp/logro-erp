@@ -7,6 +7,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { api } from '../api/client';
+import { onRequestsUpdate, offRequestsUpdate } from '../api/socket';
 import { Project, ProjectStatus, Task, TaskStatus, Expense, ExpenseCategory, PaymentRequest, PurchaseLineItem } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
@@ -33,6 +34,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const confirm = useConfirm();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,6 +97,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   // C. Child Expense Form
   const [isExpenseFormOpen, setIsExpenseFormOpen] = useState(false);
   const [expenseEditId, setExpenseEditId] = useState<string | null>(null);
+  const [isEditingPaidExpense, setIsEditingPaidExpense] = useState(false);
   const [expenseTaskId, setExpenseTaskId] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Material');
   const [expenseAmount, setExpenseAmount] = useState<number>(0);
@@ -132,6 +135,20 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     fetchProjects();
   }, []);
 
+  useEffect(() => {
+    const handleUpdate = () => {
+      if (selectedProject?.id) {
+        reloadProjectData(selectedProject.id);
+      } else {
+        fetchProjects();
+      }
+    };
+    onRequestsUpdate(handleUpdate);
+    return () => {
+      offRequestsUpdate(handleUpdate);
+    };
+  }, [selectedProject?.id]);
+
   // Handle incoming deep links (initialParams) from Dashboard etc.
   const hasLoadedInitialParams = React.useRef(false);
   useEffect(() => {
@@ -163,7 +180,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
   const fetchProjects = async () => {
     try {
-      setLoading(true);
+      if (!hasLoaded) setLoading(true);
       setError(null);
       const [res, crewRes, vendorsRes] = await Promise.all([
         api.getProjects(),
@@ -173,6 +190,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       setProjects(res.projects || []);
       setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
       setVendorsList(vendorsRes.vendors || []);
+      setHasLoaded(true);
     } catch (err: any) {
       const message = err?.message || 'Failed to download projects tracker data.';
       setError(message);
@@ -484,6 +502,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   // --- CHILD EXPENSE ACTION HANDLERS ---
   const handleOpenCreateExpense = (initialTaskId?: string) => {
     setExpenseEditId(null);
+    setIsEditingPaidExpense(false);
     setExpenseTaskId(initialTaskId || (projectTasks[0]?.id || ''));
     setExpenseCategory('Material');
     setExpenseAmount(0);
@@ -510,8 +529,9 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
   const handleOpenEditExpense = (exp: any) => {
     if (!exp.isPendingRequest) {
-      notify.warning('Only pending requests can be edited. Paid expenses are locked after office fund disbursement.');
-      return;
+      setIsEditingPaidExpense(true);
+    } else {
+      setIsEditingPaidExpense(false);
     }
     setExpenseEditId(exp.id);
     setExpenseTaskId(exp.taskId);
@@ -565,12 +585,28 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       return;
     }
 
-    const ok = await confirm({
-      title: expenseEditId ? 'Update payment request?' : 'Submit expense request?',
-      message: expenseEditId
+    const titleText = isEditingPaidExpense 
+      ? 'Submit edit approval request?' 
+      : expenseEditId 
+        ? 'Update payment request?' 
+        : 'Submit expense request?';
+
+    const messageText = isEditingPaidExpense
+      ? `Submit a request to edit the paid expense ${expenseEditId} to ${formatCur(expenseAmount)}? It will require review and approval by the accountant/admin.`
+      : expenseEditId
         ? `Update this pending ${expenseCategory} request of ${formatCur(expenseAmount)} for ${expensePaidTo}?`
-        : `Submit a ${expenseCategory} expense of ${formatCur(expenseAmount)} for ${expensePaidTo}? It will appear in Finance Hub and be paid from office funds after accountant approval.`,
-      confirmLabel: expenseEditId ? 'Save Changes' : 'Submit Request',
+        : `Submit a ${expenseCategory} expense of ${formatCur(expenseAmount)} for ${expensePaidTo}? It will appear in Finance Hub and be paid from office funds after accountant approval.`;
+
+    const confirmLabelText = isEditingPaidExpense
+      ? 'Submit Edit Request'
+      : expenseEditId
+        ? 'Save Changes'
+        : 'Submit Request';
+
+    const ok = await confirm({
+      title: titleText,
+      message: messageText,
+      confirmLabel: confirmLabelText,
       variant: 'warning',
     });
     if (!ok) return;
@@ -602,7 +638,25 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
     try {
       setExpenseSubmitError(null);
-      if (expenseEditId) {
+      if (isEditingPaidExpense) {
+        const adjustmentRequestPayload = {
+          projectId: selectedProject.id,
+          taskId: expenseTaskId,
+          payeeName: expensePaidTo,
+          category: 'Other' as const,
+          amount: Number(expenseAmount),
+          description: `Edit request: Modify approved expense ${expenseEditId}. Notes: ${expenseNotes}`,
+          dueDate: expenseDate,
+          priority: 'Medium' as const,
+          paymentMethod: expensePaymentMethod,
+          status: 'Pending' as const,
+          adjustmentType: 'Edit' as const,
+          targetExpenseId: expenseEditId!,
+          adjustmentData: JSON.stringify(paymentRequestPayload)
+        };
+        await api.createPaymentRequest(adjustmentRequestPayload);
+        notify.success('Edit request submitted to Finance Hub for approval.');
+      } else if (expenseEditId) {
         await api.updatePaymentRequest(expenseEditId, paymentRequestPayload);
         notify.success('Payment request updated.');
       } else {
@@ -621,7 +675,32 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const handleDeleteExpense = async (id: string) => {
     const expense = projectExpenses.find(e => e.id === id);
     if (expense && !expense.isPendingRequest) {
-      notify.warning('Paid expenses cannot be deleted. They are linked to office fund payments.');
+      const ok = await confirm({
+        title: 'Request deletion of paid expense?',
+        message: `Submit a request to delete and refund the paid ${expense.category} expense of ${formatCur(expense.amount)} for ${expense.paidTo}? It will require review and approval by the accountant/admin.`,
+        confirmLabel: 'Submit Delete Request',
+        variant: 'danger',
+      });
+      if (!ok) return;
+
+      try {
+        await api.createPaymentRequest({
+          projectId: selectedProject.id,
+          taskId: expense.taskId,
+          payeeName: expense.paidTo,
+          category: 'Other',
+          amount: expense.amount,
+          description: `Delete request: Cancel and refund paid expense ${expense.id} of ${formatCur(expense.amount)}.`,
+          dueDate: expense.date,
+          priority: 'Medium',
+          status: 'Pending',
+          adjustmentType: 'Delete',
+          targetExpenseId: expense.id
+        });
+        notify.success('Deletion request submitted to Finance Hub for approval.');
+      } catch (err: any) {
+        notify.error(err?.message || 'Error submitting deletion request.');
+      }
       return;
     }
     const ok = await confirm({
@@ -1283,21 +1362,21 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
                         <div className="text-right flex items-center sm:block gap-2">
                           <span className="text-sm font-bold text-zinc-950 block">{formatCur(e.amount)}</span>
-                            <div className="flex items-center gap-1 justify-end">
-                              {userRole === 'admin' && e.isPendingRequest && (
+                             <div className="flex items-center gap-1 justify-end mt-1">
+                              {userRole === 'admin' && (
                                 <button
                                   onClick={() => handleOpenEditExpense(e)}
                                   className="p-1 bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 border rounded"
-                                  title="Edit request"
+                                  title={e.isPendingRequest ? "Edit request" : "Request Edit (Paid Expense)"}
                                 >
                                   <Edit2 className="w-3 h-3" />
                                 </button>
                               )}
-                              {userRole === 'admin' && e.isPendingRequest && (
+                              {userRole === 'admin' && (
                                 <button
                                   onClick={() => handleDeleteExpense(e.id)}
                                   className="p-1 bg-zinc-50 hover:bg-rose-50 text-rose-500 hover:text-rose-700 border rounded"
-                                  title="Cancel request"
+                                  title={e.isPendingRequest ? "Cancel request" : "Request Delete (Paid Expense)"}
                                 >
                                   <Trash2 className="w-3 h-3" />
                                 </button>

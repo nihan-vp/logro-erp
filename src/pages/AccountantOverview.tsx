@@ -7,6 +7,7 @@ import {
 import { api } from '../api/client';
 import { notify } from '../utils/toast';
 import { OfficeTransaction, PaymentRequest } from '../types';
+import { onRequestsUpdate, offRequestsUpdate } from '../api/socket';
 
 type EnrichedPaymentRequest = PaymentRequest & { projectName: string; taskName: string };
 
@@ -31,6 +32,7 @@ interface AccountantOverviewProps {
 
 export default function AccountantOverview({ onNavigate }: AccountantOverviewProps) {
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<OfficeTransaction[]>([]);
@@ -39,7 +41,7 @@ export default function AccountantOverview({ onNavigate }: AccountantOverviewPro
   const [totalExpenses, setTotalExpenses] = useState(0);
 
   const fetchData = async () => {
-    setLoading(true);
+    if (!hasLoaded) setLoading(true);
     setError(null);
     try {
       const [fundRes, reqRes, projRes, taskRes, summaryRes] = await Promise.all([
@@ -62,6 +64,7 @@ export default function AccountantOverview({ onNavigate }: AccountantOverviewPro
       );
       setTotalProjects(summaryRes.stats?.totalProjects || projectList.length);
       setTotalExpenses(summaryRes.stats?.totalExpenses || 0);
+      setHasLoaded(true);
     } catch (err: any) {
       const message = err?.message || 'Failed to load dashboard';
       setError(message);
@@ -75,9 +78,19 @@ export default function AccountantOverview({ onNavigate }: AccountantOverviewPro
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const handleUpdate = () => {
+      fetchData();
+    };
+    onRequestsUpdate(handleUpdate);
+    return () => {
+      offRequestsUpdate(handleUpdate);
+    };
+  }, []);
+
   const today = new Date().toISOString().split('T')[0];
-  const pendingRequests = requests.filter(r => r.status === 'Pending');
-  const paidRequests = requests.filter(r => r.status === 'Paid');
+  const pendingRequests = requests.filter(r => r.status === 'Pending' && !r.adjustmentType);
+  const paidRequests = requests.filter(r => r.status === 'Paid' && !r.adjustmentType);
   const totalPendingAmount = pendingRequests.reduce((sum, r) => sum + r.amount, 0);
   const totalPaidAmount = paidRequests.reduce((sum, r) => sum + r.amount, 0);
   const highPriorityPending = pendingRequests.filter(r => r.priority === 'High').length;
@@ -123,7 +136,7 @@ export default function AccountantOverview({ onNavigate }: AccountantOverviewPro
         <p className="text-sm font-semibold text-red-800">Load Error</p>
         <p className="text-xs text-red-600 mt-1">{error}</p>
         <button
-          onClick={fetchData}
+          onClick={() => fetchData()}
           className="mt-3 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors"
         >
           Retry
@@ -164,7 +177,7 @@ export default function AccountantOverview({ onNavigate }: AccountantOverviewPro
           <p className="text-xs sm:text-sm text-zinc-500">Office funds, approvals and daily cash flow at a glance</p>
         </div>
         <button
-          onClick={fetchData}
+          onClick={() => fetchData()}
           className="p-2.5 bg-white hover:bg-zinc-100 border border-zinc-200/80 rounded-xl transition-colors text-zinc-600 self-start sm:self-auto"
           title="Refresh dashboard"
         >

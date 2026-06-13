@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { onRequestsUpdate, offRequestsUpdate } from '../api/socket';
 import {
   Wallet, Send, ClipboardList, Plus, X, CheckCircle2, Clock,
   RefreshCw, Landmark, ArrowDownRight, ArrowUpRight, Search,
@@ -119,6 +120,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   const [requests, setRequests] = useState<EnrichedPaymentRequest[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showInflowForm, setShowInflowForm] = useState(false);
   const [inflowAmount, setInflowAmount] = useState('');
@@ -137,7 +139,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   const [txnPage, setTxnPage] = useState(1);
 
   const fetchAccountantData = async () => {
-    setLoading(true);
+    if (!hasLoaded) setLoading(true);
     setError(null);
     try {
       const [fundRes, reqRes, projRes, taskRes] = await Promise.all([
@@ -158,6 +160,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
         }))
       );
       setProjects(projectList);
+      setHasLoaded(true);
     } catch (err: any) {
       const message = err?.message || 'Failed to fetch accountant data';
       setError(message);
@@ -169,6 +172,16 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
 
   useEffect(() => {
     fetchAccountantData();
+  }, []);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      fetchAccountantData();
+    };
+    onRequestsUpdate(handleUpdate);
+    return () => {
+      offRequestsUpdate(handleUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -184,11 +197,28 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   }, [txnSearch, rowsPerPage]);
 
   const handleApprove = async (request: EnrichedPaymentRequest) => {
+    let title = 'Approve and pay?';
+    let message = `Process payment of ${formatCur(request.amount)} to ${request.payeeName}? This will record the payout and update office funds.`;
+    let confirmLabel = 'Approve & Pay';
+    let variant: 'default' | 'warning' | 'danger' = 'warning';
+
+    if (request.adjustmentType === 'Edit') {
+      title = 'Approve edit request?';
+      message = `Are you sure you want to approve the edit request for ${request.payeeName}? This will modify the original expense to ${formatCur(request.amount)} and adjust office funds accordingly.`;
+      confirmLabel = 'Approve & Edit';
+      variant = 'warning';
+    } else if (request.adjustmentType === 'Delete') {
+      title = 'Approve deletion request?';
+      message = `Are you sure you want to approve the deletion request for ${request.payeeName}? This will delete the original expense/payment and refund the amount back to office funds.`;
+      confirmLabel = 'Approve & Delete';
+      variant = 'danger';
+    }
+
     const ok = await confirm({
-      title: 'Approve and pay?',
-      message: `Process payment of ${formatCur(request.amount)} to ${request.payeeName}? This will record the payout and update office funds.`,
-      confirmLabel: 'Approve & Pay',
-      variant: 'warning',
+      title,
+      message,
+      confirmLabel,
+      variant,
     });
     if (!ok) return;
 
@@ -207,9 +237,36 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
         requestId: request.id,
       });
       fetchAccountantData();
-      notify.success('Payment processed successfully.');
+      notify.success(
+        request.adjustmentType === 'Edit'
+          ? 'Edit request approved and processed successfully.'
+          : request.adjustmentType === 'Delete'
+            ? 'Deletion request approved and processed successfully.'
+            : 'Payment processed successfully.'
+      );
     } catch (err: any) {
       notify.error(err.message || 'Error processing payment.');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleDecline = async (request: EnrichedPaymentRequest) => {
+    const ok = await confirm({
+      title: 'Decline and cancel request?',
+      message: `Are you sure you want to decline and cancel the request for ${formatCur(request.amount)} to ${request.payeeName}? This action cannot be undone.`,
+      confirmLabel: 'Decline Request',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    setApprovingId(request.id);
+    try {
+      await api.deletePaymentRequest(request.id);
+      fetchAccountantData();
+      notify.success('Payment request declined and cancelled.');
+    } catch (err: any) {
+      notify.error(err.message || 'Error declining payment request.');
     } finally {
       setApprovingId(null);
     }
@@ -261,7 +318,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   };
 
   const today = new Date().toISOString().split('T')[0];
-  const pendingRequests = requests.filter(r => r.status === 'Pending');
+  const pendingRequests = requests.filter(r => r.status === 'Pending' && !r.adjustmentType);
   const totalPendingAmount = pendingRequests.reduce((sum, r) => sum + r.amount, 0);
   const processedToday = transactions.filter(t => t.date?.startsWith(today)).length;
   const todayInflow = transactions
@@ -321,7 +378,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
         <p className="text-sm font-semibold text-red-800">Load Error</p>
         <p className="text-xs text-red-600 mt-1">{error}</p>
         <button
-          onClick={fetchAccountantData}
+          onClick={() => fetchAccountantData()}
           className="mt-3 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors"
         >
           Retry
@@ -347,7 +404,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
             <span>Projects</span>
           </button>
           <button
-            onClick={fetchAccountantData}
+            onClick={() => fetchAccountantData()}
             className="p-2.5 bg-white hover:bg-zinc-100 border border-zinc-200/80 rounded-xl transition-colors text-zinc-600"
             title="Refresh"
           >
@@ -501,14 +558,34 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                           </span>
                         </td>
                         <td className="px-3 align-middle text-center">
-                          <button
-                            onClick={() => handleApprove(r)}
-                            disabled={approvingId === r.id}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
-                          >
-                            <Wallet className="w-3.5 h-3.5" />
-                            {approvingId === r.id ? 'Processing...' : 'Approve & Pay'}
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleApprove(r)}
+                              disabled={approvingId === r.id}
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap ${
+                                r.adjustmentType === 'Delete'
+                                  ? 'bg-rose-600 hover:bg-rose-700'
+                                  : 'bg-emerald-600 hover:bg-emerald-700'
+                              }`}
+                            >
+                              <Wallet className="w-3.5 h-3.5" />
+                              {approvingId === r.id
+                                ? 'Processing...'
+                                : r.adjustmentType === 'Edit'
+                                  ? 'Approve & Edit'
+                                  : r.adjustmentType === 'Delete'
+                                    ? 'Approve & Delete'
+                                    : 'Approve & Pay'}
+                            </button>
+                            <button
+                              onClick={() => handleDecline(r)}
+                              disabled={approvingId === r.id}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Decline</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
