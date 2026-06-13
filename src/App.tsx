@@ -126,10 +126,32 @@ export default function App() {
     localStorage.removeItem('erp_tabParams');
   };
 
-  const navigateTo = useCallback((tab: string, params: any = null) => {
+  const navigateTo = useCallback((tab: string, params: any = null, pushToHistory = true) => {
     setActiveTab(tab);
     setTabParams(params);
+    if (pushToHistory) {
+      window.history.pushState({ tab, params }, '', `#${tab}`);
+    }
   }, []);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.tab) {
+        navigateTo(event.state.tab, event.state.params, false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    // Initialize the history state if it's the first load
+    if (window.history.state === null) {
+      window.history.replaceState({ tab: activeTab, params: tabParams }, '', window.location.hash || `#${activeTab}`);
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [navigateTo]);
 
   const userRole = currentUser?.role || 'manager';
 
