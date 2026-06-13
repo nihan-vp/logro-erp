@@ -156,6 +156,9 @@ export default function AttendancePage() {
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewPage, setOverviewPage] = useState(1);
   const [isMobileWorkerListOpen, setIsMobileWorkerListOpen] = useState(false);
+  const [isPayWagesOpen, setIsPayWagesOpen] = useState(false);
+  const [payWagesAmount, setPayWagesAmount] = useState<string>('');
+  const [isSubmittingPayWages, setIsSubmittingPayWages] = useState(false);
 
   useEffect(() => {
     fetchCrew();
@@ -175,6 +178,67 @@ export default function AttendancePage() {
       notify.error(err?.message || 'Failed to fetch logs for crew overview');
     } finally {
       setOverviewLoading(false);
+    }
+  };
+
+  const handleRequestWagesPayment = async (worker: any, unpaidLogs: any[], remainingAmount: number) => {
+    if (unpaidLogs.length === 0) {
+      notify.warning('No unpaid logs found for this period.');
+      return;
+    }
+    const amt = Number(payWagesAmount);
+    if (isNaN(amt) || amt <= 0) {
+      notify.warning('Please enter a valid amount.');
+      return;
+    }
+    if (amt > remainingAmount) {
+      notify.warning(`Amount cannot exceed the remaining due of ${formatCur(remainingAmount)}.`);
+      return;
+    }
+
+    try {
+      setIsSubmittingPayWages(true);
+
+      // Update all unpaid logs to "Pending"
+      await Promise.all(
+        unpaidLogs.map(log =>
+          api.updateAttendance(log.id, {
+            workerName: log.workerName,
+            status: log.status,
+            dailyWage: log.dailyWage,
+            overtimeAmount: log.overtimeAmount,
+            paymentStatus: 'Pending'
+          })
+        )
+      );
+
+      // Create a single consolidated payment request for the selected worker and period
+      const firstLog = unpaidLogs[0];
+      const attendanceIds = unpaidLogs.map(log => log.id);
+
+      await api.createPaymentRequest({
+        projectId: firstLog.projectId,
+        taskId: firstLog.taskId,
+        payeeName: worker.name,
+        category: 'Worker',
+        amount: amt,
+        description: `Wages payment request for ${worker.name} (${overviewFilterType} view: ${firstLog.date} onwards)`,
+        dueDate: firstLog.date,
+        priority: 'Medium',
+        paymentMethod: 'Bank Transfer',
+        status: 'Pending',
+        createdAt: new Date().toISOString(),
+        attendanceIds
+      });
+
+      notify.success(`Submitted payment request of ${formatCur(amt)} for ${worker.name}.`);
+      setIsPayWagesOpen(false);
+      setPayWagesAmount('');
+      fetchOverviewLogs();
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to submit payment request');
+    } finally {
+      setIsSubmittingPayWages(false);
     }
   };
 
@@ -1539,7 +1603,21 @@ export default function AttendancePage() {
 
                         <div className="bg-white border border-zinc-200/80 rounded-xl p-4 flex flex-col justify-between shadow-sm">
                           <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Remaining Due</span>
-                          <span className="text-lg font-black text-amber-600 block mt-2">{formatCur(remainingToPay)}</span>
+                          <div className="flex items-end justify-between mt-2">
+                            <span className="text-lg font-black text-amber-600">{formatCur(remainingToPay)}</span>
+                            {remainingToPay > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPayWagesAmount(remainingToPay.toString());
+                                  setIsPayWagesOpen(true);
+                                }}
+                                className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm"
+                              >
+                                Pay Wages
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1659,6 +1737,115 @@ export default function AttendancePage() {
               </div>
             </div>
           )}
+
+          {isPayWagesOpen && (() => {
+            const worker = crew.find(c => c.id === selectedWorkerId) || crew[0];
+            if (!worker) return null;
+
+            // Date range math
+            let startDate: Date;
+            let endDate: Date;
+
+            if (overviewFilterType === 'weekly') {
+              const curr = new Date();
+              const dayOffset = curr.getDay();
+              const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
+              startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+              startDate.setHours(0, 0, 0, 0);
+              endDate = new Date(startDate);
+              endDate.setDate(startDate.getDate() + 6);
+              endDate.setHours(23, 59, 59, 999);
+            } else {
+              startDate = new Date(selectedYearVal, selectedMonthVal, 1, 0, 0, 0, 0);
+              endDate = new Date(selectedYearVal, selectedMonthVal + 1, 0, 23, 59, 59, 999);
+            }
+
+            const formatIsoDate = (d: Date) => d.toISOString().split('T')[0];
+            const startStr = formatIsoDate(startDate);
+            const endStr = formatIsoDate(endDate);
+
+            const workerAtt = attendanceLogs.filter(a => 
+              a.workerName === worker.name && 
+              a.date >= startStr && 
+              a.date <= endStr
+            );
+
+            const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+
+            const totalEarned = workerAtt.reduce((sum, a) => {
+              let rate = 0;
+              if (a.status === 'Present') rate = a.dailyWage || worker.dailyWage;
+              else if (a.status === 'Half Day') rate = (a.dailyWage || worker.dailyWage) * 0.5;
+              return sum + rate + (a.overtimeAmount || 0);
+            }, 0);
+
+            const paidWages = paymentRequestsLogs
+              .filter(pr => pr.payeeName === worker.name && pr.category === 'Worker' && pr.createdAt >= startDate.toISOString() && pr.createdAt <= endDate.toISOString())
+              .filter(pr => pr.status === 'Paid')
+              .reduce((sum, pr) => sum + pr.amount, 0);
+
+            const partialPaidSum = paymentRequestsLogs
+              .filter(pr => pr.payeeName === worker.name && pr.category === 'Worker' && pr.createdAt >= startDate.toISOString() && pr.createdAt <= endDate.toISOString())
+              .filter(pr => pr.status === 'Partially Paid')
+              .reduce((sum, pr) => {
+                const history = pr.paymentHistory || [];
+                return sum + history.reduce((s: number, item: any) => s + item.amount, 0);
+              }, 0);
+
+            const totalPaid = paidWages + partialPaidSum;
+            const remainingToPay = Math.max(0, totalEarned - totalPaid);
+
+            return (
+              <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+                  <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+                    <h2 className="text-base font-extrabold text-zinc-950">
+                      Request Wages Payment
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPayWagesOpen(false);
+                        setPayWagesAmount('');
+                      }}
+                      className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <div className="text-xs text-zinc-655 space-y-2">
+                    <p><strong>Worker:</strong> {worker.name} ({worker.trade})</p>
+                    <p><strong>Outstanding Balance:</strong> {formatCur(remainingToPay)}</p>
+                    <p><strong>Unpaid Days:</strong> {unpaidLogs.length} day(s)</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Request Amount (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      max={remainingToPay}
+                      placeholder="Enter amount to request"
+                      value={payWagesAmount}
+                      onChange={(e) => setPayWagesAmount(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 font-bold text-sm"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRequestWagesPayment(worker, unpaidLogs, remainingToPay)}
+                    disabled={isSubmittingPayWages || !payWagesAmount || Number(payWagesAmount) <= 0 || Number(payWagesAmount) > remainingToPay}
+                    className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <span>{isSubmittingPayWages ? 'Submitting...' : `Submit Payment Request for ${formatCur(Number(payWagesAmount) || 0)}`}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

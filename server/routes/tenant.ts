@@ -1055,15 +1055,22 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
           });
 
           if (pr.category === 'Worker' || (targetExpense && targetExpense.category === 'Labour')) {
-              await tenantDb.collection('attendance').updateOne(
-                  {
-                      projectId: pr.projectId,
-                      taskId: pr.taskId,
-                      workerName: pr.payeeName,
-                      date: pr.dueDate
-                  },
-                  { $set: { paymentStatus: 'Unpaid' } }
-              );
+              if (pr.attendanceIds && Array.isArray(pr.attendanceIds)) {
+                  await tenantDb.collection('attendance').updateMany(
+                      { id: { $in: pr.attendanceIds } },
+                      { $set: { paymentStatus: 'Unpaid' } }
+                  );
+              } else {
+                  await tenantDb.collection('attendance').updateOne(
+                      {
+                          projectId: pr.projectId,
+                          taskId: pr.taskId,
+                          workerName: pr.payeeName,
+                          date: pr.dueDate
+                      },
+                      { $set: { paymentStatus: 'Unpaid' } }
+                  );
+              }
           }
 
           if (pr.targetExpenseId) {
@@ -1294,15 +1301,22 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
           );
 
           if (pr.category === 'Worker' && finalStatus === 'Paid') {
-              await tenantDb.collection('attendance').updateOne(
-                  {
-                      projectId: pr.projectId,
-                      taskId: pr.taskId,
-                      workerName: pr.payeeName,
-                      date: pr.dueDate
-                  },
-                  { $set: { paymentStatus: 'Paid' } }
-              );
+              if (pr.attendanceIds && Array.isArray(pr.attendanceIds)) {
+                  await tenantDb.collection('attendance').updateMany(
+                      { id: { $in: pr.attendanceIds } },
+                      { $set: { paymentStatus: 'Paid' } }
+                  );
+              } else {
+                  await tenantDb.collection('attendance').updateOne(
+                      {
+                          projectId: pr.projectId,
+                          taskId: pr.taskId,
+                          workerName: pr.payeeName,
+                          date: pr.dueDate
+                      },
+                      { $set: { paymentStatus: 'Paid' } }
+                  );
+              }
           }
           
           const categoryMap: Record<string, string> = {
@@ -1458,7 +1472,7 @@ router.get('/payment-requests', async (req: any, res) => {
 });
 
 router.post('/payment-requests', async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, adjustmentType, targetExpenseId, adjustmentData } = req.body;
+    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, adjustmentType, targetExpenseId, adjustmentData, attendanceIds } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
@@ -1494,6 +1508,7 @@ router.post('/payment-requests', async (req: any, res) => {
         adjustmentType: adjustmentType || undefined,
         targetExpenseId: targetExpenseId || undefined,
         adjustmentData: adjustmentData || undefined,
+        attendanceIds: attendanceIds ?? undefined,
     };
     await tenantDb.collection('paymentRequests').insertOne(newRequest);
     notifyTenantRequestsUpdate(req.user.companyName);
@@ -1552,15 +1567,22 @@ router.delete('/payment-requests/:id', async (req: any, res) => {
     if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
 
     if (existing.category === 'Worker') {
-        await tenantDb.collection('attendance').updateOne(
-            {
-                projectId: existing.projectId,
-                taskId: existing.taskId,
-                workerName: existing.payeeName,
-                date: existing.dueDate
-            },
-            { $set: { paymentStatus: 'Unpaid' } }
-        );
+        if (existing.attendanceIds && Array.isArray(existing.attendanceIds)) {
+            await tenantDb.collection('attendance').updateMany(
+                { id: { $in: existing.attendanceIds } },
+                { $set: { paymentStatus: 'Unpaid' } }
+            );
+        } else {
+            await tenantDb.collection('attendance').updateOne(
+                {
+                    projectId: existing.projectId,
+                    taskId: existing.taskId,
+                    workerName: existing.payeeName,
+                    date: existing.dueDate
+                },
+                { $set: { paymentStatus: 'Unpaid' } }
+            );
+        }
     }
 
     await tenantDb.collection('paymentRequests').deleteOne({ id: req.params.id });
