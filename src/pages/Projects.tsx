@@ -7,7 +7,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { api } from '../api/client';
-import { Project, ProjectStatus, Task, TaskStatus, Expense, ExpenseCategory, PaymentRequest } from '../types';
+import { Project, ProjectStatus, Task, TaskStatus, Expense, ExpenseCategory, PaymentRequest, PurchaseLineItem } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
 import TaskAttendanceSection from '../components/TaskAttendanceSection';
@@ -16,8 +16,12 @@ const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest[
   if (cat === 'Material' || cat === 'Tools') return 'Vendor';
   if (cat === 'Labour') return 'Worker';
   if (cat === 'Transport') return 'Transportation';
+  if (cat === 'Vendor Payment') return 'Vendor Payment';
+  if (cat === 'Purchase') return 'Purchase';
   return 'Other';
 };
+
+const parseNumericQty = (qty: string) => parseFloat(qty.replace(/[^0-9.]/g, '')) || 0;
 
 interface ProjectsProps {
   onNavigate: (page: string, params?: any) => void;
@@ -111,6 +115,9 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [expenseToolInput, setExpenseToolInput] = useState('');
   const [expenseVendorTotalToPay, setExpenseVendorTotalToPay] = useState<number>(0);
   const [expenseVendorPaid, setExpenseVendorPaid] = useState<number>(0);
+  const [expensePurchaseItems, setExpensePurchaseItems] = useState<PurchaseLineItem[]>([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+  const [vendorsList, setVendorsList] = useState<any[]>([]);
+  const [showExpenseVendorSuggestions, setShowExpenseVendorSuggestions] = useState(false);
   const [showExpenseCrewSuggestions, setShowExpenseCrewSuggestions] = useState(false);
 
   // Receipt Preview
@@ -158,12 +165,14 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     try {
       setLoading(true);
       setError(null);
-      const [res, crewRes] = await Promise.all([
+      const [res, crewRes, vendorsRes] = await Promise.all([
         api.getProjects(),
-        api.getCrew('active').catch(() => ({ crew: [] }))
+        api.getCrew('active').catch(() => ({ crew: [] })),
+        api.getVendors('active').catch(() => ({ vendors: [] }))
       ]);
       setProjects(res.projects || []);
       setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
+      setVendorsList(vendorsRes.vendors || []);
     } catch (err: any) {
       const message = err?.message || 'Failed to download projects tracker data.';
       setError(message);
@@ -492,6 +501,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setExpenseToolInput('');
     setExpenseVendorTotalToPay(0);
     setExpenseVendorPaid(0);
+    setExpensePurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+    setShowExpenseVendorSuggestions(false);
     setShowExpenseCrewSuggestions(false);
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
@@ -520,6 +531,19 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setExpenseToolInput('');
     setExpenseVendorTotalToPay(exp.vendorTotalToPay || 0);
     setExpenseVendorPaid(exp.vendorPaid || 0);
+    if (exp.purchaseItems && exp.purchaseItems.length > 0) {
+      setExpensePurchaseItems(exp.purchaseItems);
+    } else if (exp.materialName && exp.category === 'Purchase') {
+      setExpensePurchaseItems([{
+        materialName: exp.materialName || '',
+        qty: exp.materialQty || '',
+        pricePerCount: exp.purchasePricePerCount || 0,
+        total: exp.purchaseTotalFull || 0,
+      }]);
+    } else {
+      setExpensePurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+    }
+    setShowExpenseVendorSuggestions(false);
     setShowExpenseCrewSuggestions(false);
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
@@ -531,7 +555,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       notify.warning('Task context, category, payee, and date are required.');
       return;
     }
-    if (expenseCategory === 'Vendor Payment') {
+    if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') {
       if (expenseVendorTotalToPay <= 0 || expenseVendorPaid <= 0) {
         notify.warning('Total to pay and Paid amount must be greater than 0.');
         return;
@@ -564,12 +588,16 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       priority: 'Medium' as const,
       paymentMethod: expensePaymentMethod,
       billImage: expenseBillImage,
-      materialName: expenseCategory === 'Material' ? expenseMaterialName : undefined,
-      materialQty: expenseCategory === 'Material' ? expenseMaterialQty : undefined,
+      materialName: (expenseCategory === 'Material') ? expenseMaterialName : (expenseCategory === 'Purchase' && expensePurchaseItems.length > 0) ? expensePurchaseItems[0].materialName : undefined,
+      materialQty: (expenseCategory === 'Material') ? expenseMaterialQty : (expenseCategory === 'Purchase' && expensePurchaseItems.length > 0) ? expensePurchaseItems[0].qty : undefined,
       tools: expenseCategory === 'Tools' ? expenseTools : undefined,
-      vendorTotalToPay: expenseCategory === 'Vendor Payment' ? Number(expenseVendorTotalToPay) : undefined,
-      vendorPaid: expenseCategory === 'Vendor Payment' ? Number(expenseVendorPaid) : undefined,
-      vendorRemaining: expenseCategory === 'Vendor Payment' ? Number(expenseVendorTotalToPay - expenseVendorPaid) : undefined,
+      vendorTotalToPay: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') ? Number(expenseVendorTotalToPay) : undefined,
+      vendorPaid: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') ? Number(expenseVendorPaid) : undefined,
+      vendorRemaining: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') ? Number(expenseVendorTotalToPay - expenseVendorPaid) : undefined,
+      purchasePricePerCount: expenseCategory === 'Purchase' && expensePurchaseItems.length > 0 ? expensePurchaseItems[0].pricePerCount : undefined,
+      purchaseTotalFull: expenseCategory === 'Purchase' ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
+      purchaseTotal: expenseCategory === 'Purchase' ? Number(expenseVendorPaid) : undefined,
+      purchaseItems: expenseCategory === 'Purchase' ? expensePurchaseItems : undefined,
     };
 
     try {
@@ -1884,6 +1912,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     <option value="Tools">Tools</option>
                     <option value="Company Payment">Company Payment</option>
                     <option value="Vendor Payment">Vendor Payment</option>
+                    <option value="Purchase">Purchase</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -2043,6 +2072,158 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 </div>
               )}
 
+              {/* Purchase fields — multi-line items table */}
+              {expenseCategory === 'Purchase' && (
+                <div className="space-y-4">
+                  <div className="border border-zinc-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
+                          <th className="text-left px-3 py-2.5 w-[30%]">Material</th>
+                          <th className="text-left px-3 py-2.5 w-[18%]">Qty</th>
+                          <th className="text-right px-3 py-2.5 w-[20%]">Price / Unit (₹)</th>
+                          <th className="text-right px-3 py-2.5 w-[20%]">Total (₹)</th>
+                          <th className="px-2 py-2.5 w-[12%]"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {expensePurchaseItems.map((item, idx) => (
+                          <tr key={idx} className="group hover:bg-zinc-50/50 transition-colors">
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. Cement"
+                                value={item.materialName}
+                                onChange={(e) => {
+                                  const items = [...expensePurchaseItems];
+                                  items[idx] = { ...items[idx], materialName: e.target.value };
+                                  setExpensePurchaseItems(items);
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 focus:outline-none focus:border-zinc-400 text-xs"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. 100 bags"
+                                value={item.qty}
+                                onChange={(e) => {
+                                  const items = [...expensePurchaseItems];
+                                  const numericQty = parseNumericQty(e.target.value);
+                                  const total = numericQty * items[idx].pricePerCount;
+                                  items[idx] = { ...items[idx], qty: e.target.value, total };
+                                  setExpensePurchaseItems(items);
+                                  const grandTotal = items.reduce((s, it) => s + it.total, 0);
+                                  setExpenseVendorTotalToPay(grandTotal);
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 focus:outline-none focus:border-zinc-400 text-xs"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="number"
+                                required
+                                min={0}
+                                step="any"
+                                placeholder="400"
+                                value={item.pricePerCount || ''}
+                                onChange={(e) => {
+                                  const items = [...expensePurchaseItems];
+                                  const price = Number(e.target.value);
+                                  const numericQty = parseNumericQty(items[idx].qty);
+                                  const total = numericQty * price;
+                                  items[idx] = { ...items[idx], pricePerCount: price, total };
+                                  setExpensePurchaseItems(items);
+                                  const grandTotal = items.reduce((s, it) => s + it.total, 0);
+                                  setExpenseVendorTotalToPay(grandTotal);
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 text-right focus:outline-none focus:border-zinc-400 text-xs"
+                              />
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-bold text-zinc-700">
+                              {formatCur(item.total)}
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              {expensePurchaseItems.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const items = expensePurchaseItems.filter((_, i) => i !== idx);
+                                    setExpensePurchaseItems(items);
+                                    const grandTotal = items.reduce((s, it) => s + it.total, 0);
+                                    setExpenseVendorTotalToPay(grandTotal);
+                                  }}
+                                  className="p-1 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                                  title="Remove row"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t border-zinc-200 bg-zinc-50">
+                          <td colSpan={3} className="px-3 py-2 text-right font-bold text-zinc-600 uppercase text-[10px] tracking-wider">Grand Total</td>
+                          <td className="px-3 py-2 text-right font-black text-zinc-900">{formatCur(expensePurchaseItems.reduce((s, it) => s + it.total, 0))}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExpensePurchaseItems([...expensePurchaseItems, { materialName: '', qty: '', pricePerCount: 0, total: 0 }])}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Material</span>
+                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
+                      <input
+                        type="number"
+                        disabled
+                        readOnly
+                        value={expenseVendorTotalToPay || ''}
+                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total Paid (₹)</label>
+                      <input
+                        type="number"
+                        required
+                        min={0.01}
+                        step="any"
+                        placeholder="e.g. 15000"
+                        value={expenseVendorPaid || ''}
+                        onChange={(e) => {
+                          const paid = Number(e.target.value);
+                          setExpenseVendorPaid(paid);
+                          setExpenseAmount(paid);
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
+                      <input
+                        type="text"
+                        disabled
+                        readOnly
+                        value={formatCur(Math.max(0, expenseVendorTotalToPay - expenseVendorPaid))}
+                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid To</label>
@@ -2053,10 +2234,19 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     value={expensePaidTo}
                     onChange={(e) => {
                       setExpensePaidTo(e.target.value);
-                      setShowExpenseCrewSuggestions(true);
+                      if (expenseCategory === 'Labour') setShowExpenseCrewSuggestions(true);
+                      else if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') setShowExpenseVendorSuggestions(true);
                     }}
-                    onFocus={() => setShowExpenseCrewSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowExpenseCrewSuggestions(false), 200)}
+                    onFocus={() => {
+                      if (expenseCategory === 'Labour') setShowExpenseCrewSuggestions(true);
+                      else if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') setShowExpenseVendorSuggestions(true);
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowExpenseCrewSuggestions(false);
+                        setShowExpenseVendorSuggestions(false);
+                      }, 200);
+                    }}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                   />
                   {expenseCategory === 'Labour' && showExpenseCrewSuggestions && crewSuggestions.length > 0 && (
@@ -2080,9 +2270,30 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       }
                     </div>
                   )}
+                  {(expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') && showExpenseVendorSuggestions && vendorsList.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
+                      {vendorsList
+                        .filter(v => !expensePaidTo || v.name.toLowerCase().includes(expensePaidTo.toLowerCase()))
+                        .map(v => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setExpensePaidTo(v.name);
+                              setShowExpenseVendorSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                          >
+                            <span>{v.name}</span>
+                            <span className="text-[9px] text-zinc-400 font-bold uppercase">{v.trade}</span>
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
                 </div>
 
-                {expenseCategory !== 'Vendor Payment' && (
+                {expenseCategory !== 'Vendor Payment' && expenseCategory !== 'Purchase' && (
                   <div>
                     <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
                     <input

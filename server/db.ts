@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { MongoClient, Db } from 'mongodb';
-import { User, Project, Task, Expense, Attendance, Payment, OfficeFund, OfficeTransaction, PaymentRequest, AuditLog, CrewMember } from '../src/types';
+import { User, Project, Task, Expense, Attendance, Payment, OfficeFund, OfficeTransaction, PaymentRequest, AuditLog, CrewMember, Vendor } from '../src/types';
 
 // Initialize environment variables from .env
 dotenv.config();
@@ -18,6 +18,7 @@ interface DatabaseSchema {
   attendance: Attendance[];
   payments: Payment[];
   crew: CrewMember[];
+  vendors: Vendor[];
   officeFunds: OfficeFund[];
   officeTransactions: OfficeTransaction[];
   paymentRequests: PaymentRequest[];
@@ -64,6 +65,7 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
     attendance: Array.isArray(data.attendance) ? [...data.attendance] : [],
     payments: Array.isArray(data.payments) ? [...data.payments] : [],
     crew: Array.isArray(data.crew) ? [...data.crew] : [],
+    vendors: Array.isArray(data.vendors) ? [...data.vendors] : [],
     officeFunds: Array.isArray(data.officeFunds) ? [...data.officeFunds] : [],
     officeTransactions: Array.isArray(data.officeTransactions) ? [...data.officeTransactions] : [],
     paymentRequests: Array.isArray(data.paymentRequests) ? [...data.paymentRequests] : [],
@@ -130,6 +132,7 @@ const collectionsList: (keyof DatabaseSchema)[] = [
   'attendance',
   'payments',
   'crew',
+  'vendors',
   'officeFunds',
   'officeTransactions',
   'paymentRequests',
@@ -274,6 +277,7 @@ export function readDb(): DatabaseSchema {
       attendance: [],
       payments: [],
       crew: [],
+      vendors: [],
       officeFunds: [],
       officeTransactions: [],
       paymentRequests: [],
@@ -361,6 +365,7 @@ function generateSeedData(): DatabaseSchema {
     attendance: [],
     payments: [],
     crew: [],
+    vendors: [],
     officeFunds: [],
     officeTransactions: [],
     paymentRequests: [],

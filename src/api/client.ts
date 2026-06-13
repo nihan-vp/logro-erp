@@ -136,6 +136,16 @@ export const api = {
   updateCrewMember: (id: string, data: any) => request(`/crew/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCrewMember: (id: string) => request(`/crew/${id}`, { method: 'DELETE' }),
 
+  // Vendors
+  getVendors: (status?: 'active' | 'inactive') => {
+    const q = status ? `?status=${status}` : '';
+    return request(`/vendors${q}`);
+  },
+  createVendor: (data: any) => request('/vendors', { method: 'POST', body: JSON.stringify(data) }),
+  bulkVendor: (data: { vendors: any[] }) => request('/vendors/bulk', { method: 'POST', body: JSON.stringify(data) }),
+  updateVendor: (id: string, data: any) => request(`/vendors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteVendor: (id: string) => request(`/vendors/${id}`, { method: 'DELETE' }),
+
   // Attendance
   getAttendance: (projectId?: string, taskId?: string, date?: string) => {
     const params = new URLSearchParams();

@@ -456,6 +456,7 @@ const REQUEST_TO_EXPENSE_CATEGORY: Record<string, ExpenseCategory> = {
   Vendor: 'Material',
   Transportation: 'Transport',
   'Vendor Payment': 'Vendor Payment',
+  Purchase: 'Purchase',
   Other: 'Other',
 };
 
@@ -464,6 +465,7 @@ function expenseCategoryToRequestCategory(category: ExpenseCategory | string): P
   if (category === 'Labour') return 'Worker';
   if (category === 'Transport') return 'Transportation';
   if (category === 'Vendor Payment') return 'Vendor Payment';
+  if (category === 'Purchase') return 'Purchase';
   return 'Other';
 }
 
@@ -497,6 +499,10 @@ function paymentRequestToExpenseItem(pr: any, projects: any[], tasks: any[]) {
     vendorTotalToPay: pr.vendorTotalToPay,
     vendorPaid: pr.vendorPaid,
     vendorRemaining: pr.vendorRemaining,
+    purchasePricePerCount: pr.purchasePricePerCount,
+    purchaseTotalFull: pr.purchaseTotalFull,
+    purchaseTotal: pr.purchaseTotal,
+    purchaseItems: pr.purchaseItems,
   };
 }
 
@@ -841,7 +847,7 @@ app.get('/api/expenses', requireAuth, async (req: any, res) => {
 });
 
 app.put('/api/expenses/:id', requireAuth, async (req: any, res) => {
-  const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining } = req.body;
+  const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems } = req.body;
   if (!category || amount === undefined || !paidTo || !paymentMethod || !date) {
     return res.status(400).json({ error: 'All core fields are required' });
   }
@@ -869,6 +875,10 @@ app.put('/api/expenses/:id', requireAuth, async (req: any, res) => {
             vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : null,
             vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : null,
             vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : null,
+            purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : null,
+            purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : null,
+            purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : null,
+            purchaseItems: purchaseItems ?? null,
         }},
         { returnDocument: 'after' }
     );
@@ -899,6 +909,10 @@ app.put('/api/expenses/:id', requireAuth, async (req: any, res) => {
           vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : null,
           vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : null,
           vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : null,
+          purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : null,
+          purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : null,
+          purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : null,
+          purchaseItems: purchaseItems ?? null,
       }},
       { returnDocument: 'after' }
   );
@@ -1044,6 +1058,127 @@ app.post('/api/crew/bulk', requireAuth, async (req: any, res) => {
 
     await crewCol.insertOne(newMember);
     added.push(newMember);
+  }
+
+  res.status(201).json({ success: true, added: added.length, errors });
+});
+
+// 5.b Vendor registry routes
+app.get('/api/vendors', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const { status } = req.query;
+  
+  const query: any = {};
+  if (status === 'active' || status === 'inactive') {
+    query.status = status;
+  }
+  
+  const vendors = await tenantDb.collection('vendors').find(query).sort({ name: 1 }).toArray();
+  res.json({ vendors });
+});
+
+app.post('/api/vendors', requireAuth, async (req: any, res) => {
+  const { name, trade, phone, status, notes } = req.body;
+  if (!name || !trade) {
+    return res.status(400).json({ error: 'Name and trade/role are required' });
+  }
+
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const duplicate = await tenantDb.collection('vendors').findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+  if (duplicate) {
+    return res.status(400).json({ error: 'A vendor with this name already exists' });
+  }
+
+  const newVendor = {
+    id: 'vend_' + Date.now(),
+    name: String(name).trim(),
+    trade: String(trade).trim(),
+    phone: phone || '',
+    status: (status || 'active'),
+    notes: notes || '',
+    createdAt: new Date().toISOString()
+  };
+
+  await tenantDb.collection('vendors').insertOne(newVendor);
+  res.status(201).json(newVendor);
+});
+
+app.put('/api/vendors/:id', requireAuth, async (req: any, res) => {
+  const { name, trade, phone, status, notes } = req.body;
+  if (!name || !trade) {
+    return res.status(400).json({ error: 'Name and trade/role are required' });
+  }
+
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const duplicate = await tenantDb.collection('vendors').findOne({ 
+      id: { $ne: req.params.id }, 
+      name: { $regex: new RegExp(`^${name}$`, 'i') } 
+  });
+  if (duplicate) {
+    return res.status(400).json({ error: 'A vendor with this name already exists' });
+  }
+
+  const result = await tenantDb.collection('vendors').findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { 
+          name: String(name).trim(),
+          trade: String(trade).trim(),
+          phone: phone || '',
+          status,
+          notes: notes || ''
+      } },
+      { returnDocument: 'after' }
+  );
+
+  if (!result) return res.status(404).json({ error: 'Vendor not found' });
+  res.json(result);
+});
+
+app.delete('/api/vendors/:id', requireAuth, async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  
+  const result = await tenantDb.collection('vendors').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: 'Vendor not found' });
+  
+  res.json({ success: true, message: 'Vendor removed' });
+});
+
+app.post('/api/vendors/bulk', requireAuth, async (req: any, res) => {
+  const { vendors } = req.body;
+  if (!Array.isArray(vendors) || vendors.length === 0) {
+    return res.status(400).json({ error: 'A non-empty vendors array is required' });
+  }
+
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const vendorCol = tenantDb.collection('vendors');
+
+  const added: any[] = [];
+  const errors: string[] = [];
+
+  for (const [idx, v] of vendors.entries()) {
+    const name = String(v.name || '').trim();
+    if (!name) {
+      errors.push(`Row ${idx + 1}: name is required`);
+      continue;
+    }
+
+    const duplicate = await vendorCol.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+    if (duplicate) continue; // Skip duplicates
+
+    const newVendor = {
+        id: 'vend_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        name,
+        trade: v.trade || 'Other Supply',
+        phone: v.phone ? String(v.phone).trim() : '',
+        status: v.status === 'inactive' ? 'inactive' : 'active',
+        notes: v.notes ? String(v.notes).trim() : '',
+        createdAt: new Date().toISOString()
+    };
+
+    await vendorCol.insertOne(newVendor);
+    added.push(newVendor);
   }
 
   res.status(201).json({ success: true, added: added.length, errors });
@@ -1266,6 +1401,7 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
             'Vendor': 'Material',
             'Transportation': 'Transport',
             'Vendor Payment': 'Vendor Payment',
+            'Purchase': 'Purchase',
             'Other': 'Other'
           };
           
@@ -1289,6 +1425,10 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
              vendorTotalToPay: pr.vendorTotalToPay,
              vendorPaid: pr.vendorPaid,
              vendorRemaining: pr.vendorRemaining,
+             purchasePricePerCount: pr.purchasePricePerCount,
+             purchaseTotalFull: pr.purchaseTotalFull,
+             purchaseTotal: pr.purchaseTotal,
+             purchaseItems: pr.purchaseItems,
            });
       }
   }
@@ -1389,7 +1529,7 @@ app.get('/api/payment-requests', requireAuth, async (req: any, res) => {
 });
 
 app.post('/api/payment-requests', requireAuth, async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining } = req.body;
+    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
@@ -1418,13 +1558,17 @@ app.post('/api/payment-requests', requireAuth, async (req: any, res) => {
         vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : undefined,
         vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : undefined,
         vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : undefined,
+        purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : undefined,
+        purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : undefined,
+        purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : undefined,
+        purchaseItems: purchaseItems ?? undefined,
     };
     await tenantDb.collection('paymentRequests').insertOne(newRequest);
     res.status(201).json(newRequest);
 });
 
 app.put('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining } = req.body;
+    const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
@@ -1456,6 +1600,10 @@ app.put('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
             vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : existing.vendorTotalToPay,
             vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : existing.vendorPaid,
             vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : existing.vendorRemaining,
+            purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : existing.purchasePricePerCount,
+            purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : existing.purchaseTotalFull,
+            purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : existing.purchaseTotal,
+            purchaseItems: purchaseItems !== undefined ? purchaseItems : existing.purchaseItems,
         } },
         { returnDocument: 'after' }
     );

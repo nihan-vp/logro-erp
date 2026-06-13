@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Edit2, Trash2
 } from 'lucide-react';
 import { api } from '../api/client';
-import { ExpenseCategory, PaymentRequest } from '../types';
+import { ExpenseCategory, PaymentRequest, PurchaseLineItem } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
 
@@ -45,6 +45,8 @@ const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest[
   if (cat === 'Material') return 'Vendor';
   if (cat === 'Labour') return 'Worker';
   if (cat === 'Transport') return 'Transportation';
+  if (cat === 'Vendor Payment') return 'Vendor Payment';
+  if (cat === 'Purchase') return 'Purchase';
   return 'Other';
 };
 
@@ -52,6 +54,8 @@ const paymentCategoryToExpenseCategory = (cat: PaymentRequest['category']): Expe
   if (cat === 'Vendor') return 'Material';
   if (cat === 'Worker') return 'Labour';
   if (cat === 'Transportation') return 'Transport';
+  if (cat === 'Vendor Payment') return 'Vendor Payment';
+  if (cat === 'Purchase') return 'Purchase';
   return 'Other';
 };
 
@@ -67,6 +71,8 @@ const getStatusMessage = (status: PaymentRequest['status']) => {
 
 const formatCur = (num: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
+
+const parseNumericQty = (qty: string) => parseFloat(qty.replace(/[^0-9.]/g, '')) || 0;
 
 interface FinanceHubProps {
   initialProjectId?: string;
@@ -118,6 +124,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [reqToolInput, setReqToolInput] = useState('');
   const [reqVendorTotalToPay, setReqVendorTotalToPay] = useState<number>(0);
   const [reqVendorPaid, setReqVendorPaid] = useState<number>(0);
+  const [reqPurchaseItems, setReqPurchaseItems] = useState<PurchaseLineItem[]>([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+  const [vendorsList, setVendorsList] = useState<any[]>([]);
+  const [showVendorSuggestions, setShowVendorSuggestions] = useState(false);
   const [crewSuggestions, setCrewSuggestions] = useState<string[]>([]);
   const [showCrewSuggestions, setShowCrewSuggestions] = useState(false);
 
@@ -126,11 +135,12 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [projectsRes, tasksRes, paymentRequestsRes, crewRes] = await Promise.all([
+      const [projectsRes, tasksRes, paymentRequestsRes, crewRes, vendorsRes] = await Promise.all([
         api.getProjects(),
         api.getTasks(),
         api.getPaymentRequests(),
-        api.getCrew('active').catch(() => ({ crew: [] }))
+        api.getCrew('active').catch(() => ({ crew: [] })),
+        api.getVendors('active').catch(() => ({ vendors: [] }))
       ]);
       const projectList = projectsRes.projects || [];
       const taskList = tasksRes.tasks || [];
@@ -142,6 +152,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
         taskName: taskList.find((t: any) => t.id === r.taskId)?.taskName || 'Unknown Task',
       })));
       setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
+      setVendorsList(vendorsRes.vendors || []);
     } catch (err: any) {
       const message = err?.message || 'Failed to load finance data';
       setError(message);
@@ -209,6 +220,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqToolInput('');
     setReqVendorTotalToPay(0);
     setReqVendorPaid(0);
+    setReqPurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+    setShowVendorSuggestions(false);
     setShowCrewSuggestions(false);
   };
 
@@ -244,6 +257,20 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqToolInput('');
     setReqVendorTotalToPay(request.vendorTotalToPay || 0);
     setReqVendorPaid(request.vendorPaid || 0);
+    if (request.purchaseItems && request.purchaseItems.length > 0) {
+      setReqPurchaseItems(request.purchaseItems);
+    } else if (request.materialName) {
+      // Backward compatibility: convert old single-item data to array
+      setReqPurchaseItems([{
+        materialName: request.materialName || '',
+        qty: request.materialQty || '',
+        pricePerCount: request.purchasePricePerCount || 0,
+        total: request.purchaseTotalFull || 0,
+      }]);
+    } else {
+      setReqPurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+    }
+    setShowVendorSuggestions(false);
     setShowCrewSuggestions(false);
 
     try {
@@ -308,7 +335,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       notify.warning('All core fields are required.');
       return;
     }
-    if (reqCategory === 'Vendor Payment') {
+    if (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') {
       if (reqVendorTotalToPay <= 0 || reqVendorPaid <= 0) {
         notify.warning('Total to pay and Paid amount must be greater than 0.');
         return;
@@ -342,12 +369,16 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       priority: reqPriority,
       paymentMethod: reqPaymentMethod,
       billImage: reqBillImage || undefined,
-      materialName: reqCategory === 'Material' ? reqMaterialName : undefined,
-      materialQty: reqCategory === 'Material' ? reqMaterialQty : undefined,
+      materialName: (reqCategory === 'Material') ? reqMaterialName : (reqCategory === 'Purchase' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].materialName : undefined,
+      materialQty: (reqCategory === 'Material') ? reqMaterialQty : (reqCategory === 'Purchase' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].qty : undefined,
       tools: reqCategory === 'Tools' ? reqTools : undefined,
-      vendorTotalToPay: reqCategory === 'Vendor Payment' ? Number(reqVendorTotalToPay) : undefined,
-      vendorPaid: reqCategory === 'Vendor Payment' ? Number(reqVendorPaid) : undefined,
-      vendorRemaining: reqCategory === 'Vendor Payment' ? Number(reqVendorTotalToPay - reqVendorPaid) : undefined,
+      vendorTotalToPay: (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') ? Number(reqVendorTotalToPay) : undefined,
+      vendorPaid: (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') ? Number(reqVendorPaid) : undefined,
+      vendorRemaining: (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') ? Number(reqVendorTotalToPay - reqVendorPaid) : undefined,
+      purchasePricePerCount: reqCategory === 'Purchase' && reqPurchaseItems.length > 0 ? reqPurchaseItems[0].pricePerCount : undefined,
+      purchaseTotalFull: reqCategory === 'Purchase' ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
+      purchaseTotal: reqCategory === 'Purchase' ? Number(reqVendorPaid) : undefined,
+      purchaseItems: reqCategory === 'Purchase' ? reqPurchaseItems : undefined,
     };
     try {
       setReqSubmitError(null);
@@ -736,6 +767,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     <option value="Tools">Tools</option>
                     <option value="Company Payment">Company Payment</option>
                     <option value="Vendor Payment">Vendor Payment</option>
+                    <option value="Purchase">Purchase</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -763,10 +795,19 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     value={reqPaidTo}
                     onChange={(e) => {
                       setReqPaidTo(e.target.value);
-                      setShowCrewSuggestions(true);
+                      if (reqCategory === 'Labour') setShowCrewSuggestions(true);
+                      else if (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') setShowVendorSuggestions(true);
                     }}
-                    onFocus={() => setShowCrewSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowCrewSuggestions(false), 200)}
+                    onFocus={() => {
+                      if (reqCategory === 'Labour') setShowCrewSuggestions(true);
+                      else if (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') setShowVendorSuggestions(true);
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowCrewSuggestions(false);
+                        setShowVendorSuggestions(false);
+                      }, 200);
+                    }}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                   />
                   {reqCategory === 'Labour' && showCrewSuggestions && crewSuggestions.length > 0 && (
@@ -790,8 +831,29 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       }
                     </div>
                   )}
+                  {(reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') && showVendorSuggestions && vendorsList.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
+                      {vendorsList
+                        .filter(v => !reqPaidTo || v.name.toLowerCase().includes(reqPaidTo.toLowerCase()))
+                        .map(v => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setReqPaidTo(v.name);
+                              setShowVendorSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                          >
+                            <span>{v.name}</span>
+                            <span className="text-[9px] text-zinc-400 font-bold uppercase">{v.trade}</span>
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
                 </div>
-                {reqCategory !== 'Vendor Payment' && (
+                {reqCategory !== 'Vendor Payment' && reqCategory !== 'Purchase' && (
                   <div>
                     <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
                     <input
@@ -929,6 +991,158 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       value={formatCur(Math.max(0, reqVendorTotalToPay - reqVendorPaid))}
                       className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* Purchase fields — multi-line items table */}
+              {reqCategory === 'Purchase' && (
+                <div className="space-y-4">
+                  <div className="border border-zinc-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
+                          <th className="text-left px-3 py-2.5 w-[30%]">Material</th>
+                          <th className="text-left px-3 py-2.5 w-[18%]">Qty</th>
+                          <th className="text-right px-3 py-2.5 w-[20%]">Price / Unit (₹)</th>
+                          <th className="text-right px-3 py-2.5 w-[20%]">Total (₹)</th>
+                          <th className="px-2 py-2.5 w-[12%]"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {reqPurchaseItems.map((item, idx) => (
+                          <tr key={idx} className="group hover:bg-zinc-50/50 transition-colors">
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. Cement"
+                                value={item.materialName}
+                                onChange={(e) => {
+                                  const items = [...reqPurchaseItems];
+                                  items[idx] = { ...items[idx], materialName: e.target.value };
+                                  setReqPurchaseItems(items);
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 focus:outline-none focus:border-zinc-400 text-xs"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. 100 bags"
+                                value={item.qty}
+                                onChange={(e) => {
+                                  const items = [...reqPurchaseItems];
+                                  const numericQty = parseNumericQty(e.target.value);
+                                  const total = numericQty * items[idx].pricePerCount;
+                                  items[idx] = { ...items[idx], qty: e.target.value, total };
+                                  setReqPurchaseItems(items);
+                                  const grandTotal = items.reduce((s, it) => s + it.total, 0);
+                                  setReqVendorTotalToPay(grandTotal);
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 focus:outline-none focus:border-zinc-400 text-xs"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="number"
+                                required
+                                min={0}
+                                step="any"
+                                placeholder="400"
+                                value={item.pricePerCount || ''}
+                                onChange={(e) => {
+                                  const items = [...reqPurchaseItems];
+                                  const price = Number(e.target.value);
+                                  const numericQty = parseNumericQty(items[idx].qty);
+                                  const total = numericQty * price;
+                                  items[idx] = { ...items[idx], pricePerCount: price, total };
+                                  setReqPurchaseItems(items);
+                                  const grandTotal = items.reduce((s, it) => s + it.total, 0);
+                                  setReqVendorTotalToPay(grandTotal);
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 text-right focus:outline-none focus:border-zinc-400 text-xs"
+                              />
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-bold text-zinc-700">
+                              {formatCur(item.total)}
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              {reqPurchaseItems.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const items = reqPurchaseItems.filter((_, i) => i !== idx);
+                                    setReqPurchaseItems(items);
+                                    const grandTotal = items.reduce((s, it) => s + it.total, 0);
+                                    setReqVendorTotalToPay(grandTotal);
+                                  }}
+                                  className="p-1 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                                  title="Remove row"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t border-zinc-200 bg-zinc-50">
+                          <td colSpan={3} className="px-3 py-2 text-right font-bold text-zinc-600 uppercase text-[10px] tracking-wider">Grand Total</td>
+                          <td className="px-3 py-2 text-right font-black text-zinc-900">{formatCur(reqPurchaseItems.reduce((s, it) => s + it.total, 0))}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReqPurchaseItems([...reqPurchaseItems, { materialName: '', qty: '', pricePerCount: 0, total: 0 }])}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Material</span>
+                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
+                      <input
+                        type="number"
+                        disabled
+                        readOnly
+                        value={reqVendorTotalToPay || ''}
+                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total Paid (₹)</label>
+                      <input
+                        type="number"
+                        required
+                        min={0.01}
+                        step="any"
+                        placeholder="e.g. 15000"
+                        value={reqVendorPaid || ''}
+                        onChange={(e) => {
+                          const paid = Number(e.target.value);
+                          setReqVendorPaid(paid);
+                          setReqAmount(paid);
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
+                      <input
+                        type="text"
+                        disabled
+                        readOnly
+                        value={formatCur(Math.max(0, reqVendorTotalToPay - reqVendorPaid))}
+                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -1108,9 +1322,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       </p>
                     </div>
                   )}
-                  {selectedPaymentRequest.category === 'Vendor Payment' && selectedPaymentRequest.vendorTotalToPay !== undefined && (
+                  {(selectedPaymentRequest.category === 'Vendor Payment' || selectedPaymentRequest.category === 'Purchase') && selectedPaymentRequest.vendorTotalToPay !== undefined && (
                     <div className="bg-zinc-50 rounded-xl p-3 col-span-2 space-y-2">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Vendor Payment Status</p>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Vendor / Purchase Payment Status</p>
                       <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
                         <div>
                           <span className="text-[9px] text-zinc-400 block">Total:</span>
@@ -1124,6 +1338,33 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                           <span className="text-[9px] text-zinc-400 block">Remaining:</span>
                           <span className="text-rose-600">{formatCur(selectedPaymentRequest.vendorRemaining || 0)}</span>
                         </div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedPaymentRequest.category === 'Purchase' && selectedPaymentRequest.purchaseItems && selectedPaymentRequest.purchaseItems.length > 0 && (
+                    <div className="bg-zinc-50 rounded-xl p-3 col-span-2 space-y-2">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Purchased Materials</p>
+                      <div className="overflow-x-auto border border-zinc-200/60 rounded-lg">
+                        <table className="min-w-full divide-y divide-zinc-200/60 text-[11px]">
+                          <thead className="bg-zinc-100/80">
+                            <tr>
+                              <th className="px-3 py-1.5 text-left font-bold text-zinc-500 uppercase tracking-wider">Material</th>
+                              <th className="px-3 py-1.5 text-right font-bold text-zinc-500 uppercase tracking-wider">Qty</th>
+                              <th className="px-3 py-1.5 text-right font-bold text-zinc-500 uppercase tracking-wider">Price</th>
+                              <th className="px-3 py-1.5 text-right font-bold text-zinc-500 uppercase tracking-wider">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-200/50 bg-white">
+                            {selectedPaymentRequest.purchaseItems.map((item, idx) => (
+                              <tr key={idx}>
+                                <td className="px-3 py-1.5 font-medium text-zinc-950">{item.materialName || '—'}</td>
+                                <td className="px-3 py-1.5 text-right text-zinc-600">{item.qty || '0'}</td>
+                                <td className="px-3 py-1.5 text-right text-zinc-600">{formatCur(item.pricePerCount || 0)}</td>
+                                <td className="px-3 py-1.5 text-right font-semibold text-zinc-900">{formatCur(item.total || 0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )}

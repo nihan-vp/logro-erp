@@ -16,12 +16,19 @@ export interface OfficeTransaction {
     paymentMethod?: string;
     reference?: string;
 }
+export interface PurchaseLineItem {
+    materialName: string;
+    qty: string;
+    pricePerCount: number;
+    total: number;
+}
+
 export interface PaymentRequest {
     id: string;
     projectId: string;
     taskId: string;
     payeeName: string;
-    category: 'Worker' | 'Vendor' | 'Transportation' | 'Vendor Payment' | 'Other';
+    category: 'Worker' | 'Vendor' | 'Transportation' | 'Vendor Payment' | 'Purchase' | 'Other';
     amount: number;
     description: string;
     fromLocation?: string;
@@ -39,6 +46,10 @@ export interface PaymentRequest {
     vendorTotalToPay?: number;
     vendorPaid?: number;
     vendorRemaining?: number;
+    purchasePricePerCount?: number;
+    purchaseTotalFull?: number;
+    purchaseTotal?: number;
+    purchaseItems?: PurchaseLineItem[];
 }
 export interface AuditLog {
     id: string;
@@ -92,7 +103,7 @@ export interface Task {
   notes?: string;
 }
 
-export type ExpenseCategory = 'Material' | 'Labour' | 'Transport' | 'Tools' | 'Company Payment' | 'Vendor Payment' | 'Other';
+export type ExpenseCategory = 'Material' | 'Labour' | 'Transport' | 'Tools' | 'Company Payment' | 'Vendor Payment' | 'Purchase' | 'Other';
 
 export interface Expense {
   id: string;
@@ -114,6 +125,20 @@ export interface Expense {
   vendorTotalToPay?: number;
   vendorPaid?: number;
   vendorRemaining?: number;
+  purchasePricePerCount?: number;
+  purchaseTotalFull?: number;
+  purchaseTotal?: number;
+  purchaseItems?: PurchaseLineItem[];
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
+  trade: string; // e.g. Cement Supplier, Steel Supplier
+  phone?: string;
+  status: 'active' | 'inactive';
+  notes?: string;
+  createdAt: string;
 }
 
 export type CrewTrade = 'Mason' | 'Electrician' | 'Plumber' | 'Carpenter' | 'Helper' | 'Supervisor' | 'Other';
