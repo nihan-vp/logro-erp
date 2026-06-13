@@ -21,7 +21,7 @@ export interface PaymentRequest {
     projectId: string;
     taskId: string;
     payeeName: string;
-    category: 'Worker' | 'Vendor' | 'Transportation' | 'Other';
+    category: 'Worker' | 'Vendor' | 'Transportation' | 'Vendor Payment' | 'Other';
     amount: number;
     description: string;
     fromLocation?: string;
@@ -33,6 +33,12 @@ export interface PaymentRequest {
     billImage?: string;
     createdBy?: string;
     createdAt: string;
+    materialName?: string;
+    materialQty?: string;
+    tools?: string[];
+    vendorTotalToPay?: number;
+    vendorPaid?: number;
+    vendorRemaining?: number;
 }
 export interface AuditLog {
     id: string;
@@ -86,7 +92,7 @@ export interface Task {
   notes?: string;
 }
 
-export type ExpenseCategory = 'Material' | 'Labour' | 'Transport' | 'Tools' | 'Company Payment' | 'Other';
+export type ExpenseCategory = 'Material' | 'Labour' | 'Transport' | 'Tools' | 'Company Payment' | 'Vendor Payment' | 'Other';
 
 export interface Expense {
   id: string;
@@ -102,6 +108,12 @@ export interface Expense {
   notes?: string;
   billImage?: string; // base64 or URL
   createdBy: string;
+  materialName?: string;
+  materialQty?: string;
+  tools?: string[];
+  vendorTotalToPay?: number;
+  vendorPaid?: number;
+  vendorRemaining?: number;
 }
 
 export type CrewTrade = 'Mason' | 'Electrician' | 'Plumber' | 'Carpenter' | 'Helper' | 'Supervisor' | 'Other';

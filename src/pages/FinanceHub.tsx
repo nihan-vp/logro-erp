@@ -111,7 +111,45 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [reqSubmitError, setReqSubmitError] = useState<string | null>(null);
   const [officeBalance, setOfficeBalance] = useState(0);
 
+  // Custom category fields
+  const [reqMaterialName, setReqMaterialName] = useState('');
+  const [reqMaterialQty, setReqMaterialQty] = useState('');
+  const [reqTools, setReqTools] = useState<string[]>([]);
+  const [reqToolInput, setReqToolInput] = useState('');
+  const [reqVendorTotalToPay, setReqVendorTotalToPay] = useState<number>(0);
+  const [reqVendorPaid, setReqVendorPaid] = useState<number>(0);
+  const [crewSuggestions, setCrewSuggestions] = useState<string[]>([]);
+  const [showCrewSuggestions, setShowCrewSuggestions] = useState(false);
+
   const selectedReqProjectName = projects.find(p => p.id === reqProjectId)?.projectName;
+
+  const fetchInitialData = async () => {
+    setLoading(true);
+    try {
+      const [projectsRes, tasksRes, paymentRequestsRes, crewRes] = await Promise.all([
+        api.getProjects(),
+        api.getTasks(),
+        api.getPaymentRequests(),
+        api.getCrew('active').catch(() => ({ crew: [] }))
+      ]);
+      const projectList = projectsRes.projects || [];
+      const taskList = tasksRes.tasks || [];
+      const paymentRequests = paymentRequestsRes.paymentRequests || [];
+      setProjects(projectList);
+      setRequests(paymentRequests.map((r: PaymentRequest) => ({
+        ...r,
+        projectName: projectList.find((p: any) => p.id === r.projectId)?.projectName || 'Unknown Project',
+        taskName: taskList.find((t: any) => t.id === r.taskId)?.taskName || 'Unknown Task',
+      })));
+      setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
+    } catch (err: any) {
+      const message = err?.message || 'Failed to load finance data';
+      setError(message);
+      notify.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isActive) {
@@ -127,34 +165,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     localStorage.setItem(ROWS_PER_PAGE_STORAGE_KEY, String(rowsPerPage));
   }, [rowsPerPage]);
 
-  const fetchInitialData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [projectsRes, tasksRes, paymentRequestsRes] = await Promise.all([
-        api.getProjects(),
-        api.getTasks(),
-        api.getPaymentRequests(),
-      ]);
-      const projectList = projectsRes.projects || [];
-      const taskList = tasksRes.tasks || [];
-      const paymentRequests = paymentRequestsRes.paymentRequests || [];
-      setProjects(projectList);
-      setRequests(paymentRequests.map((r: PaymentRequest) => ({
-        ...r,
-        projectName: projectList.find((p: any) => p.id === r.projectId)?.projectName || 'Unknown Project',
-        taskName: taskList.find((t: any) => t.id === r.taskId)?.taskName || 'Unknown Task',
-      })));
-    } catch (err: any) {
-      const message = err?.message || 'Failed to load finance data';
-      setError(message);
-      notify.error(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Sync tasks on project change for requests
   useEffect(() => {
     if (reqProjectId) {
       api.getTasks(reqProjectId).then(res => {
@@ -193,6 +203,13 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqBillImage('');
     setReqPriority('Medium');
     setReqSubmitError(null);
+    setReqMaterialName('');
+    setReqMaterialQty('');
+    setReqTools([]);
+    setReqToolInput('');
+    setReqVendorTotalToPay(0);
+    setReqVendorPaid(0);
+    setShowCrewSuggestions(false);
   };
 
   const handleOpenCreateRequest = () => {
@@ -220,6 +237,14 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqBillImage(request.billImage || '');
     setReqPriority(request.priority || 'Medium');
     setReqSubmitError(null);
+
+    setReqMaterialName(request.materialName || '');
+    setReqMaterialQty(request.materialQty || '');
+    setReqTools(request.tools || []);
+    setReqToolInput('');
+    setReqVendorTotalToPay(request.vendorTotalToPay || 0);
+    setReqVendorPaid(request.vendorPaid || 0);
+    setShowCrewSuggestions(false);
 
     try {
       const res = await api.getTasks(request.projectId);
@@ -279,8 +304,17 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
 
   const handleRequestSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (!reqProjectId || !reqTaskId || !reqCategory || reqAmount <= 0 || !reqPaidTo || !reqPaymentMethod || !reqDate) {
+    if (!reqProjectId || !reqTaskId || !reqCategory || !reqPaidTo || !reqPaymentMethod || !reqDate) {
       notify.warning('All core fields are required.');
+      return;
+    }
+    if (reqCategory === 'Vendor Payment') {
+      if (reqVendorTotalToPay <= 0 || reqVendorPaid <= 0) {
+        notify.warning('Total to pay and Paid amount must be greater than 0.');
+        return;
+      }
+    } else if (reqAmount <= 0) {
+      notify.warning('Spent amount must be greater than 0.');
       return;
     }
 
@@ -308,6 +342,12 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       priority: reqPriority,
       paymentMethod: reqPaymentMethod,
       billImage: reqBillImage || undefined,
+      materialName: reqCategory === 'Material' ? reqMaterialName : undefined,
+      materialQty: reqCategory === 'Material' ? reqMaterialQty : undefined,
+      tools: reqCategory === 'Tools' ? reqTools : undefined,
+      vendorTotalToPay: reqCategory === 'Vendor Payment' ? Number(reqVendorTotalToPay) : undefined,
+      vendorPaid: reqCategory === 'Vendor Payment' ? Number(reqVendorPaid) : undefined,
+      vendorRemaining: reqCategory === 'Vendor Payment' ? Number(reqVendorTotalToPay - reqVendorPaid) : undefined,
     };
     try {
       setReqSubmitError(null);
@@ -435,6 +475,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
               <option value="Vendor">Vendor</option>
               <option value="Worker">Worker</option>
               <option value="Transportation">Transportation</option>
+              <option value="Vendor Payment">Vendor Payment</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -694,6 +735,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     <option value="Transport">Transport</option>
                     <option value="Tools">Tools</option>
                     <option value="Company Payment">Company Payment</option>
+                    <option value="Vendor Payment">Vendor Payment</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -712,31 +754,184 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid To</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Alliance Steel Builders"
                     value={reqPaidTo}
-                    onChange={(e) => setReqPaidTo(e.target.value)}
+                    onChange={(e) => {
+                      setReqPaidTo(e.target.value);
+                      setShowCrewSuggestions(true);
+                    }}
+                    onFocus={() => setShowCrewSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowCrewSuggestions(false), 200)}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                   />
+                  {reqCategory === 'Labour' && showCrewSuggestions && crewSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
+                      {crewSuggestions
+                        .filter(worker => !reqPaidTo || worker.toLowerCase().includes(reqPaidTo.toLowerCase()))
+                        .map(worker => (
+                          <button
+                            key={worker}
+                            type="button"
+                            onClick={() => {
+                              setReqPaidTo(worker);
+                              setShowCrewSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                          >
+                            <span>{worker}</span>
+                            <span className="text-[9px] text-zinc-400 font-bold uppercase">Crew</span>
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    min={0.01}
-                    step="any"
-                    placeholder="e.g. 1500"
-                    value={reqAmount || ''}
-                    onChange={(e) => setReqAmount(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
-                  />
-                </div>
+                {reqCategory !== 'Vendor Payment' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0.01}
+                      step="any"
+                      placeholder="e.g. 1500"
+                      value={reqAmount || ''}
+                      onChange={(e) => setReqAmount(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
+                    />
+                  </div>
+                )}
               </div>
+
+              {reqCategory === 'Material' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Material Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Cement, Steel"
+                      value={reqMaterialName}
+                      onChange={(e) => setReqMaterialName(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Quantity</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 50 bags"
+                      value={reqMaterialQty}
+                      onChange={(e) => setReqMaterialQty(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {reqCategory === 'Tools' && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Tools List</label>
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-zinc-50 border border-zinc-200 rounded-xl min-h-[38px] items-center">
+                    {reqTools.map((t) => (
+                      <span key={t} className="inline-flex items-center gap-1 bg-zinc-900 text-white text-[10px] font-bold pl-2 pr-1 py-0.5 rounded-lg">
+                        <span>{t}</span>
+                        <button
+                          type="button"
+                          onClick={() => setReqTools(reqTools.filter(x => x !== t))}
+                          className="hover:text-red-300 font-extrabold w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-white/10"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {reqTools.length === 0 && (
+                      <span className="text-[10px] text-zinc-400 italic">No tools added yet. Type tool name below and click Add.</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Add tool name... (e.g. Hammer, Drill)"
+                      value={reqToolInput}
+                      onChange={(e) => setReqToolInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (reqToolInput.trim() && !reqTools.includes(reqToolInput.trim())) {
+                            setReqTools([...reqTools, reqToolInput.trim()]);
+                            setReqToolInput('');
+                          }
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (reqToolInput.trim() && !reqTools.includes(reqToolInput.trim())) {
+                          setReqTools([...reqTools, reqToolInput.trim()]);
+                          setReqToolInput('');
+                        }
+                      }}
+                      className="px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition"
+                    >
+                      Add Tool
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {reqCategory === 'Vendor Payment' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0.01}
+                      step="any"
+                      placeholder="e.g. 50000"
+                      value={reqVendorTotalToPay || ''}
+                      onChange={(e) => setReqVendorTotalToPay(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0.01}
+                      step="any"
+                      placeholder="e.g. 20000"
+                      value={reqVendorPaid || ''}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setReqVendorPaid(val);
+                        setReqAmount(val);
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
+                    <input
+                      type="text"
+                      disabled
+                      readOnly
+                      value={formatCur(Math.max(0, reqVendorTotalToPay - reqVendorPaid))}
+                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -895,6 +1090,41 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       <p className="font-semibold text-zinc-900">
                         {selectedPaymentRequest.fromLocation || '—'} → {selectedPaymentRequest.toLocation || '—'}
                       </p>
+                    </div>
+                  )}
+                  {selectedPaymentRequest.category === 'Vendor' && (selectedPaymentRequest.materialName || selectedPaymentRequest.materialQty) && (
+                    <div className="bg-zinc-50 rounded-xl p-3 col-span-2">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Material Details</p>
+                      <p className="font-semibold text-zinc-900">
+                        {selectedPaymentRequest.materialName || '—'} {selectedPaymentRequest.materialQty ? `(Qty: ${selectedPaymentRequest.materialQty})` : ''}
+                      </p>
+                    </div>
+                  )}
+                  {selectedPaymentRequest.tools && selectedPaymentRequest.tools.length > 0 && (
+                    <div className="bg-zinc-50 rounded-xl p-3 col-span-2">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Tools</p>
+                      <p className="font-semibold text-zinc-900">
+                        {selectedPaymentRequest.tools.join(', ')}
+                      </p>
+                    </div>
+                  )}
+                  {selectedPaymentRequest.category === 'Vendor Payment' && selectedPaymentRequest.vendorTotalToPay !== undefined && (
+                    <div className="bg-zinc-50 rounded-xl p-3 col-span-2 space-y-2">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Vendor Payment Status</p>
+                      <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
+                        <div>
+                          <span className="text-[9px] text-zinc-400 block">Total:</span>
+                          <span className="text-zinc-900">{formatCur(selectedPaymentRequest.vendorTotalToPay)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-400 block">Paid:</span>
+                          <span className="text-zinc-900">{formatCur(selectedPaymentRequest.vendorPaid || 0)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-400 block">Remaining:</span>
+                          <span className="text-rose-600">{formatCur(selectedPaymentRequest.vendorRemaining || 0)}</span>
+                        </div>
+                      </div>
                     </div>
                   )}
                   {selectedPaymentRequest.description && (

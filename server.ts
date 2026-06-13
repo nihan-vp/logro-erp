@@ -455,6 +455,7 @@ const REQUEST_TO_EXPENSE_CATEGORY: Record<string, ExpenseCategory> = {
   Worker: 'Labour',
   Vendor: 'Material',
   Transportation: 'Transport',
+  'Vendor Payment': 'Vendor Payment',
   Other: 'Other',
 };
 
@@ -462,6 +463,7 @@ function expenseCategoryToRequestCategory(category: ExpenseCategory | string): P
   if (category === 'Material' || category === 'Tools') return 'Vendor';
   if (category === 'Labour') return 'Worker';
   if (category === 'Transport') return 'Transportation';
+  if (category === 'Vendor Payment') return 'Vendor Payment';
   return 'Other';
 }
 
@@ -489,6 +491,12 @@ function paymentRequestToExpenseItem(pr: any, projects: any[], tasks: any[]) {
     taskName: tsk ? tsk.taskName : 'Unknown Task',
     isPendingRequest: true,
     requestStatus: pr.status,
+    materialName: pr.materialName,
+    materialQty: pr.materialQty,
+    tools: pr.tools,
+    vendorTotalToPay: pr.vendorTotalToPay,
+    vendorPaid: pr.vendorPaid,
+    vendorRemaining: pr.vendorRemaining,
   };
 }
 
@@ -833,7 +841,7 @@ app.get('/api/expenses', requireAuth, async (req: any, res) => {
 });
 
 app.put('/api/expenses/:id', requireAuth, async (req: any, res) => {
-  const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation } = req.body;
+  const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining } = req.body;
   if (!category || amount === undefined || !paidTo || !paymentMethod || !date) {
     return res.status(400).json({ error: 'All core fields are required' });
   }
@@ -855,6 +863,12 @@ app.put('/api/expenses/:id', requireAuth, async (req: any, res) => {
             dueDate: date,
             paymentMethod,
             billImage: billImage !== undefined ? billImage : null,
+            materialName: materialName ?? null,
+            materialQty: materialQty ?? null,
+            tools: tools ?? null,
+            vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : null,
+            vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : null,
+            vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : null,
         }},
         { returnDocument: 'after' }
     );
@@ -876,7 +890,15 @@ app.put('/api/expenses/:id', requireAuth, async (req: any, res) => {
           paymentMethod,
           date,
           notes,
-          billImage: billImage !== undefined ? billImage : null
+          billImage: billImage !== undefined ? billImage : null,
+          fromLocation: fromLocation ?? null,
+          toLocation: toLocation ?? null,
+          materialName: materialName ?? null,
+          materialQty: materialQty ?? null,
+          tools: tools ?? null,
+          vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : null,
+          vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : null,
+          vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : null,
       }},
       { returnDocument: 'after' }
   );
@@ -1243,6 +1265,7 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
             'Worker': 'Labour',
             'Vendor': 'Material',
             'Transportation': 'Transport',
+            'Vendor Payment': 'Vendor Payment',
             'Other': 'Other'
           };
           
@@ -1259,7 +1282,13 @@ app.post('/api/payments', requireAuth, requireAdminOrAccountant, async (req: any
              toLocation: pr.toLocation,
              notes: pr.description,
              billImage: pr.billImage,
-             createdBy: pr.createdBy || req.user.userId
+             createdBy: pr.createdBy || req.user.userId,
+             materialName: pr.materialName,
+             materialQty: pr.materialQty,
+             tools: pr.tools,
+             vendorTotalToPay: pr.vendorTotalToPay,
+             vendorPaid: pr.vendorPaid,
+             vendorRemaining: pr.vendorRemaining,
            });
       }
   }
@@ -1360,7 +1389,7 @@ app.get('/api/payment-requests', requireAuth, async (req: any, res) => {
 });
 
 app.post('/api/payment-requests', requireAuth, async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage } = req.body;
+    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
@@ -1382,14 +1411,20 @@ app.post('/api/payment-requests', requireAuth, async (req: any, res) => {
         paymentMethod: paymentMethod || 'Bank Transfer',
         billImage,
         createdBy: req.user.userId,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        materialName,
+        materialQty,
+        tools,
+        vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : undefined,
+        vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : undefined,
+        vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : undefined,
     };
     await tenantDb.collection('paymentRequests').insertOne(newRequest);
     res.status(201).json(newRequest);
 });
 
 app.put('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage } = req.body;
+    const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining } = req.body;
     if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
         return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
     }
@@ -1415,6 +1450,12 @@ app.put('/api/payment-requests/:id', requireAuth, async (req: any, res) => {
             priority: priority || existing.priority || 'Medium',
             paymentMethod: paymentMethod ?? existing.paymentMethod,
             billImage: billImage !== undefined ? billImage : existing.billImage,
+            materialName: materialName !== undefined ? materialName : existing.materialName,
+            materialQty: materialQty !== undefined ? materialQty : existing.materialQty,
+            tools: tools !== undefined ? tools : existing.tools,
+            vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : existing.vendorTotalToPay,
+            vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : existing.vendorPaid,
+            vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : existing.vendorRemaining,
         } },
         { returnDocument: 'after' }
     );

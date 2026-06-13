@@ -102,6 +102,17 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [expenseSubmitError, setExpenseSubmitError] = useState<string | null>(null);
   const [officeBalance, setOfficeBalance] = useState(0);
 
+  // Custom category fields (expense form)
+  const [expenseMaterialName, setExpenseMaterialName] = useState('');
+  const [expenseMaterialQty, setExpenseMaterialQty] = useState('');
+  const [expenseFromLocation, setExpenseFromLocation] = useState('');
+  const [expenseToLocation, setExpenseToLocation] = useState('');
+  const [expenseTools, setExpenseTools] = useState<string[]>([]);
+  const [expenseToolInput, setExpenseToolInput] = useState('');
+  const [expenseVendorTotalToPay, setExpenseVendorTotalToPay] = useState<number>(0);
+  const [expenseVendorPaid, setExpenseVendorPaid] = useState<number>(0);
+  const [showExpenseCrewSuggestions, setShowExpenseCrewSuggestions] = useState(false);
+
   // Receipt Preview
   const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
   const [previewExpenseImage, setPreviewExpenseImage] = useState('');
@@ -473,6 +484,15 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setExpenseNotes('');
     setExpenseBillImage('');
     setExpenseSubmitError(null);
+    setExpenseMaterialName('');
+    setExpenseMaterialQty('');
+    setExpenseFromLocation('');
+    setExpenseToLocation('');
+    setExpenseTools([]);
+    setExpenseToolInput('');
+    setExpenseVendorTotalToPay(0);
+    setExpenseVendorPaid(0);
+    setShowExpenseCrewSuggestions(false);
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
   };
@@ -492,14 +512,32 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setExpenseNotes(exp.notes || '');
     setExpenseBillImage(exp.billImage || '');
     setExpenseSubmitError(null);
+    setExpenseMaterialName(exp.materialName || '');
+    setExpenseMaterialQty(exp.materialQty || '');
+    setExpenseFromLocation(exp.fromLocation || '');
+    setExpenseToLocation(exp.toLocation || '');
+    setExpenseTools(exp.tools || []);
+    setExpenseToolInput('');
+    setExpenseVendorTotalToPay(exp.vendorTotalToPay || 0);
+    setExpenseVendorPaid(exp.vendorPaid || 0);
+    setShowExpenseCrewSuggestions(false);
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
   };
 
   const handleExpenseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseTaskId || !expenseCategory || expenseAmount <= 0 || !expensePaidTo || !expenseDate) {
-      notify.warning('Task context, category, positive cost, payee, and date are required.');
+    if (!expenseTaskId || !expenseCategory || !expensePaidTo || !expenseDate) {
+      notify.warning('Task context, category, payee, and date are required.');
+      return;
+    }
+    if (expenseCategory === 'Vendor Payment') {
+      if (expenseVendorTotalToPay <= 0 || expenseVendorPaid <= 0) {
+        notify.warning('Total to pay and Paid amount must be greater than 0.');
+        return;
+      }
+    } else if (expenseAmount <= 0) {
+      notify.warning('Spent amount must be greater than 0.');
       return;
     }
 
@@ -520,10 +558,18 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       category: expenseCategoryToPaymentCategory(expenseCategory),
       amount: Number(expenseAmount),
       description: expenseNotes,
+      fromLocation: expenseCategory === 'Transport' ? expenseFromLocation : undefined,
+      toLocation: expenseCategory === 'Transport' ? expenseToLocation : undefined,
       dueDate: expenseDate,
       priority: 'Medium' as const,
       paymentMethod: expensePaymentMethod,
       billImage: expenseBillImage,
+      materialName: expenseCategory === 'Material' ? expenseMaterialName : undefined,
+      materialQty: expenseCategory === 'Material' ? expenseMaterialQty : undefined,
+      tools: expenseCategory === 'Tools' ? expenseTools : undefined,
+      vendorTotalToPay: expenseCategory === 'Vendor Payment' ? Number(expenseVendorTotalToPay) : undefined,
+      vendorPaid: expenseCategory === 'Vendor Payment' ? Number(expenseVendorPaid) : undefined,
+      vendorRemaining: expenseCategory === 'Vendor Payment' ? Number(expenseVendorTotalToPay - expenseVendorPaid) : undefined,
     };
 
     try {
@@ -1837,37 +1883,220 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     <option value="Transport">Transport</option>
                     <option value="Tools">Tools</option>
                     <option value="Company Payment">Company Payment</option>
+                    <option value="Vendor Payment">Vendor Payment</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
               </div>
 
+              {/* Material fields */}
+              {expenseCategory === 'Material' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Material Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Cement, Steel Bars"
+                      value={expenseMaterialName}
+                      onChange={(e) => setExpenseMaterialName(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Quantity</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 50 bags"
+                      value={expenseMaterialQty}
+                      onChange={(e) => setExpenseMaterialQty(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Transport fields */}
+              {expenseCategory === 'Transport' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">From Location</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Site A"
+                      value={expenseFromLocation}
+                      onChange={(e) => setExpenseFromLocation(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">To Location</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Warehouse B"
+                      value={expenseToLocation}
+                      onChange={(e) => setExpenseToLocation(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Tools fields */}
+              {expenseCategory === 'Tools' && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Tools List</label>
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-zinc-50 border border-zinc-200 rounded-xl min-h-[38px] items-center">
+                    {expenseTools.map((t) => (
+                      <span key={t} className="inline-flex items-center gap-1 bg-zinc-900 text-white text-[10px] font-bold pl-2 pr-1 py-0.5 rounded-lg">
+                        <span>{t}</span>
+                        <button
+                          type="button"
+                          onClick={() => setExpenseTools(expenseTools.filter(x => x !== t))}
+                          className="hover:text-red-300 font-extrabold w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-white/10"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {expenseTools.length === 0 && (
+                      <span className="text-[10px] text-zinc-400 italic">No tools added yet. Type below and click Add.</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Hammer, Drill, Mixer"
+                      value={expenseToolInput}
+                      onChange={(e) => setExpenseToolInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (expenseToolInput.trim() && !expenseTools.includes(expenseToolInput.trim())) {
+                            setExpenseTools([...expenseTools, expenseToolInput.trim()]);
+                            setExpenseToolInput('');
+                          }
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (expenseToolInput.trim() && !expenseTools.includes(expenseToolInput.trim())) {
+                          setExpenseTools([...expenseTools, expenseToolInput.trim()]);
+                          setExpenseToolInput('');
+                        }
+                      }}
+                      className="px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition"
+                    >
+                      Add Tool
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Vendor Payment fields */}
+              {expenseCategory === 'Vendor Payment' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0.01}
+                      step="any"
+                      placeholder="e.g. 50000"
+                      value={expenseVendorTotalToPay || ''}
+                      onChange={(e) => setExpenseVendorTotalToPay(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0.01}
+                      step="any"
+                      placeholder="e.g. 20000"
+                      value={expenseVendorPaid || ''}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setExpenseVendorPaid(val);
+                        setExpenseAmount(val);
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
+                    <input
+                      type="text"
+                      disabled
+                      readOnly
+                      value={formatCur(Math.max(0, expenseVendorTotalToPay - expenseVendorPaid))}
+                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid To</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Alliance Steel Builders"
                     value={expensePaidTo}
-                    onChange={(e) => setExpensePaidTo(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 Focus:outline-none"
+                    onChange={(e) => {
+                      setExpensePaidTo(e.target.value);
+                      setShowExpenseCrewSuggestions(true);
+                    }}
+                    onFocus={() => setShowExpenseCrewSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowExpenseCrewSuggestions(false), 200)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                   />
+                  {expenseCategory === 'Labour' && showExpenseCrewSuggestions && crewSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
+                      {crewSuggestions
+                        .filter(worker => !expensePaidTo || worker.toLowerCase().includes(expensePaidTo.toLowerCase()))
+                        .map(worker => (
+                          <button
+                            key={worker}
+                            type="button"
+                            onClick={() => {
+                              setExpensePaidTo(worker);
+                              setShowExpenseCrewSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                          >
+                            <span>{worker}</span>
+                            <span className="text-[9px] text-zinc-400 font-bold uppercase">Crew</span>
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    min={0.01}
-                    step="any"
-                    placeholder="e.g. 1500"
-                    value={expenseAmount || ''}
-                    onChange={(e) => setExpenseAmount(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
-                  />
-                </div>
+                {expenseCategory !== 'Vendor Payment' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0.01}
+                      step="any"
+                      placeholder="e.g. 1500"
+                      value={expenseAmount || ''}
+                      onChange={(e) => setExpenseAmount(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
