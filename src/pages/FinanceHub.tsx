@@ -389,8 +389,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       return;
     }
     if (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') {
-      if (reqVendorTotalToPay <= 0 || reqVendorPaid <= 0) {
-        notify.warning('Total to pay and Paid amount must be greater than 0.');
+      if (reqVendorTotalToPay <= 0) {
+        notify.warning('Total to pay must be greater than 0.');
         return;
       }
     } else if (reqAmount <= 0) {
@@ -442,11 +442,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       materialQty: (reqCategory === 'Material') ? reqMaterialQty : (reqCategory === 'Purchase' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].qty : undefined,
       tools: reqCategory === 'Tools' ? reqTools : undefined,
       vendorTotalToPay: (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') ? Number(reqVendorTotalToPay) : undefined,
-      vendorPaid: (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') ? Number(reqVendorPaid) : undefined,
-      vendorRemaining: (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') ? Number(reqVendorTotalToPay - reqVendorPaid) : undefined,
       purchasePricePerCount: reqCategory === 'Purchase' && reqPurchaseItems.length > 0 ? reqPurchaseItems[0].pricePerCount : undefined,
       purchaseTotalFull: reqCategory === 'Purchase' ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
-      purchaseTotal: reqCategory === 'Purchase' ? Number(reqVendorPaid) : undefined,
+      purchaseTotal: reqCategory === 'Purchase' ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
       purchaseItems: reqCategory === 'Purchase' ? reqPurchaseItems : undefined,
     };
     try {
@@ -1038,7 +1036,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
               )}
 
               {reqCategory === 'Vendor Payment' && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
                     <input
@@ -1048,36 +1046,18 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       step="any"
                       placeholder="e.g. 50000"
                       value={reqVendorTotalToPay || ''}
-                      onChange={(e) => setReqVendorTotalToPay(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      min={0.01}
-                      step="any"
-                      placeholder="e.g. 20000"
-                      value={reqVendorPaid || ''}
                       onChange={(e) => {
                         const val = Number(e.target.value);
-                        setReqVendorPaid(val);
+                        setReqVendorTotalToPay(val);
                         setReqAmount(val);
                       }}
                       className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
-                    <input
-                      type="text"
-                      disabled
-                      readOnly
-                      value={formatCur(Math.max(0, reqVendorTotalToPay - reqVendorPaid))}
-                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
-                    />
+                  <div className="flex items-end">
+                    <p className="text-[11px] text-zinc-400 leading-relaxed pb-2">
+                      The accountant will track how much has been paid and what remains.
+                    </p>
                   </div>
                 </div>
               )}
@@ -1192,44 +1172,10 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Material</span>
                   </button>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
-                      <input
-                        type="number"
-                        disabled
-                        readOnly
-                        value={reqVendorTotalToPay || ''}
-                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total Paid (₹)</label>
-                      <input
-                        type="number"
-                        required
-                        min={0.01}
-                        step="any"
-                        placeholder="e.g. 15000"
-                        value={reqVendorPaid || ''}
-                        onChange={(e) => {
-                          const paid = Number(e.target.value);
-                          setReqVendorPaid(paid);
-                          setReqAmount(paid);
-                        }}
-                        className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
-                      <input
-                        type="text"
-                        disabled
-                        readOnly
-                        value={formatCur(Math.max(0, reqVendorTotalToPay - reqVendorPaid))}
-                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
-                      />
-                    </div>
+                  <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
+                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Grand Total to Pay:</span>
+                    <span className="text-sm font-black text-zinc-900">{formatCur(reqVendorTotalToPay)}</span>
+                    <p className="text-[11px] text-zinc-400 ml-auto">Accountant will track installments.</p>
                   </div>
                 </div>
               )}
@@ -1361,10 +1307,33 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="bg-zinc-50 rounded-xl p-3">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Amount</p>
-                    <p className="font-extrabold text-zinc-950">{formatCur(selectedPaymentRequest.amount)}</p>
-                  </div>
+                  {(() => {
+                    const paid = (selectedPaymentRequest.paymentHistory || []).reduce((s, it) => s + it.amount, 0);
+                    const remaining = Math.max(0, selectedPaymentRequest.amount - paid);
+                    return paid > 0 ? (
+                      <div className="bg-zinc-50 rounded-xl p-3 col-span-2 space-y-2">
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <span className="block text-[10px] text-zinc-400 font-bold uppercase">Requested</span>
+                            <span className="font-extrabold text-zinc-950 mt-1 block">{formatCur(selectedPaymentRequest.amount)}</span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] text-zinc-400 font-bold uppercase">Paid</span>
+                            <span className="font-bold text-emerald-600 mt-1 block">{formatCur(paid)}</span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] text-zinc-400 font-bold uppercase">Remaining</span>
+                            <span className="font-bold text-amber-600 mt-1 block">{formatCur(remaining)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-zinc-50 rounded-xl p-3">
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Amount</p>
+                        <p className="font-extrabold text-zinc-950">{formatCur(selectedPaymentRequest.amount)}</p>
+                      </div>
+                    );
+                  })()}
                   <div className="bg-zinc-50 rounded-xl p-3">
                     <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Priority</p>
                     <p className="font-semibold text-zinc-900">{selectedPaymentRequest.priority}</p>
@@ -1410,22 +1379,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     </div>
                   )}
                   {(selectedPaymentRequest.category === 'Vendor Payment' || selectedPaymentRequest.category === 'Purchase') && selectedPaymentRequest.vendorTotalToPay !== undefined && (
-                    <div className="bg-zinc-50 rounded-xl p-3 col-span-2 space-y-2">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Vendor / Purchase Payment Status</p>
-                      <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
-                        <div>
-                          <span className="text-[9px] text-zinc-400 block">Total:</span>
-                          <span className="text-zinc-900">{formatCur(selectedPaymentRequest.vendorTotalToPay)}</span>
-                        </div>
-                        <div>
-                          <span className="text-[9px] text-zinc-400 block">Paid:</span>
-                          <span className="text-zinc-900">{formatCur(selectedPaymentRequest.vendorPaid || 0)}</span>
-                        </div>
-                        <div>
-                          <span className="text-[9px] text-zinc-400 block">Remaining:</span>
-                          <span className="text-rose-600">{formatCur(selectedPaymentRequest.vendorRemaining || 0)}</span>
-                        </div>
-                      </div>
+                    <div className="bg-zinc-50 rounded-xl p-3 col-span-2">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Total to Pay</p>
+                      <p className="font-bold text-zinc-900 text-sm">{formatCur(selectedPaymentRequest.vendorTotalToPay)}</p>
                     </div>
                   )}
                   {selectedPaymentRequest.category === 'Purchase' && selectedPaymentRequest.purchaseItems && selectedPaymentRequest.purchaseItems.length > 0 && (
@@ -1459,6 +1415,25 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     <div className="bg-zinc-50 rounded-xl p-3 col-span-2">
                       <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Notes</p>
                       <p className="font-medium text-zinc-700">{selectedPaymentRequest.description}</p>
+                    </div>
+                  )}
+                  {selectedPaymentRequest.paymentHistory && selectedPaymentRequest.paymentHistory.length > 0 && (
+                    <div className="bg-zinc-50 rounded-xl p-3 col-span-2 space-y-2">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Installment Payment History</p>
+                      <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                        {selectedPaymentRequest.paymentHistory.map((item, idx) => (
+                          <div key={item.id} className="flex justify-between items-center text-[11px] p-2 bg-white border border-zinc-200/60 rounded-lg">
+                            <div>
+                              <span className="font-bold text-zinc-800">Installment #{idx + 1}</span>
+                              <span className="text-[10px] text-zinc-400 block mt-0.5">
+                                {new Date(item.paidAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {item.paymentMethod}
+                              </span>
+                              {item.notes && <span className="text-[9px] text-zinc-500 italic block mt-0.5">"{item.notes}"</span>}
+                            </div>
+                            <span className="font-extrabold text-emerald-600">{formatCur(item.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                   <div className="bg-zinc-50 rounded-xl p-3 col-span-2">

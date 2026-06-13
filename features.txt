@@ -1,0 +1,752 @@
+================================================================================
+                        LOGRO ERP — FEATURES DOCUMENTATION
+                     All Pages, Features & Sub-Features Overview
+================================================================================
+Generated: 2026-06-13
+Application: LOGRO ERP (Construction Enterprise Resource Planning)
+Stack: React + TypeScript (Vite) + Node.js Express + MongoDB
+Port: 5000
+
+================================================================================
+ROLE-BASED ACCESS CONTROL
+================================================================================
+
+The application supports 4 distinct user roles, each with different access:
+
+  SUPERADMIN  — Full system control (multi-tenant management, company registry)
+  ADMIN       — Full company access (all pages)
+  ACCOUNTANT  — Financial overview, Finance Hub, Accountant workspace, Projects (read)
+  MANAGER     — Projects and Crew management only (no financial data)
+
+================================================================================
+PAGE 1: LOGIN PAGE
+================================================================================
+Route/Tab: (Pre-auth screen)
+File: src/pages/Login.tsx
+
+  Features:
+  - Email + password login form
+  - JWT-based authentication
+  - Persists auth token in localStorage
+  - Role-based redirect after login:
+      · Superadmin → System Admin portal
+      · Admin      → Overview dashboard
+      · Accountant → Finance Overview
+      · Manager    → Projects
+
+================================================================================
+PAGE 2: OVERVIEW / DASHBOARD  (Admin Role)
+================================================================================
+Route/Tab: #dashboard
+File: src/pages/Dashboard.tsx
+Accessible by: Admin
+
+  Sub-features:
+  2.1  KPI Summary Cards (top row)
+       - Total Projects registered
+       - Total Tasks (with counts: pending / in progress / completed)
+       - Total Expenses (with % of budget utilized)
+       - Office Balance (available funds)
+
+  2.2  Operating Margin Card
+       - Shows overall profit / loss calculation
+       - Color-coded: green for profit, red for loss
+       - Formula: Total assigned budget minus all hardware, labour, transport, material costs
+
+  2.3  Labour Attendance (Today) Card
+       - Number of workers logged present today
+       - Today's direct labour invoice amount
+       - "Manage Crew Roster" quick-link button
+
+  2.4  Active Tasks List
+       - Scrollable list of tasks across all projects
+       - Shows task name, project name, status badge
+       - Work Done % progress bar (red if over budget)
+       - Spent vs Budget breakdown
+       - "View All Tasks" quick-link to Projects
+
+  2.5  Recent Expenses Logged
+       - List of latest expense entries
+       - Shows payee, category, task name, amount, date
+       - "Log New" quick-link to Finance Hub
+
+  2.6  Refresh Button
+       - Manual refresh of all dashboard data
+
+================================================================================
+PAGE 3: PROJECTS
+================================================================================
+Route/Tab: #projects
+File: src/pages/Projects.tsx
+Accessible by: Admin, Manager, Accountant
+
+  3.1  PROJECTS LIST VIEW
+       - Card-based project listing
+       - Search bar (search by project name, client, location)
+       - Status filter (All / Pending / In Progress / Completed / On Hold)
+       - Create New Project button (Admin only)
+
+  3.2  PROJECT FORM (Create / Edit)
+       - Project Name
+       - Client Name
+       - Location / Site Address
+       - Start Date
+       - Expected End Date
+       - Status (Pending / In Progress / Completed / On Hold)
+       - Contract Budget (₹)
+       - Notes / Description
+       - Save / Cancel with confirmation modal
+
+  3.3  PROJECT DETAIL PANEL (View / Drill-Down)
+       Opens a full detail view with 3 sub-tabs:
+
+       ─────────────────────────────
+       3.3.1  TASKS SUB-TAB
+       ─────────────────────────────
+       - Task list for the project
+       - Search tasks by name
+       - Filter by task status
+       - Task cards showing:
+           · Task name, description
+           · Assigned staff (comma-separated)
+           · Budget envelope
+           · Start & End dates
+           · Progress percentage (progress bar)
+           · Status badge (Pending / In Progress / Completed / On Hold)
+       - Add Task button
+       - Clicking a task opens TASK DETAIL OVERLAY
+
+       Task Detail Overlay:
+       - Full task metadata display
+       - Edit / Delete task
+       - Quick status update dropdown
+       - Quick progress slider (0–100%)
+       - ATTENDANCE section:
+           · Log worker attendance for this task
+           · Date picker
+           · Worker name (typeahead from crew roster)
+           · Status: Present / Absent / Half Day
+           · Overtime hours + overtime amount
+           · Payment status (Paid / Unpaid)
+           · Add / Edit / Delete attendance records
+       - Expense log sub-section (see 3.3.2)
+
+       Task Create / Edit Form:
+       - Task Name (required)
+       - Description
+       - Assigned Budget (₹) (required)
+       - Assigned Staff (multi-select with crew suggestions)
+       - Start Date (required)
+       - End Date (required)
+       - Progress (0–100%)
+       - Status (required)
+       - Notes
+
+       ─────────────────────────────
+       3.3.2  EXPENSES SUB-TAB
+       ─────────────────────────────
+       - List of all expenses for the project
+       - Search by payee name or notes
+       - Filter by category
+       - Filter by payment method
+       - Expense cards showing:
+           · Category badge
+           · Payee name
+           · Amount
+           · Payment method
+           · Date
+           · Status (Pending / Paid)
+           · Receipt image preview icon
+       - Add Expense button
+       - Edit / Delete expense actions
+
+       Expense Form (multi-category):
+       Category: Material
+         - Material Name
+         - Quantity
+         - Amount (₹)
+         - Payee name (vendor autocomplete)
+         - Payment Method (Bank Transfer / Cash / Cheque / UPI)
+         - Date
+         - Notes
+         - Bill Image upload
+
+       Category: Labour
+         - Worker name (crew autocomplete)
+         - Amount (₹)
+         - Payment Method
+         - Date / Notes / Bill Image
+
+       Category: Transport
+         - From Location
+         - To Location
+         - Amount / Payee / Method / Date / Notes / Bill Image
+
+       Category: Tools
+         - Tool names (multi-tag input)
+         - Amount / Payee / Method / Date / Notes / Bill Image
+
+       Category: Vendor Payment
+         - Vendor name (autocomplete)
+         - Total to Pay (₹)
+         - Amount Paid (₹) — auto-calculates remaining
+         - Payment Method / Date / Notes / Bill Image
+
+       Category: Purchase (Multi-line items)
+         - Line items: Material Name, Qty, Price per Unit, Total
+         - Add / Remove line items
+         - Grand total auto-calculated
+         - Vendor name / Method / Date / Notes / Bill Image
+
+       Category: Other
+         - Generic fields: Amount / Payee / Method / Date / Notes / Bill Image
+
+       Office Balance Warning:
+         - If expense amount exceeds available office balance, warning is shown
+
+       Approval Workflow:
+         - New expense goes to Finance Hub as "Pending" payment request
+         - Accountant/Admin must approve before it is marked "Paid"
+         - Editing a paid expense creates an "Edit Request" for approval
+         - Deleting a paid expense creates a "Delete Request" for approval
+
+       Receipt Preview:
+         - Full-screen image preview of uploaded bill images
+
+       ─────────────────────────────
+       3.3.3  DOCUMENTS SUB-TAB
+       ─────────────────────────────
+       - Upload project documents (PDF, images, spreadsheets, videos, archives)
+       - Drag & drop or click-to-browse file upload
+       - Max 20 MB per file
+       - File list showing: name, size, upload date, cloud badge (if MEGA-stored)
+       - Download individual documents
+       - Delete individual documents
+       - File type icons (PDF = red, image = blue, video = purple, archive = amber, sheet = green)
+
+  3.4  PROJECT DELETE
+       - Confirmation modal before deleting
+       - Cascades: deletes all tasks, expenses, attendance, labour records
+
+================================================================================
+PAGE 4: CREW (Attendance)
+================================================================================
+Route/Tab: #attendance
+File: src/pages/Attendance.tsx
+Accessible by: Admin, Manager
+
+  Two sub-tabs:
+
+  ─────────────────────────────
+  4.1  CREW ROSTER TAB
+  ─────────────────────────────
+  - Summary cards: Total crew count, Active workers count
+  - Search bar (name, trade, phone)
+  - Status filter (All / Active / Inactive)
+  - Worker cards showing:
+      · Name, Status badge
+      · Trade / Role
+      · Daily Wage (₹/day)
+      · Phone number
+      · Notes
+  - Add Crew Member button
+  - Edit / Delete per worker
+  - Bulk CSV Import button
+
+  Add / Edit Crew Member Form:
+  - Full Name (required)
+  - Trade / Role (Mason / Electrician / Plumber / Carpenter / Helper / Supervisor / Other)
+  - Daily Wage (₹) (required)
+  - Phone number
+  - Status (Active / Inactive)
+  - Notes
+
+  Bulk CSV Import:
+  - Upload CSV file (columns: Name, Trade, Daily Wage, Phone, Status, Notes)
+  - Preview imported rows before confirming
+  - Duplicate detection (skips duplicates automatically)
+  - Download CSV Template button
+  - Import confirmation with success/error summary
+
+  ─────────────────────────────
+  4.2  CREW OVERVIEW TAB
+  ─────────────────────────────
+  - Roster picker: sidebar showing all registered crew workers with trade and daily wage rate
+  - Date Filters:
+      · Weekly view: displays day-by-day attendance/wage records for a selected week (Prev / Current / Next)
+      · Monthly view: filters logs by specific calendar Month & Year selection
+  - KPI Analytics:
+      · Present / Half / Absent days counts for the selected period
+      · Total Wage Earned (sum of base wages + overtime amounts)
+      · Paid Amount (sum of fully paid and partially paid requests)
+      · Remaining Due (unpaid balance)
+  - Attendance & Wage Log Breakdown Table:
+      · Columns: Date, Project / Task, Status, Base Wage, OT Amount, Total Day Wage, Payment Status
+  - Download Report:
+      · Export all selected worker's logs and aggregated statistics directly to a CSV file
+
+  ─────────────────────────────
+  4.3  VENDORS TAB
+  ─────────────────────────────
+  - Summary cards: Total vendors, Active vendors count
+  - Search bar (name, trade, phone)
+  - Status filter (All / Active / Inactive)
+  - Vendor cards showing:
+      · Name, Status badge
+      · Trade / Supply Type
+      · Phone number
+      · Notes
+  - Add Vendor button
+  - Edit / Delete per vendor
+  - Bulk CSV Import button
+
+  Add / Edit Vendor Form:
+  - Vendor Name (required)
+  - Supply Trade / Type (required)
+  - Phone number
+  - Status (Active / Inactive)
+  - Notes
+
+  Bulk CSV Import (Vendors):
+  - Upload CSV (columns: Name, Trade, Phone, Status, Notes)
+  - Preview rows, detect duplicates, confirm
+  - Download CSV Template
+
+================================================================================
+PAGE 5: AUDITS / REPORTS
+================================================================================
+Route/Tab: #reports
+File: src/pages/Reports.tsx
+Accessible by: Admin
+
+  5.1  Report Type Selector
+       8 report types selectable:
+       - Projects Summary
+       - Tasks & Expenses
+       - Labour Wages
+       - Disbursements (Payouts)
+       - Margins (Profit/Loss)
+       - Pending Balances
+       - Monthly Summary
+       - Vendor/Worker Detail
+
+  5.2  Global Filters (applied to all reports)
+       - Focus Project (All or specific project)
+       - Start Date Limit
+       - End Date Limit
+
+  5.3  REPORT: Projects Summary
+       Columns: Project Title, Location, Timeline, Combined Budget,
+                Site Expenses, Actual Paid, Operating Margin
+       Mobile: card layout with same data
+
+  5.4  REPORT: Tasks & Expenses (Expenditures)
+       Columns: Voucher Date, Category, Task Scope, Vendor/Payee,
+                Disburse Method, Allocated Outflow
+       Mobile: card layout
+
+  5.5  REPORT: Labour Wages Sheet
+       Columns: Log Date, Worker Name, Scope Area, Check-In Status,
+                Overtime Amount, Priced Wage, Payouts Status
+       Mobile: card layout
+
+  5.6  REPORT: Disbursements (Subcontractor Payouts)
+       Columns: Transfer Date, Payee Type, Payee Designation, Task Scope,
+                Payment Method, Transfer Status, Disbursed Amount
+       Mobile: card layout
+
+  5.7  REPORT: Margins — Profit / Loss Sheet
+       - Top panels: Most Profitable Tasks vs Deficit Task Scopes
+       Columns: Task Name, Parent Project, Assigned Budget, Sum Outflow Costs,
+                Labour Portion, Active Balance, Profit / Deficit
+       Mobile: card layout
+
+  5.8  REPORT: Pending Balances (Outstanding Unpaid)
+       - Shows unpaid subcontractor payments AND unpaid labour attendance
+       Columns: Date Flagged, Obligation Type, Creditor, Linked Task,
+                Risk Factor (High / Standard), Outstanding Debt
+       Mobile: card layout
+
+  5.9  REPORT: Monthly Cashflow Summary
+       Columns: Month, Total Inflow (₹), Direct Expenses (₹),
+                Labour Wages (₹), Net Cashflow (₹)
+
+  5.10 REPORT: Vendor / Worker Detail
+       - Breakdown by each vendor or worker of payments made
+
+  5.11 Print / PDF Export
+       - "Print Statement / PDF" button triggers browser print dialog
+       - Print-only header with company name, date range, generation date
+       - Clean print styles (no shadows, borders removed)
+
+  5.12 Refresh Button
+       - Manually reload all report data
+
+================================================================================
+PAGE 6: FINANCE HUB
+================================================================================
+Route/Tab: #finance
+File: src/pages/FinanceHub.tsx
+Accessible by: Admin, Accountant
+
+  6.1  Summary KPI Cards
+       - Total Pending Amount (₹) — with pending count
+       - Total Paid Amount (₹) — with paid count
+
+  6.2  Payment Requests Table
+       - Columns: Payee, Project, Task, Category, Amount, Due Date, Priority, Status, Action
+       - Search bar (payee name, description, task name)
+       - Filters: Project, Category (Vendor / Worker / Transportation / Vendor Payment / Other), Status (All / Pending / Paid / Partially Paid / Cancelled), Reset
+       - Pagination (5 / 10 / 25 / 50 rows per page), stored in localStorage
+       - Fixed-height table rows for stable layout
+       - Previous / Next page navigation
+
+  6.3  Status Badge (clickable)
+       - Clicking status opens a Status Detail Modal showing:
+           · Request details (payee, project, task, category, amount, priority, due date)
+           · Current status with icon and colour
+           · Status message / explanation
+           · Bill image preview (if attached)
+           · Material / purchase details (if applicable)
+           · Vendor payment breakdown
+
+  6.4  Create New Payment Request (Admin only)
+       - "New Request" button opens full expense form (same as Projects expense form)
+       - All categories: Material, Labour, Transport, Tools, Vendor Payment, Purchase, Other
+       - Office Balance warning if amount exceeds available funds
+       - Submits to pending queue for accountant approval
+       - Bill image upload (max 2 MB)
+
+  6.5  Edit Payment Request (Admin only)
+       - Edit pending requests directly
+       - Edit paid expenses → creates an "Edit Approval Request"
+       - Confirmation modal before submitting changes
+
+  6.6  Delete Payment Request (Admin only)
+       - Delete pending → removes from queue (with confirmation)
+       - Delete paid → creates "Delete Approval Request" for accountant review
+
+  6.7  Real-time Updates
+       - WebSocket listener auto-refreshes table when requests are updated by accountant
+
+================================================================================
+PAGE 7: ACCOUNTANT WORKSPACE  (Accountant role)
+================================================================================
+Route/Tab: #accountant
+File: src/pages/AccountantDashboard.tsx
+Accessible by: Accountant
+
+  7.1  KPI Cards
+       - Office Balance (₹) — available funds
+       - Pending Requests — count + total amount awaiting approval
+       - Today's Inflow (₹) — total cash received today
+       - Today's Outflow (₹) — total payments processed today
+
+  7.2  Pending Payment Requests Table
+       - Search bar (payee, project, task)
+       - Paginated table (same rows-per-page control)
+       - Columns: Payee + description, Project / Task, Category, Amount, Due Date, Priority, Action
+       - Priority badges (High = rose, Medium = amber, Low = zinc)
+       - Per-row actions:
+           · "Approve & Pay" — records payment, deducts from office balance
+           · "Approve & Edit" — for edit adjustment requests
+           · "Approve & Delete" — for delete adjustment requests
+           · "Decline" — cancels the request
+       - Confirmation modal for every action
+
+  7.3  Transaction Ledger
+       - Searchable list of all office fund transactions
+       - Paginated table (shared rows-per-page setting)
+       - Columns: Date, Description, Type (Cash In / Cash Out), Amount
+       - Cash In = emerald, Cash Out = rose
+       - Shows source for Cash In, recipient for Cash Out
+       - Reference / Cheque number if provided
+
+  7.4  Record Cash Inflow (modal form)
+       - Amount (₹) (required)
+       - Description (required)
+       - Source (client name, owner, etc.) (required)
+       - Date & Time
+       - Linked Project (optional)
+       - Payment Method (Bank Transfer / Cash / Cheque) (required)
+       - Reference / Cheque # (optional)
+       - Confirmation modal before saving
+
+  7.5  Real-time Updates
+       - WebSocket listener auto-refreshes when new requests arrive
+
+  7.6  Navigation Quick Links
+       - "Projects" button → navigates to Projects tab
+       - "View Finance Hub" link from pending section
+
+================================================================================
+PAGE 8: ACCOUNTANT OVERVIEW  (Accountant role — "Overview" tab)
+================================================================================
+Route/Tab: #dashboard  (for accountant role)
+File: src/pages/AccountantOverview.tsx
+Accessible by: Accountant
+
+  8.1  Latest Payment Request Alert Banner
+       - Highlights the most recently submitted pending request
+       - Colour-coded by priority (High = rose, Medium = amber, Low = sky)
+       - Shows payee, amount, project, task, category, due date, notes
+       - "Review & Pay" → navigates to Accountant workspace
+
+  8.2  Quick Action Shortcuts
+       - Payment Approvals (pending count)
+       - Finance Hub (view all requests)
+       - Projects (active sites count)
+
+  8.3  KPI Cards
+       - Office Balance (₹)
+       - Pending Approvals (count + amount + urgent count)
+       - Total Paid Out (₹ + request count)
+       - Today's Net Flow (₹ — positive/negative with arrow)
+
+  8.4  Secondary Metrics
+       - Enterprise Spend: combined materials, labour, and operational costs
+       - Action Required: pending count or "all caught up" status
+       - "Open Accountant Workspace" button
+
+  8.5  Urgent Pending Requests Panel
+       - Top 5 pending requests sorted by priority + latest
+       - Shows payee, project/task, due date, amount
+       - "Latest" tag on newest submission
+
+  8.6  Recent Transactions Panel
+       - Last 5 office transactions
+       - Shows description, date/time, amount (+ green / − red)
+       - "Full Ledger" link → Accountant workspace
+
+================================================================================
+PAGE 9: SYSTEM ADMIN (Superadmin Portal)
+================================================================================
+Route/Tab: #superadmin
+File: src/pages/SuperadminDashboard.tsx
+Accessible by: Superadmin only
+
+  9.1  Stats Banner
+       - Title: "Construct ERP Registry"
+       - "Register Tenant" button
+       - Refresh button
+
+  9.2  KPI Cards
+       - Total Tenants (databases deployed)
+       - Active Licenses (full access enabled)
+       - Trial Accounts (evaluation periods)
+       - Suspended (tenant systems locked)
+       - Expiring Soon (contracts expiring within 30 days, with pulse animation if >0)
+
+  9.3  Toolbar / Filters
+       - Search by company name or DB name
+       - Status filter tabs: All / Active / Trial / Suspended
+
+  9.4  Company Registry Table
+       Columns: Company & Infrastructure, Status, Subscription Lifeline, Management Actions
+       - Company name + DB name (mono font)
+       - Status badge (Active = emerald with pulse, Trial = amber, Suspended = rose)
+       - Subscription expiry label with urgency styling:
+           · Lifetime Access (no expiry)
+           · Trial: X days/hours/minutes remaining (with pulse if <7 days)
+           · Expiring in X days (pulse if <30 days)
+           · Expired / Trial Expired (rose)
+           · Suspended
+       - Latest activation key display (with Copy button)
+
+  9.5  Management Actions (per company row)
+       - "Users" button → opens Tenant User Management panel
+       - Suspend / Activate toggle button (Pause / Play icon)
+       - Manage Plan & Validity button (calendar icon)
+
+  9.6  Register New Tenant (modal form)
+       - Company Name
+       - Status (Active / Trial / Suspended)
+       - If Trial: duration (minutes / hours / days) OR custom date picker
+       - If Active: duration in months (1–120+) OR "Lifetime" OR custom date picker
+       - Expiry preview text (shows computed expiry date)
+       - Creates isolated tenant database automatically
+
+  9.7  Manage Plan & Validity (modal)
+       - Change company status (Active / Trial / Suspended)
+       - Extension Mode: "Extend" (add to existing) vs "Edit" (set exact date)
+       - If Active: extend by months (presets: 1, 3, 6, 12 + custom), or set exact date
+       - If Trial: extend by minutes / hours / days, or set exact date
+       - Expiry preview text updates live
+       - "Apply Plan Changes" button
+       - "Generate Product Key" button:
+           · Generates a one-time activation key (e.g. LOGRO-ACTIVE-COMPANY-XXXX)
+           · Auto-copies to clipboard
+           · Key shown in company row for distribution
+
+  9.8  Tenant User Management Panel (side panel)
+       - Opens for selected company
+       - Lists all users in that tenant:
+           · Name, email, role badge, status, phone
+           · Activate / Deactivate user toggle
+           · Delete user (with confirmation)
+       - "Add User" form:
+           · Full Name (required)
+           · Email (required)
+           · Password (required)
+           · Role: Admin / Accountant / Manager
+           · Phone
+       - Loading state per user action
+
+================================================================================
+SYSTEM-WIDE FEATURES
+================================================================================
+
+  AUTH & SECURITY
+  - JWT token auth stored in localStorage
+  - Role-based page and action visibility
+  - Superadmin uses hardcoded credentials (separate from tenant users)
+  - Trial / subscription expiry check every 4 seconds
+  - Expired subscription → "Trial / Subscription Expired" lockscreen
+  - Product key activation form on lockscreen (with sign out option)
+
+  REAL-TIME UPDATES (WebSocket)
+  - Socket.IO integration
+  - Each company joins its own socket room (tenant isolation)
+  - Events:
+      · requestsUpdate → triggers auto-refresh in Finance Hub, Accountant, Projects
+  - Auto-reconnect on disconnect
+
+  OFFLINE DETECTION
+  - OfflineScreen overlay shown when internet connection is lost
+  - Restores automatically when connection returns
+
+  TOAST NOTIFICATIONS
+  - Success (green), Error (red), Warning (amber) toasts
+  - AppToasts component renders them globally
+
+  CONFIRM MODALS
+  - Global ConfirmContext for all destructive actions
+  - Variants: default, warning, danger
+  - Custom title, message, and confirm button label
+
+  NAVIGATION
+  - Hash-based routing (#dashboard, #projects, etc.)
+  - Browser history pushState / popState support (back button works)
+  - Active tab persisted in localStorage (survives page refresh)
+  - Deep-linking: navigate directly to a specific project + task from dashboard
+
+  RESPONSIVE DESIGN
+  - Desktop: top navigation bar
+  - Mobile: fixed bottom navigation bar (icon + label)
+  - Card/table layouts adapt to screen size
+  - Mobile-specific report card views vs desktop table views
+
+  CURRENCY FORMAT
+  - All monetary values formatted as Indian Rupees (₹, en-IN locale)
+  - No decimal places for whole rupee amounts
+
+  PAGINATION
+  - Finance Hub and Accountant tables: configurable rows per page (5/10/25/50)
+  - Setting persisted in localStorage per section
+  - Fixed table height to prevent layout shift
+
+================================================================================
+SERVER / API ROUTES SUMMARY
+================================================================================
+File: server/routes/tenant.ts (main API)
+File: server/routes/auth.ts
+File: server/routes/superadmin.ts
+
+  Authentication:
+  - POST /api/auth/login
+  - POST /api/auth/activate  (product key activation)
+
+  Projects:
+  - GET    /api/projects
+  - POST   /api/projects
+  - PUT    /api/projects/:id
+  - DELETE /api/projects/:id
+
+  Tasks:
+  - GET    /api/tasks  (optionally by projectId)
+  - POST   /api/tasks
+  - PUT    /api/tasks/:id
+  - DELETE /api/tasks/:id
+
+  Expenses:
+  - GET    /api/expenses  (optionally by projectId)
+  - POST   /api/expenses
+  - PUT    /api/expenses/:id
+  - DELETE /api/expenses/:id
+
+  Attendance:
+  - GET    /api/attendance
+  - POST   /api/attendance
+  - PUT    /api/attendance/:id
+  - DELETE /api/attendance/:id
+
+  Payments (approved disbursements):
+  - GET    /api/payments
+  - POST   /api/payments
+
+  Payment Requests (Finance Hub queue):
+  - GET    /api/payment-requests
+  - POST   /api/payment-requests
+  - PUT    /api/payment-requests/:id
+  - DELETE /api/payment-requests/:id
+
+  Office Funds:
+  - GET    /api/office-funds  (balance + transactions)
+  - POST   /api/office-funds  (record inflow)
+
+  Crew:
+  - GET    /api/crew  (optionally filter by status)
+  - POST   /api/crew
+  - PUT    /api/crew/:id
+  - DELETE /api/crew/:id
+  - POST   /api/crew/bulk  (bulk CSV import)
+
+  Vendors:
+  - GET    /api/vendors  (optionally filter by status)
+  - POST   /api/vendors
+  - PUT    /api/vendors/:id
+  - DELETE /api/vendors/:id
+  - POST   /api/vendors/bulk  (bulk CSV import)
+
+  Documents:
+  - GET    /api/projects/:id/documents
+  - POST   /api/projects/:id/documents  (upload, stored in DB or MEGA)
+  - DELETE /api/projects/:id/documents/:docId
+
+  Reports:
+  - GET    /api/reports/summary  (aggregated stats, task summary, recent expenses)
+
+  Superadmin:
+  - GET    /api/superadmin/companies
+  - POST   /api/superadmin/companies          (register tenant)
+  - PUT    /api/superadmin/companies/:id/status
+  - PUT    /api/superadmin/companies/:id/validity
+  - POST   /api/superadmin/companies/:id/generate-key
+  - GET    /api/superadmin/companies/:name/users
+  - POST   /api/superadmin/companies/:name/users
+  - PUT    /api/superadmin/companies/:name/users/:uid/status
+  - DELETE /api/superadmin/companies/:name/users/:uid
+
+================================================================================
+DATABASE ARCHITECTURE
+================================================================================
+
+  Multi-tenant: each company gets its own isolated MongoDB database.
+  Registry DB: stores company metadata (names, status, expiry, keys).
+  Tenant DBs:  each named db_<companyname> and holds:
+    - users
+    - projects
+    - tasks
+    - expenses
+    - attendance
+    - payments
+    - paymentRequests
+    - crew
+    - vendors
+    - officeFunds
+    - officeTransactions
+    - documents
+
+================================================================================
+END OF FEATURES DOCUMENTATION
+================================================================================

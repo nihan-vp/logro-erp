@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Plus, Search, Trash2, Edit2, Users, X, Phone, Briefcase, Upload, Download, BookmarkCheck, Store
+  Plus, Search, Trash2, Edit2, Users, X, Phone, Briefcase, Upload, Download, BookmarkCheck, Store,
+  Calendar, FileSpreadsheet, Activity, DollarSign, Wallet, ClipboardCheck
 } from 'lucide-react';
 import { api } from '../api/client';
 import { CrewMember, CrewTrade, CrewMemberStatus } from '../types';
@@ -100,7 +101,7 @@ function parseVendorCsv(text: string): CsvVendorRow[] {
 
 export default function AttendancePage() {
   const confirm = useConfirm();
-  const [activeTab, setActiveTab] = useState<'crew' | 'vendors'>('crew');
+  const [activeTab, setActiveTab] = useState<'crew' | 'vendors' | 'overview'>('crew');
 
   const [crew, setCrew] = useState<CrewMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,10 +145,48 @@ export default function AttendancePage() {
   const [isVendorImporting, setIsVendorImporting] = useState(false);
   const [vendorImportError, setVendorImportError] = useState<string | null>(null);
 
+  // Crew Overview specific states
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
+  const [overviewFilterType, setOverviewFilterType] = useState<'weekly' | 'monthly'>('monthly');
+  const [selectedYearVal, setSelectedYearVal] = useState<number>(new Date().getFullYear());
+  const [selectedMonthVal, setSelectedMonthVal] = useState<number>(new Date().getMonth()); // 0-11
+  const [selectedWeekOffset, setSelectedWeekOffset] = useState<number>(0); // 0 means current week, negative for past weeks
+  const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
+  const [paymentRequestsLogs, setPaymentRequestsLogs] = useState<any[]>([]);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewPage, setOverviewPage] = useState(1);
+  const [isMobileWorkerListOpen, setIsMobileWorkerListOpen] = useState(false);
+
   useEffect(() => {
     fetchCrew();
     fetchVendors();
   }, []);
+
+  const fetchOverviewLogs = async () => {
+    try {
+      setOverviewLoading(true);
+      const [attRes, payRes] = await Promise.all([
+        api.getAttendance(),
+        api.getPaymentRequests()
+      ]);
+      setAttendanceLogs(attRes.attendance || []);
+      setPaymentRequestsLogs(payRes.paymentRequests || []);
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to fetch logs for crew overview');
+    } finally {
+      setOverviewLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'overview') {
+      fetchOverviewLogs();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setOverviewPage(1);
+  }, [selectedWorkerId, overviewFilterType, selectedYearVal, selectedMonthVal, selectedWeekOffset]);
 
   const fetchVendors = async () => {
     try {
@@ -493,10 +532,10 @@ export default function AttendancePage() {
   return (
     <div className="space-y-6 font-sans">
       {/* ── Tab Bar ── */}
-      <div className="flex gap-1 p-1 bg-zinc-100 rounded-xl w-fit">
+      <div className="flex flex-wrap gap-1 p-1 bg-zinc-100 rounded-xl w-full sm:w-fit">
         <button
           onClick={() => setActiveTab('crew')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
             activeTab === 'crew'
               ? 'bg-white text-zinc-950 shadow-sm'
               : 'text-zinc-500 hover:text-zinc-700'
@@ -510,7 +549,7 @@ export default function AttendancePage() {
         </button>
         <button
           onClick={() => setActiveTab('vendors')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
             activeTab === 'vendors'
               ? 'bg-white text-zinc-950 shadow-sm'
               : 'text-zinc-500 hover:text-zinc-700'
@@ -521,6 +560,17 @@ export default function AttendancePage() {
           <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${
             activeTab === 'vendors' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
           }`}>{vendors.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'overview'
+              ? 'bg-white text-zinc-950 shadow-sm'
+              : 'text-zinc-500 hover:text-zinc-700'
+          }`}
+        >
+          <BookmarkCheck className="w-4 h-4" />
+          <span>Crew Overview</span>
         </button>
       </div>
 
@@ -1135,6 +1185,480 @@ export default function AttendancePage() {
               </button>
             </form>
           </div>
+        </div>
+      )}
+      {/* ══════════════════════════════════ CREW OVERVIEW TAB ══════════════════════════════════ */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Crew Financial & Attendance Overview</h1>
+              <p className="text-xs sm:text-sm text-zinc-500">Track logs, wage distributions, and payment status for individual workers</p>
+            </div>
+            <button
+              onClick={fetchOverviewLogs}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white border border-zinc-200 text-zinc-800 rounded-xl text-xs font-semibold hover:bg-zinc-50 transition-colors"
+            >
+              <span>Refresh Logs</span>
+            </button>
+          </div>
+
+          {crew.length === 0 ? (
+            <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
+              <Users className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
+              <p className="text-xs text-zinc-500">No crew roster matches found. Register workers in Roster first.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Workers sidebar - hidden on mobile, shown on lg */}
+              <div className="hidden lg:flex lg:col-span-1 bg-white border border-zinc-200/80 rounded-2xl p-4 space-y-4 shadow-sm flex-col lg:self-start">
+                <h3 className="font-bold text-zinc-950 text-xs uppercase tracking-wider">Select Crew Worker</h3>
+                <div className="space-y-1 overflow-y-auto pr-1 max-h-[652px]">
+                  {crew.map(m => {
+                    const isSelected = selectedWorkerId === m.id || (!selectedWorkerId && crew[0]?.id === m.id);
+                    // Select first worker by default if none selected
+                    if (!selectedWorkerId && crew[0]?.id === m.id) {
+                      setTimeout(() => setSelectedWorkerId(m.id), 0);
+                    }
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => setSelectedWorkerId(m.id)}
+                        className={`w-full text-left p-3 rounded-xl transition-all border text-xs ${
+                          isSelected
+                            ? 'bg-zinc-950 text-white border-zinc-950 shadow-md font-bold'
+                            : 'bg-zinc-50/50 hover:bg-zinc-50 text-zinc-800 border-zinc-150 hover:border-zinc-300'
+                        }`}
+                      >
+                        <span className="block font-bold truncate">{m.name}</span>
+                        <span className={`text-[10px] mt-0.5 block ${isSelected ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                          {m.trade} • {formatCur(m.dailyWage)}/day
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Mobile worker pop-up modal */}
+              {isMobileWorkerListOpen && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 lg:hidden">
+                  <div className="bg-white border border-zinc-200 rounded-2xl w-full max-w-sm shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
+                    <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                      <h3 className="font-bold text-zinc-950 text-sm">Select Crew Worker</h3>
+                      <button
+                        onClick={() => setIsMobileWorkerListOpen(false)}
+                        className="p-1 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-400 hover:text-zinc-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="p-4 overflow-y-auto space-y-1">
+                      {crew.map(m => {
+                        const isSelected = selectedWorkerId === m.id || (!selectedWorkerId && crew[0]?.id === m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              setSelectedWorkerId(m.id);
+                              setIsMobileWorkerListOpen(false);
+                            }}
+                            className={`w-full text-left p-3 rounded-xl transition-all border text-xs ${
+                              isSelected
+                                ? 'bg-zinc-950 text-white border-zinc-950 shadow-md font-bold'
+                                : 'bg-zinc-50/50 hover:bg-zinc-50 text-zinc-800 border-zinc-150 hover:border-zinc-300'
+                            }`}
+                          >
+                            <span className="block font-bold truncate">{m.name}</span>
+                            <span className={`text-[10px] mt-0.5 block ${isSelected ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                              {m.trade} • {formatCur(m.dailyWage)}/day
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Overview Details & Filters Panel */}
+              <div className="lg:col-span-3 space-y-6">
+                {/* Mobile Selector Bar */}
+                {(() => {
+                  const worker = crew.find(c => c.id === selectedWorkerId) || crew[0];
+                  if (!worker) return null;
+                  return (
+                    <div className="flex lg:hidden items-center justify-between p-3.5 bg-white border border-zinc-200/80 rounded-2xl shadow-sm">
+                      <div>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Selected Worker</span>
+                        <span className="font-extrabold text-zinc-950 text-sm mt-0.5 block">{worker.name} ({worker.trade})</span>
+                      </div>
+                      <button
+                        onClick={() => setIsMobileWorkerListOpen(true)}
+                        className="px-3.5 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {(() => {
+                  const worker = crew.find(c => c.id === selectedWorkerId) || crew[0];
+                  if (!worker) return null;
+
+                  // Date range math
+                  let startDate: Date;
+                  let endDate: Date;
+
+                  if (overviewFilterType === 'weekly') {
+                    // Compute current week matching selectedWeekOffset
+                    const curr = new Date();
+                    const dayOffset = curr.getDay(); // 0 (Sun) to 6 (Sat)
+                    // Let's set start of week to Monday
+                    const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
+                    startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(startDate);
+                    endDate.setDate(startDate.getDate() + 6);
+                    endDate.setHours(23, 59, 59, 999);
+                  } else {
+                    // Monthly
+                    startDate = new Date(selectedYearVal, selectedMonthVal, 1, 0, 0, 0, 0);
+                    endDate = new Date(selectedYearVal, selectedMonthVal + 1, 0, 23, 59, 59, 999);
+                  }
+
+                  const formatIsoDate = (d: Date) => d.toISOString().split('T')[0];
+                  const startStr = formatIsoDate(startDate);
+                  const endStr = formatIsoDate(endDate);
+
+                  // Filter attendance logs matching this worker & date range
+                  const workerAtt = attendanceLogs.filter(a => 
+                    a.workerName === worker.name && 
+                    a.date >= startStr && 
+                    a.date <= endStr
+                  );
+
+                  // Filter payment history matching this worker & date range
+                  // Payouts for labor are stored under Category labour/Worker or custom payeeName matches.
+                  const workerPayments = paymentRequestsLogs.filter(pr => 
+                    pr.payeeName === worker.name && 
+                    pr.category === 'Worker' &&
+                    pr.createdAt >= startDate.toISOString() &&
+                    pr.createdAt <= endDate.toISOString()
+                  );
+
+                  // Calculate stats
+                  const daysPresent = workerAtt.filter(a => a.status === 'Present').length;
+                  const daysHalf = workerAtt.filter(a => a.status === 'Half Day').length;
+                  const daysAbsent = workerAtt.filter(a => a.status === 'Absent').length;
+
+                  // Daily wage sums
+                  const totalEarned = workerAtt.reduce((sum, a) => {
+                    let rate = 0;
+                    if (a.status === 'Present') rate = a.dailyWage || worker.dailyWage;
+                    else if (a.status === 'Half Day') rate = (a.dailyWage || worker.dailyWage) * 0.5;
+                    return sum + rate + (a.overtimeAmount || 0);
+                  }, 0);
+
+                  // Paid requests sum
+                  const paidWages = workerPayments
+                    .filter(pr => pr.status === 'Paid')
+                    .reduce((sum, pr) => sum + pr.amount, 0);
+
+                  // Partially paid requests details
+                  const partialPaidSum = workerPayments
+                    .filter(pr => pr.status === 'Partially Paid')
+                    .reduce((sum, pr) => {
+                      const history = pr.paymentHistory || [];
+                      return sum + history.reduce((s: number, item: any) => s + item.amount, 0);
+                    }, 0);
+
+                  const totalPaid = paidWages + partialPaidSum;
+                  const remainingToPay = Math.max(0, totalEarned - totalPaid);
+
+                  // Handle Download CSV
+                  const handleDownloadCsv = () => {
+                    const csvHeaders = ['Date', 'Project', 'Task', 'Attendance Status', 'Wages Earned (₹)', 'Overtime (₹)', 'Payment Status'];
+                    const csvRows = workerAtt.map(a => {
+                      let wages = 0;
+                      if (a.status === 'Present') wages = a.dailyWage || worker.dailyWage;
+                      else if (a.status === 'Half Day') wages = (a.dailyWage || worker.dailyWage) * 0.5;
+                      return [
+                        a.date,
+                        a.projectName,
+                        a.taskName,
+                        a.status,
+                        wages,
+                        a.overtimeAmount || 0,
+                        a.paymentStatus || 'Unpaid'
+                      ];
+                    });
+
+                    const csvContent = [
+                      [`Worker Financial & Attendance Summary Report: ${worker.name} (${overviewFilterType.toUpperCase()})`],
+                      [`Period: ${startStr} to ${endStr}`],
+                      [`Trade: ${worker.trade}`],
+                      [`Daily Wage Rate: ₹${worker.dailyWage}`],
+                      [],
+                      csvHeaders,
+                      ...csvRows,
+                      [],
+                      ['SUMMARY STATISTICS'],
+                      ['Total Days Present', daysPresent],
+                      ['Total Half Days', daysHalf],
+                      ['Total Days Absent', daysAbsent],
+                      ['Total Wages Earned (₹)', totalEarned],
+                      ['Total Wages Paid (₹)', totalPaid],
+                      ['Remaining Outstanding (₹)', remainingToPay]
+                    ].map(e => e.join(',')).join('\n');
+
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `report_${worker.name.toLowerCase().replace(/\s+/g, '_')}_${startStr}_to_${endStr}.csv`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    notify.success('Report CSV downloaded.');
+                  };
+
+                  return (
+                    <div className="space-y-6">
+                      {/* Filter panel */}
+                      <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setOverviewFilterType('weekly')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                              overviewFilterType === 'weekly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
+                            }`}
+                          >
+                            Weekly
+                          </button>
+                          <button
+                            onClick={() => setOverviewFilterType('monthly')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                              overviewFilterType === 'monthly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
+                            }`}
+                          >
+                            Monthly
+                          </button>
+                        </div>
+
+                        {/* Dropdown controls */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {overviewFilterType === 'monthly' ? (
+                            <>
+                              <select
+                                value={selectedMonthVal}
+                                onChange={e => setSelectedMonthVal(Number(e.target.value))}
+                                className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+                              >
+                                {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => (
+                                  <option key={idx} value={idx}>{m}</option>
+                                ))}
+                              </select>
+                              <select
+                                value={selectedYearVal}
+                                onChange={e => setSelectedYearVal(Number(e.target.value))}
+                                className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+                              >
+                                {[2024, 2025, 2026, 2027, 2028].map(y => (
+                                  <option key={y} value={y}>{y}</option>
+                                ))}
+                              </select>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setSelectedWeekOffset(prev => prev - 1)}
+                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100"
+                              >
+                                Prev Week
+                              </button>
+                              <button
+                                onClick={() => setSelectedWeekOffset(0)}
+                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100"
+                              >
+                                Current
+                              </button>
+                              <button
+                                onClick={() => setSelectedWeekOffset(prev => prev + 1)}
+                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100"
+                              >
+                                Next Week
+                              </button>
+                            </div>
+                          )}
+
+                          <button
+                            onClick={handleDownloadCsv}
+                            className="inline-flex items-center gap-1 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                            <span>Download CSV</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Period Banner info */}
+                      <div className="bg-zinc-950 text-white rounded-2xl p-4 flex items-center justify-between shadow-md">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                            <Calendar className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-wider leading-none">Selected Range Period</p>
+                            <p className="font-extrabold text-sm mt-1">{startStr} to {endStr}</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] bg-white/20 font-bold px-2.5 py-1 rounded-full uppercase">
+                          {overviewFilterType} view
+                        </span>
+                      </div>
+
+                      {/* KPI Summary Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-white border border-zinc-200/80 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                          <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Present / Half / Absent</span>
+                          <span className="text-base font-extrabold text-zinc-950 block mt-2">
+                            <span className="text-emerald-600">{daysPresent}d</span> • <span className="text-blue-600">{daysHalf}d</span> • <span className="text-rose-600">{daysAbsent}d</span>
+                          </span>
+                        </div>
+
+                        <div className="bg-white border border-zinc-200/80 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                          <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Total Wage Earned</span>
+                          <span className="text-lg font-black text-zinc-950 block mt-2">{formatCur(totalEarned)}</span>
+                        </div>
+
+                        <div className="bg-white border border-zinc-200/80 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                          <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Paid Amount</span>
+                          <span className="text-lg font-black text-emerald-600 block mt-2">{formatCur(totalPaid)}</span>
+                        </div>
+
+                        <div className="bg-white border border-zinc-200/80 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                          <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Remaining Due</span>
+                          <span className="text-lg font-black text-amber-600 block mt-2">{formatCur(remainingToPay)}</span>
+                        </div>
+                      </div>
+
+                      {/* Logs Table */}
+                      <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+                        <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Attendance & Wage Log Breakdown</h3>
+                        {workerAtt.length === 0 ? (
+                          <div className="p-8 border border-dashed rounded-xl text-center bg-zinc-50">
+                            <ClipboardCheck className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
+                            <p className="text-xs text-zinc-500 font-medium">No logs matched this date range.</p>
+                          </div>
+                        ) : (
+                          (() => {
+                            // Row limiter (5 rows per page) using parent state
+                            const limit = 5;
+                            const totalPages = Math.max(1, Math.ceil(workerAtt.length / limit));
+                            const currPage = Math.min(overviewPage, totalPages);
+                            const paginated = workerAtt.slice((currPage - 1) * limit, currPage * limit);
+                            const emptyRows = Math.max(0, limit - paginated.length);
+
+                            return (
+                              <div className="border border-zinc-200/80 rounded-xl overflow-hidden">
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs text-left text-zinc-600 border-collapse">
+                                    <thead>
+                                      <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
+                                        <th className="py-2.5 px-3">Date</th>
+                                        <th className="py-2.5 px-3">Project / Task</th>
+                                        <th className="py-2.5 px-3">Status</th>
+                                        <th className="py-2.5 px-3 text-right">Base Wage</th>
+                                        <th className="py-2.5 px-3 text-right">OT Amount</th>
+                                        <th className="py-2.5 px-3 text-right">Total Day Wage</th>
+                                        <th className="py-2.5 px-3 text-center">Payment</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-100 text-zinc-900 bg-white">
+                                      {paginated.map(a => {
+                                        let wages = 0;
+                                        if (a.status === 'Present') wages = a.dailyWage || worker.dailyWage;
+                                        else if (a.status === 'Half Day') wages = (a.dailyWage || worker.dailyWage) * 0.5;
+                                        const totalDay = wages + (a.overtimeAmount || 0);
+
+                                        return (
+                                          <tr key={a.id} className="hover:bg-zinc-50/50 transition-colors">
+                                            <td className="py-3 px-3 font-semibold whitespace-nowrap">{a.date}</td>
+                                            <td className="py-3 px-3">
+                                              <span className="font-bold text-zinc-800 block truncate max-w-[150px]">{a.projectName}</span>
+                                              <span className="text-[10px] text-zinc-400 block mt-0.5">{a.taskName}</span>
+                                            </td>
+                                            <td className="py-3 px-3">
+                                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                a.status === 'Present'
+                                                  ? 'bg-emerald-50 text-emerald-700'
+                                                  : a.status === 'Half Day'
+                                                    ? 'bg-blue-50 text-blue-700'
+                                                    : 'bg-rose-50 text-rose-700'
+                                              }`}>
+                                                {a.status}
+                                              </span>
+                                            </td>
+                                            <td className="py-3 px-3 text-right font-medium text-zinc-700">{formatCur(wages)}</td>
+                                            <td className="py-3 px-3 text-right text-zinc-500">{formatCur(a.overtimeAmount || 0)}</td>
+                                            <td className="py-3 px-3 text-right font-bold text-zinc-950">{formatCur(totalDay)}</td>
+                                            <td className="py-3 px-3 text-center">
+                                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                a.paymentStatus === 'Paid'
+                                                  ? 'bg-emerald-50 text-emerald-700'
+                                                  : 'bg-amber-50 text-amber-700'
+                                              }`}>
+                                                {a.paymentStatus || 'Unpaid'}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                      {Array.from({ length: emptyRows }).map((_, i) => (
+                                        <tr key={`empty-${i}`} className="opacity-0 select-none">
+                                          <td colSpan={7} className="py-3 px-3">&nbsp;</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                
+                                {/* Pagination controls */}
+                                <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-100 bg-zinc-50/50">
+                                  <span className="text-[10px] text-zinc-400 font-bold">
+                                    Page {currPage} of {totalPages} ({workerAtt.length} items)
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={currPage <= 1}
+                                      onClick={() => setOverviewPage(p => Math.max(1, p - 1))}
+                                      className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
+                                    >
+                                      Prev
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={currPage >= totalPages}
+                                      onClick={() => setOverviewPage(p => Math.min(totalPages, p + 1))}
+                                      className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
+                                    >
+                                      Next
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -3,6 +3,8 @@ import { getTenantDb } from '../tenantDb';
 import { requireAuth, requireAdmin, requireAdminOrAccountant } from '../middleware/auth';
 import { notifyTenantRequestsUpdate } from '../socket';
 import { UserRole, ExpenseCategory, PaymentRequest } from '../../src/types';
+import { Storage } from 'megajs';
+
 
 const router = Router();
 
@@ -218,8 +220,9 @@ router.get('/projects', async (req: any, res) => {
     const totalPaidAmount = projectPayments.filter((p: any) => p.paymentStatus === 'Paid').reduce((acc: number, p: any) => acc + p.amount, 0);
     const pendingPaymentsAmt = projectPayments.filter((p: any) => p.paymentStatus === 'Pending').reduce((acc: number, p: any) => acc + p.amount, 0);
 
-    const profitLoss = totalBudget - totalCommittedExpense;
-    const profitPercentage = totalBudget > 0 ? (profitLoss / totalBudget) * 100 : 0;
+    const profitLoss = (prj.contractBudget || totalBudget) - totalCommittedExpense;
+    const effectiveBudget = prj.contractBudget || totalBudget;
+    const profitPercentage = effectiveBudget > 0 ? (profitLoss / effectiveBudget) * 100 : 0;
 
     return {
       ...prj,
@@ -239,7 +242,7 @@ router.get('/projects', async (req: any, res) => {
 });
 
 router.post('/projects', async (req: any, res) => {
-  const { projectName, clientName, location, startDate, expectedEndDate, status, notes } = req.body;
+  const { projectName, clientName, location, startDate, expectedEndDate, status, notes, contractBudget } = req.body;
   if (!projectName || !clientName || !location || !startDate || !expectedEndDate) {
     return res.status(400).json({ error: 'All core project fields are required' });
   }
@@ -254,6 +257,7 @@ router.post('/projects', async (req: any, res) => {
     expectedEndDate,
     status: (status || 'Pending'),
     notes,
+    contractBudget: contractBudget ? Number(contractBudget) : 0,
     createdBy: req.user.userId,
     createdAt: new Date().toISOString()
   };
@@ -263,7 +267,7 @@ router.post('/projects', async (req: any, res) => {
 });
 
 router.put('/projects/:id', async (req: any, res) => {
-  const { projectName, clientName, location, startDate, expectedEndDate, status, notes } = req.body;
+  const { projectName, clientName, location, startDate, expectedEndDate, status, notes, contractBudget } = req.body;
   if (!projectName || !clientName || !location || !startDate || !expectedEndDate) {
     return res.status(400).json({ error: 'All core project fields are required' });
   }
@@ -271,7 +275,7 @@ router.put('/projects/:id', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
   const result = await tenantDb.collection('projects').findOneAndUpdate(
       { id: req.params.id },
-      { $set: { projectName, clientName, location, startDate, expectedEndDate, status, notes } },
+      { $set: { projectName, clientName, location, startDate, expectedEndDate, status, notes, contractBudget: contractBudget ? Number(contractBudget) : 0 } },
       { returnDocument: 'after' }
   );
   
@@ -1227,7 +1231,9 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
   const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
   const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
   
-  if (paymentStatus === 'Paid' && currentFund.balance < Number(amount)) {
+  const paymentAmount = Number(amount);
+  
+  if (paymentStatus === 'Paid' && currentFund.balance < paymentAmount) {
     return res.status(400).json({ error: 'Insufficient office balance for this payment.' });
   }
 
@@ -1237,7 +1243,7 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
     taskId,
     payeeType,
     payeeName,
-    amount: Number(amount),
+    amount: paymentAmount,
     paymentDate,
     paymentMethod,
     paymentStatus,
@@ -1248,14 +1254,14 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
   await tenantDb.collection('payments').insertOne(newPayment);
 
   if (paymentStatus === 'Paid') {
-    currentFund.balance -= Number(amount);
+    currentFund.balance -= paymentAmount;
     currentFund.updatedAt = new Date().toISOString();
     await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
 
     await tenantDb.collection('officeTransactions').insertOne({
         id: 'tx_' + Date.now(),
         type: 'Cash Out',
-        amount: Number(amount),
+        amount: paymentAmount,
         description: `Payment to ${payeeName} for ${taskId}`,
         date: new Date().toISOString(),
         createdBy: req.user.userId
@@ -1265,12 +1271,29 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
   if (requestId) {
       const pr = await tenantDb.collection('paymentRequests').findOne({ id: requestId });
       if (pr) {
+          const currentHistory = pr.paymentHistory || [];
+          const newHistoryItem = {
+              id: 'pay_hist_' + Date.now(),
+              amount: paymentAmount,
+              paymentMethod: paymentMethod,
+              paidAt: new Date().toISOString(),
+              paidBy: req.user.userId,
+              notes: notes || ''
+          };
+          const updatedHistory = [...currentHistory, newHistoryItem];
+          const totalPaid = updatedHistory.reduce((sum: number, item: any) => sum + item.amount, 0);
+          const remaining = Math.max(0, pr.amount - totalPaid);
+          const finalStatus = remaining <= 0 ? 'Paid' : 'Partially Paid';
+
           await tenantDb.collection('paymentRequests').updateOne(
               { id: requestId },
-              { $set: { status: paymentStatus === 'Paid' ? 'Paid' : 'Partially Paid' } }
+              { $set: { 
+                  status: finalStatus,
+                  paymentHistory: updatedHistory
+              } }
           );
 
-          if (pr.category === 'Worker' && paymentStatus === 'Paid') {
+          if (pr.category === 'Worker' && finalStatus === 'Paid') {
               await tenantDb.collection('attendance').updateOne(
                   {
                       projectId: pr.projectId,
@@ -1296,21 +1319,21 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
             projectId: pr.projectId,
             taskId: pr.taskId,
             category: categoryMap[pr.category] || 'Other',
-            amount: pr.amount,
+            amount: paymentAmount,
             paidTo: pr.payeeName,
             paymentMethod: paymentMethod || pr.paymentMethod || 'Office Fund',
             date: paymentDate,
             fromLocation: pr.fromLocation,
             toLocation: pr.toLocation,
-            notes: pr.description,
+            notes: notes || pr.description,
             billImage: pr.billImage,
             createdBy: pr.createdBy || req.user.userId,
             materialName: pr.materialName,
             materialQty: pr.materialQty,
             tools: pr.tools,
             vendorTotalToPay: pr.vendorTotalToPay,
-            vendorPaid: pr.vendorPaid,
-            vendorRemaining: pr.vendorRemaining,
+            vendorPaid: totalPaid,
+            vendorRemaining: remaining,
             purchasePricePerCount: pr.purchasePricePerCount,
             purchaseTotalFull: pr.purchaseTotalFull,
             purchaseTotal: pr.purchaseTotal,
@@ -1576,7 +1599,14 @@ router.get('/reports/summary', async (req: any, res) => {
   const totalPaidAmount = payments.filter((p: any) => p.paymentStatus === 'Paid').reduce((sum: number, p: any) => sum + p.amount, 0);
   const pendingPayments = payments.filter((p: any) => p.paymentStatus === 'Pending' || p.paymentStatus === 'Partial').reduce((sum: number, p: any) => sum + p.amount, 0);
 
-  const overallProfitLoss = totalAssignedBudget - totalExpenses;
+  // Per-project effective budget (uses contractBudget when set, else sum of task budgets)
+  const totalEffectiveBudget = projects.reduce((sum: number, prj: any) => {
+    if (prj.contractBudget && prj.contractBudget > 0) return sum + prj.contractBudget;
+    const prjTaskBudget = tasks.filter((t: any) => t.projectId === prj.id).reduce((s: number, t: any) => s + t.assignedBudget, 0);
+    return sum + prjTaskBudget;
+  }, 0);
+
+  const overallProfitLoss = totalEffectiveBudget - totalExpenses;
 
   const taskSummary = tasks.map((t: any) => {
     const dExp = expenses.filter((e: any) => e.taskId === t.id).reduce((sum: number, e: any) => sum + e.amount, 0);
@@ -1638,6 +1668,140 @@ router.get('/reports/summary', async (req: any, res) => {
     recentExpenses,
     recentPayments
   });
+});
+
+// 9. Document management routes
+router.get('/projects/:projectId/documents', async (req: any, res) => {
+  try {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    const documents = await tenantDb.collection('documents').find({ projectId: req.params.projectId }).toArray();
+    res.json({ documents });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch documents' });
+  }
+});
+
+router.post('/projects/:projectId/documents', async (req: any, res) => {
+  const { name, type, size, base64Data } = req.body;
+  if (!name || !type || size === undefined || !base64Data) {
+    return res.status(400).json({ error: 'Name, type, size, and base64Data are required' });
+  }
+
+  try {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+
+    let url = '';
+    let isUploadedToMega = false;
+
+    const megaEmail = process.env.MEGA_EMAIL;
+    const megaPassword = process.env.MEGA_PASSWORD;
+
+    if (megaEmail && megaPassword) {
+      try {
+        console.log(`[MEGA] Logging in for file upload: ${name}`);
+        const storage = await new Storage({
+          email: megaEmail,
+          password: megaPassword
+        }).ready;
+
+        const base64Clean = base64Data.replace(/^data:.*;base64,/, '');
+        const buffer = Buffer.from(base64Clean, 'base64');
+
+        const file = await storage.upload({
+          name,
+          size: buffer.length
+        }, buffer).complete;
+
+        url = await file.link({});
+        isUploadedToMega = true;
+        console.log(`[MEGA] Successfully uploaded ${name}. Link: ${url}`);
+      } catch (megaErr: any) {
+        console.error('[MEGA] Upload failed, falling back to local database storage:', megaErr);
+      }
+    }
+
+    const newDoc = {
+      id: docId,
+      projectId: req.params.projectId,
+      name,
+      type,
+      size,
+      uploadedBy: req.user.userId,
+      uploadedByName: req.user.name || 'Unknown User',
+      uploadedAt: new Date().toISOString(),
+      megaUrl: isUploadedToMega ? url : undefined,
+      base64Data: isUploadedToMega ? undefined : base64Data
+    };
+
+    await tenantDb.collection('documents').insertOne(newDoc);
+    
+    await tenantDb.collection('auditLogs').insertOne({
+      id: 'audit_' + Date.now(),
+      action: 'Upload',
+      entity: 'Document',
+      entityId: docId,
+      performedBy: req.user.userId,
+      timestamp: new Date().toISOString(),
+      details: `Uploaded document "${name}" (${isUploadedToMega ? 'MEGA' : 'Local DB'})`
+    });
+
+    const responseDoc = { ...newDoc, base64Data: undefined };
+    res.status(201).json({ document: responseDoc });
+  } catch (err: any) {
+    console.error('Document upload error:', err);
+    res.status(500).json({ error: 'Failed to upload document' });
+  }
+});
+
+router.delete('/projects/:projectId/documents/:documentId', async (req: any, res) => {
+  try {
+    const tenantDb = await getTenantDb(req.user.companyName);
+    
+    const doc = await tenantDb.collection('documents').findOne({ id: req.params.documentId });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    if (doc.url && doc.url.includes('mega.nz')) {
+      const megaEmail = process.env.MEGA_EMAIL;
+      const megaPassword = process.env.MEGA_PASSWORD;
+      if (megaEmail && megaPassword) {
+        try {
+          const storage = await new Storage({
+            email: megaEmail,
+            password: megaPassword
+          }).ready;
+
+          const file = Object.values(storage.files).find((f: any) => f.name === doc.name);
+          if (file) {
+            await new Promise<void>((resolve, reject) => {
+              file.delete(true, (err: any) => {
+                if (err) reject(err);
+                else resolve();
+              });
+            });
+          }
+        } catch (megaErr) {
+          console.error('[MEGA] Failed to delete file on MEGA:', megaErr);
+        }
+      }
+    }
+
+    await tenantDb.collection('documents').deleteOne({ id: req.params.documentId });
+
+    await tenantDb.collection('auditLogs').insertOne({
+      id: 'audit_' + Date.now(),
+      action: 'Delete',
+      entity: 'Document',
+      entityId: req.params.documentId,
+      performedBy: req.user.userId,
+      timestamp: new Date().toISOString(),
+      details: `Deleted document "${doc.name}"`
+    });
+
+    res.json({ success: true, message: 'Document deleted successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
 });
 
 export default router;

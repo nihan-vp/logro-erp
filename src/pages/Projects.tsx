@@ -4,7 +4,8 @@ import {
   ChevronRight, ArrowLeft, RefreshCw, AlertTriangle, Briefcase,
   Receipt, TrendingUp, PlusCircle, DollarSign, Eye,
   UploadCloud, X, ChevronDown, CheckCircle2, FileText, Trash,
-  Image as ImageIcon
+  Image as ImageIcon, FolderOpen, Download, File, FileImage,
+  FileVideo, FileArchive, FileCog
 } from 'lucide-react';
 import { api } from '../api/client';
 import { onRequestsUpdate, offRequestsUpdate } from '../api/socket';
@@ -24,11 +25,201 @@ const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest[
 
 const parseNumericQty = (qty: string) => parseFloat(qty.replace(/[^0-9.]/g, '')) || 0;
 
+
+// ─── Helper: Determine icon + colour for a given MIME / extension ───────────
+const getFileIcon = (type: string) => {
+  if (!type) return <FileText className="w-5 h-5 text-zinc-400" />;
+  if (type.startsWith('image/'))   return <FileImage className="w-5 h-5 text-blue-500" />;
+  if (type.startsWith('video/'))   return <FileVideo className="w-5 h-5 text-purple-500" />;
+  if (type.includes('pdf'))        return <FileText className="w-5 h-5 text-rose-500" />;
+  if (type.includes('zip') || type.includes('rar') || type.includes('7z'))
+                                   return <FileArchive className="w-5 h-5 text-amber-500" />;
+  if (type.includes('sheet') || type.includes('csv') || type.includes('excel'))
+                                   return <FileCog className="w-5 h-5 text-emerald-500" />;
+  return <File className="w-5 h-5 text-zinc-400" />;
+};
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(2)} MB`;
+};
+
+interface DocumentsTabProps {
+  projectId: string;
+  documents: any[];
+  setDocuments: (docs: any[]) => void;
+  isUploading: boolean;
+  setIsUploading: (v: boolean) => void;
+}
+
+function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUploading }: DocumentsTabProps) {
+  const [drag, setDrag] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState('');
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const MAX_FILE_MB = 20;
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadError('');
+
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_FILE_MB * 1024 * 1024) {
+        setUploadError(`"${file.name}" exceeds the ${MAX_FILE_MB} MB limit.`);
+        continue;
+      }
+
+      setIsUploading(true);
+      try {
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const res = await api.uploadDocument(projectId, {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          base64Data,
+        });
+
+        if (res.document) {
+          setDocuments([...documents, res.document]);
+        }
+      } catch (err: any) {
+        setUploadError(err.message || 'Upload failed. Please try again.');
+      } finally {
+        setIsUploading(false);
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDrag(false);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  const handleDelete = async (docId: string) => {
+    try {
+      await api.deleteDocument(projectId, docId);
+      setDocuments(documents.filter((d: any) => d.id !== docId));
+    } catch {
+      setUploadError('Could not delete document.');
+    }
+  };
+
+  const handleDownload = (doc: any) => {
+    if (doc.megaUrl) {
+      window.open(doc.megaUrl, '_blank');
+      return;
+    }
+    if (doc.base64Data) {
+      const link = document.createElement('a');
+      link.href = `data:${doc.type || 'application/octet-stream'};base64,${doc.base64Data}`;
+      link.download = doc.name;
+      link.click();
+    }
+  };
+
+  return (
+    <div className="space-y-4 py-2">
+      {/* Upload zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={handleDrop}
+        onClick={() => !isUploading && inputRef.current?.click()}
+        className={`relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer select-none
+          ${drag ? 'border-zinc-800 bg-zinc-100' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100 hover:border-zinc-400'}`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        {isUploading ? (
+          <>
+            <RefreshCw className="w-7 h-7 text-zinc-400 animate-spin" />
+            <p className="text-sm font-semibold text-zinc-500">Uploading…</p>
+          </>
+        ) : (
+          <>
+            <UploadCloud className="w-8 h-8 text-zinc-400" />
+            <p className="text-sm font-semibold text-zinc-600">
+              {drag ? 'Drop files here' : 'Drag & drop files or click to browse'}
+            </p>
+            <p className="text-[11px] text-zinc-400">PDFs, images, spreadsheets — up to {MAX_FILE_MB} MB each</p>
+          </>
+        )}
+      </div>
+
+      {uploadError && (
+        <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>{uploadError}</span>
+        </div>
+      )}
+
+      {/* Document list */}
+      {documents.length === 0 ? (
+        <div className="text-center py-10 text-zinc-400">
+          <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm font-medium">No documents yet</p>
+          <p className="text-xs mt-0.5">Upload files above to attach them to this project.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {documents.map((doc: any) => (
+            <div
+              key={doc.id}
+              className="flex items-center gap-3 p-3 bg-white border border-zinc-100 rounded-xl hover:shadow-sm transition group"
+            >
+              <div className="flex-shrink-0">{getFileIcon(doc.type)}</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-zinc-800 truncate">{doc.name}</p>
+                <p className="text-[10px] text-zinc-400 mt-0.5">
+                  {formatBytes(doc.size)}
+                  {doc.uploadedAt && ` · ${new Date(doc.uploadedAt).toLocaleDateString()}`}
+                  {doc.megaUrl && <span className="ml-1.5 text-emerald-600 font-bold">· Cloud</span>}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                <button
+                  onClick={() => handleDownload(doc)}
+                  className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500 hover:text-zinc-800 transition"
+                  title="Download"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => handleDelete(doc.id)}
+                  className="p-1.5 rounded-lg hover:bg-rose-50 text-zinc-400 hover:text-rose-600 transition"
+                  title="Delete"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ProjectsProps {
   onNavigate: (page: string, params?: any) => void;
   userRole: string;
   initialParams?: any;
 }
+
 
 export default function Projects({ onNavigate, userRole, initialParams }: ProjectsProps) {
   const confirm = useConfirm();
@@ -45,11 +236,13 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   // Expanded project panel details
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
-  const [viewTab, setViewTab] = useState<'tasks' | 'expenses'>('tasks');
+  const [viewTab, setViewTab] = useState<'tasks' | 'expenses' | 'documents'>('tasks');
 
   // Parallel child states of selected project
   const [projectTasks, setProjectTasks] = useState<any[]>([]);
   const [projectExpenses, setProjectExpenses] = useState<any[]>([]);
+  const [projectDocuments, setProjectDocuments] = useState<any[]>([]);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
 
   // Specified Task focus overlay
   const [activeTask, setActiveTask] = useState<any | null>(null);
@@ -73,6 +266,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [projEndDate, setProjEndDate] = useState('');
   const [projStatus, setProjStatus] = useState<ProjectStatus>('Pending');
   const [projNotes, setProjNotes] = useState('');
+  const [projBudget, setProjBudget] = useState<number | ''>('');
   const [projSubmitError, setProjSubmitError] = useState<string | null>(null);
 
   // B. Child Task Form
@@ -206,13 +400,15 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       setSelectedProject(project);
       setIsViewOpen(true);
 
-      const [taskRes, expenseRes] = await Promise.all([
+      const [taskRes, expenseRes, docRes] = await Promise.all([
         api.getTasks(project.id),
         api.getExpenses(project.id),
+        api.getDocuments(project.id).catch(() => ({ documents: [] })),
       ]);
 
       setProjectTasks(taskRes.tasks || []);
       setProjectExpenses(expenseRes.expenses || []);
+      setProjectDocuments(docRes.documents || []);
     } catch (err: any) {
       notify.error(err?.message || 'Failed to download project details');
     } finally {
@@ -222,10 +418,11 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
   const reloadProjectData = async (projId: string) => {
     try {
-      const [projRes, taskRes, expenseRes] = await Promise.all([
+      const [projRes, taskRes, expenseRes, docRes] = await Promise.all([
         api.getProjects(),
         api.getTasks(projId),
         api.getExpenses(projId),
+        api.getDocuments(projId).catch(() => ({ documents: [] })),
       ]);
 
       setProjects(projRes.projects || []);
@@ -236,6 +433,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
       setProjectTasks(taskRes.tasks || []);
       setProjectExpenses(expenseRes.expenses || []);
+      setProjectDocuments(docRes.documents || []);
 
       if (activeTask) {
         const updatedTask = (taskRes.tasks || []).find((t: any) => t.id === activeTask.id);
@@ -260,6 +458,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setProjEndDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     setProjStatus('Pending');
     setProjNotes('');
+    setProjBudget('');
     setProjSubmitError(null);
     setIsFormOpen(true);
   };
@@ -273,6 +472,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setProjEndDate(p.expectedEndDate);
     setProjStatus(p.status);
     setProjNotes(p.notes || '');
+    setProjBudget(p.contractBudget || '');
     setProjSubmitError(null);
     setIsFormOpen(true);
   };
@@ -315,7 +515,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       startDate: projStartDate,
       expectedEndDate: projEndDate,
       status: projStatus,
-      notes: projNotes
+      notes: projNotes,
+      contractBudget: projBudget !== '' ? Number(projBudget) : 0
     };
 
     try {
@@ -576,8 +777,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       return;
     }
     if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') {
-      if (expenseVendorTotalToPay <= 0 || expenseVendorPaid <= 0) {
-        notify.warning('Total to pay and Paid amount must be greater than 0.');
+      if (expenseVendorTotalToPay <= 0) {
+        notify.warning('Total to pay must be greater than 0.');
         return;
       }
     } else if (expenseAmount <= 0) {
@@ -628,11 +829,9 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       materialQty: (expenseCategory === 'Material') ? expenseMaterialQty : (expenseCategory === 'Purchase' && expensePurchaseItems.length > 0) ? expensePurchaseItems[0].qty : undefined,
       tools: expenseCategory === 'Tools' ? expenseTools : undefined,
       vendorTotalToPay: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') ? Number(expenseVendorTotalToPay) : undefined,
-      vendorPaid: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') ? Number(expenseVendorPaid) : undefined,
-      vendorRemaining: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') ? Number(expenseVendorTotalToPay - expenseVendorPaid) : undefined,
       purchasePricePerCount: expenseCategory === 'Purchase' && expensePurchaseItems.length > 0 ? expensePurchaseItems[0].pricePerCount : undefined,
       purchaseTotalFull: expenseCategory === 'Purchase' ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
-      purchaseTotal: expenseCategory === 'Purchase' ? Number(expenseVendorPaid) : undefined,
+      purchaseTotal: expenseCategory === 'Purchase' ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
       purchaseItems: expenseCategory === 'Purchase' ? expensePurchaseItems : undefined,
     };
 
@@ -896,8 +1095,12 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       {userRole !== 'manager' && (
                       <div className="grid grid-cols-2 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[11px] font-bold border border-zinc-100">
                         <div>
-                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Project Budget</span>
-                          <span className="text-zinc-900">{formatCur(p.totalBudget || 0)}</span>
+                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">
+                            {p.contractBudget > 0 ? 'Contract Budget' : 'Task Budgets'}
+                          </span>
+                          <span className="text-zinc-900">
+                            {formatCur(p.contractBudget > 0 ? p.contractBudget : (p.totalBudget || 0))}
+                          </span>
                         </div>
                         <div>
                           <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Total Expenses</span>
@@ -999,8 +1202,15 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               <>
                 <div className="grid grid-cols-2 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
                   <div>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Budgets</span>
-                    <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedProject.totalBudget || 0)}</span>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                      {selectedProject.contractBudget > 0 ? 'Contract Budget' : 'Task Budgets'}
+                    </span>
+                    <span className="text-base font-bold text-zinc-950 block">
+                      {formatCur(selectedProject.contractBudget > 0 ? selectedProject.contractBudget : (selectedProject.totalBudget || 0))}
+                    </span>
+                    {selectedProject.contractBudget > 0 && (
+                      <span className="text-[9px] text-zinc-400 block mt-0.5">Task alloc: {formatCur(selectedProject.totalBudget || 0)}</span>
+                    )}
                   </div>
                   <div>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase block">Outflow spent</span>
@@ -1010,13 +1220,15 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
                 <div className="flex items-center justify-between text-xs bg-zinc-900 text-white p-3.5 rounded-xl">
                   <div>
-                    <span className="block text-[9px] text-zinc-400 font-bold uppercase">Combined Performance Margin</span>
+                    <span className="block text-[9px] text-zinc-400 font-bold uppercase">
+                      {selectedProject.profitLoss >= 0 ? 'Net Profit' : 'Net Loss'}
+                    </span>
                     <span className={`text-sm sm:text-base font-extrabold ${selectedProject.profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {formatCur(selectedProject.profitLoss || 0)}
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="block text-[9px] text-zinc-400 font-bold uppercase">Operating Profit</span>
+                    <span className="block text-[9px] text-zinc-400 font-bold uppercase">Margin</span>
                     <span className="text-sm font-bold text-zinc-100">
                       {selectedProject.profitPercentage ? selectedProject.profitPercentage.toFixed(1) : '0.0'}%
                     </span>
@@ -1053,6 +1265,14 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 <span>Expenses ({projectExpenses.length})</span>
               </button>
             )}
+            <button
+              onClick={() => setViewTab('documents')}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 flex items-center gap-1.5 transition-all outline-none ${viewTab === 'documents' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
+                }`}
+            >
+              <FolderOpen className="w-4 h-4" />
+              <span>Documents ({projectDocuments.length})</span>
+            </button>
           </div>
 
           {/* TAB 1: INTEGRATED CHILD TASKS LIST */}
@@ -1392,6 +1612,17 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             </div>
           )}
 
+          {/* TAB 3: DOCUMENTS */}
+          {viewTab === 'documents' && (
+            <DocumentsTab
+              projectId={selectedProject.id}
+              documents={projectDocuments}
+              setDocuments={setProjectDocuments}
+              isUploading={isUploadingDoc}
+              setIsUploading={setIsUploadingDoc}
+            />
+          )}
+
         </div>
       )}
 
@@ -1666,6 +1897,20 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     <option value="Completed">Completed</option>
                     <option value="On Hold">On Hold</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Contract Budget (Optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={projBudget}
+                    onChange={(e) => setProjBudget(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  />
+                  <p className="text-[10px] text-zinc-400 mt-1">Used for profit/loss. Defaults to sum of task budgets if left blank.</p>
                 </div>
               </div>
 
@@ -2107,7 +2352,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
               {/* Vendor Payment fields */}
               {expenseCategory === 'Vendor Payment' && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
                     <input
@@ -2117,36 +2362,18 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       step="any"
                       placeholder="e.g. 50000"
                       value={expenseVendorTotalToPay || ''}
-                      onChange={(e) => setExpenseVendorTotalToPay(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      min={0.01}
-                      step="any"
-                      placeholder="e.g. 20000"
-                      value={expenseVendorPaid || ''}
                       onChange={(e) => {
                         const val = Number(e.target.value);
-                        setExpenseVendorPaid(val);
+                        setExpenseVendorTotalToPay(val);
                         setExpenseAmount(val);
                       }}
                       className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
-                    <input
-                      type="text"
-                      disabled
-                      readOnly
-                      value={formatCur(Math.max(0, expenseVendorTotalToPay - expenseVendorPaid))}
-                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
-                    />
+                  <div className="flex items-end">
+                    <p className="text-[11px] text-zinc-400 leading-relaxed pb-2">
+                      The accountant will track how much has been paid and what remains.
+                    </p>
                   </div>
                 </div>
               )}
@@ -2261,44 +2488,10 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Material</span>
                   </button>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total to Pay (₹)</label>
-                      <input
-                        type="number"
-                        disabled
-                        readOnly
-                        value={expenseVendorTotalToPay || ''}
-                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total Paid (₹)</label>
-                      <input
-                        type="number"
-                        required
-                        min={0.01}
-                        step="any"
-                        placeholder="e.g. 15000"
-                        value={expenseVendorPaid || ''}
-                        onChange={(e) => {
-                          const paid = Number(e.target.value);
-                          setExpenseVendorPaid(paid);
-                          setExpenseAmount(paid);
-                        }}
-                        className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Remaining (₹)</label>
-                      <input
-                        type="text"
-                        disabled
-                        readOnly
-                        value={formatCur(Math.max(0, expenseVendorTotalToPay - expenseVendorPaid))}
-                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 font-bold"
-                      />
-                    </div>
+                  <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
+                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Grand Total to Pay:</span>
+                    <span className="text-sm font-black text-zinc-900">{formatCur(expensePurchaseItems.reduce((s, it) => s + it.total, 0))}</span>
+                    <p className="text-[11px] text-zinc-400 ml-auto">Accountant will track installments.</p>
                   </div>
                 </div>
               )}

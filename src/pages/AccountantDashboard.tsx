@@ -138,6 +138,14 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   const [reqPage, setReqPage] = useState(1);
   const [txnPage, setTxnPage] = useState(1);
 
+  // Partial Payment Modal States
+  const [activeRequest, setActiveRequest] = useState<EnrichedPaymentRequest | null>(null);
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payNowAmount, setPayNowAmount] = useState('');
+  const [payNowMethod, setPayNowMethod] = useState('Bank Transfer');
+  const [payNowNotes, setPayNowNotes] = useState('');
+  const [payNowError, setPayNowError] = useState<string | null>(null);
+
   const fetchAccountantData = async () => {
     if (!hasLoaded) setLoading(true);
     setError(null);
@@ -197,6 +205,20 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   }, [txnSearch, rowsPerPage]);
 
   const handleApprove = async (request: EnrichedPaymentRequest) => {
+    if (!request.adjustmentType) {
+      const history = request.paymentHistory || [];
+      const paidSoFar = history.reduce((sum, item) => sum + item.amount, 0);
+      const remaining = Math.max(0, request.amount - paidSoFar);
+
+      setActiveRequest(request);
+      setPayNowAmount(String(remaining));
+      setPayNowMethod('Bank Transfer');
+      setPayNowNotes('');
+      setPayNowError(null);
+      setShowPayModal(true);
+      return;
+    }
+
     let title = 'Approve and pay?';
     let message = `Process payment of ${formatCur(request.amount)} to ${request.payeeName}? This will record the payout and update office funds.`;
     let confirmLabel = 'Approve & Pay';
@@ -246,6 +268,58 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
       );
     } catch (err: any) {
       notify.error(err.message || 'Error processing payment.');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handlePartialPaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeRequest) return;
+
+    const amt = Number(payNowAmount);
+    const history = activeRequest.paymentHistory || [];
+    const paidSoFar = history.reduce((sum, item) => sum + item.amount, 0);
+    const remaining = Math.max(0, activeRequest.amount - paidSoFar);
+
+    if (isNaN(amt) || amt <= 0) {
+      setPayNowError('Payment amount must be greater than 0.');
+      return;
+    }
+
+    if (amt > remaining) {
+      setPayNowError(`Payment amount cannot exceed the remaining balance of ₹${remaining.toLocaleString('en-IN')}.`);
+      return;
+    }
+
+    if (funds && funds.balance < amt) {
+      setPayNowError(`Insufficient office balance. Available fund: ₹${funds.balance.toLocaleString('en-IN')}.`);
+      return;
+    }
+
+    setPayNowError(null);
+    setApprovingId(activeRequest.id);
+
+    try {
+      await api.createPayment({
+        projectId: activeRequest.projectId,
+        taskId: activeRequest.taskId,
+        payeeType: activeRequest.category === 'Worker' ? 'Worker' : 'Supplier',
+        payeeName: activeRequest.payeeName,
+        amount: amt,
+        paymentDate: new Date().toISOString().split('T')[0],
+        paymentMethod: payNowMethod,
+        paymentStatus: 'Paid',
+        notes: payNowNotes || activeRequest.description,
+        requestId: activeRequest.id,
+      });
+
+      setShowPayModal(false);
+      setActiveRequest(null);
+      fetchAccountantData();
+      notify.success('Payment installment processed successfully.');
+    } catch (err: any) {
+      setPayNowError(err.message || 'Error processing installment payment.');
     } finally {
       setApprovingId(null);
     }
@@ -318,8 +392,11 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   };
 
   const today = new Date().toISOString().split('T')[0];
-  const pendingRequests = requests.filter(r => r.status === 'Pending' && !r.adjustmentType);
-  const totalPendingAmount = pendingRequests.reduce((sum, r) => sum + r.amount, 0);
+  const pendingRequests = requests.filter(r => (r.status === 'Pending' || r.status === 'Partially Paid') && !r.adjustmentType);
+  const totalPendingAmount = pendingRequests.reduce((sum, r) => {
+    const paid = (r.paymentHistory || []).reduce((s, item) => s + item.amount, 0);
+    return sum + (r.amount - paid);
+  }, 0);
   const processedToday = transactions.filter(t => t.date?.startsWith(today)).length;
   const todayInflow = transactions
     .filter(t => t.type === 'Cash In' && t.date?.startsWith(today))
@@ -548,8 +625,25 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                         <td className="px-3 align-middle">
                           <span className="text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded">{r.category}</span>
                         </td>
-                        <td className="px-3 align-middle text-right font-extrabold text-zinc-950 whitespace-nowrap">
-                          {formatCur(r.amount)}
+                        <td className="px-3 align-middle text-right whitespace-nowrap">
+                          {(() => {
+                            const paid = (r.paymentHistory || []).reduce((s, it) => s + it.amount, 0);
+                            const remaining = Math.max(0, r.amount - paid);
+                            return (
+                              <div className="flex flex-col items-end">
+                                <span className="font-extrabold text-zinc-950">{formatCur(r.amount)}</span>
+                                {paid > 0 && (
+                                  <div className="flex flex-col items-end mt-0.5 leading-none">
+                                    <span className="text-[9px] text-emerald-600 font-semibold">Paid: {formatCur(paid)}</span>
+                                    <span className="text-[9px] text-amber-600 font-semibold mt-0.5">Remaining: {formatCur(remaining)}</span>
+                                  </div>
+                                )}
+                                {r.status === 'Partially Paid' && paid === 0 && (
+                                  <span className="text-[9px] text-blue-600 font-semibold mt-0.5">Partially Paid</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-3 align-middle text-zinc-600 whitespace-nowrap">{r.dueDate}</td>
                         <td className="px-3 align-middle">
@@ -565,7 +659,9 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                               className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap ${
                                 r.adjustmentType === 'Delete'
                                   ? 'bg-rose-600 hover:bg-rose-700'
-                                  : 'bg-emerald-600 hover:bg-emerald-700'
+                                  : r.status === 'Partially Paid'
+                                    ? 'bg-blue-600 hover:bg-blue-700'
+                                    : 'bg-emerald-600 hover:bg-emerald-700'
                               }`}
                             >
                               <Wallet className="w-3.5 h-3.5" />
@@ -575,7 +671,9 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                                   ? 'Approve & Edit'
                                   : r.adjustmentType === 'Delete'
                                     ? 'Approve & Delete'
-                                    : 'Approve & Pay'}
+                                    : r.status === 'Partially Paid'
+                                      ? 'Pay Installment'
+                                      : 'Approve & Pay'}
                             </button>
                             <button
                               onClick={() => handleDecline(r)}
@@ -834,6 +932,135 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                 Record Inflow
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Partial Payment Modal */}
+      {showPayModal && activeRequest && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-zinc-200 rounded-2xl w-full max-w-md shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div>
+                <h3 className="font-bold text-zinc-950 text-sm">Process Payment Installment</h3>
+                <p className="text-[10px] text-zinc-400 font-medium">Payee: {activeRequest.payeeName}</p>
+              </div>
+              <button
+                onClick={() => { setShowPayModal(false); setActiveRequest(null); }}
+                className="p-1 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-400 hover:text-zinc-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Summary details */}
+              {(() => {
+                const paid = (activeRequest.paymentHistory || []).reduce((s, it) => s + it.amount, 0);
+                const remaining = Math.max(0, activeRequest.amount - paid);
+                return (
+                  <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-3 grid grid-cols-3 gap-2 text-center text-xs">
+                    <div>
+                      <span className="block text-[10px] text-zinc-400 font-bold uppercase">Requested</span>
+                      <span className="font-extrabold text-zinc-950 mt-1 block">{formatCur(activeRequest.amount)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-zinc-400 font-bold uppercase">Paid So Far</span>
+                      <span className="font-bold text-emerald-600 mt-1 block">{formatCur(paid)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-zinc-400 font-bold uppercase">Remaining</span>
+                      <span className="font-bold text-amber-600 mt-1 block">{formatCur(remaining)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {payNowError && (
+                <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-lg p-2.5 text-[11px] font-semibold">
+                  {payNowError}
+                </div>
+              )}
+
+              <form onSubmit={handlePartialPaymentSubmit} className="space-y-3">
+                <div>
+                  <label className={labelClass}>Pay Now (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    min={0.01}
+                    step="any"
+                    value={payNowAmount}
+                    onChange={e => setPayNowAmount(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Payment Method</label>
+                  <select
+                    value={payNowMethod}
+                    onChange={e => setPayNowMethod(e.target.value)}
+                    required
+                    className={inputClass}
+                  >
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Notes / Reference</label>
+                  <input
+                    type="text"
+                    placeholder="Optional details, cheque number, or transaction ID"
+                    value={payNowNotes}
+                    onChange={e => setPayNowNotes(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowPayModal(false); setActiveRequest(null); }}
+                    className="px-4 py-2 bg-white hover:bg-zinc-100 border border-zinc-200/80 rounded-xl text-xs font-semibold text-zinc-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={approvingId === activeRequest.id}
+                    className="px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  >
+                    {approvingId === activeRequest.id ? 'Paying...' : `Pay ₹${Number(payNowAmount || 0).toLocaleString('en-IN')}`}
+                  </button>
+                </div>
+              </form>
+
+              {/* Payment History List inside modal */}
+              {activeRequest.paymentHistory && activeRequest.paymentHistory.length > 0 && (
+                <div className="pt-4 border-t border-zinc-100">
+                  <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-2">Installment History</h4>
+                  <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                    {activeRequest.paymentHistory.map((item, idx) => (
+                      <div key={item.id} className="flex justify-between items-center text-xs p-2 bg-zinc-50 border border-zinc-100 rounded-lg">
+                        <div>
+                          <span className="font-semibold text-zinc-800">Installment #{idx + 1}</span>
+                          <span className="text-[10px] text-zinc-400 block mt-0.5">
+                            {new Date(item.paidAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {item.paymentMethod}
+                          </span>
+                          {item.notes && <span className="text-[10px] text-zinc-500 italic block mt-0.5">"{item.notes}"</span>}
+                        </div>
+                        <span className="font-extrabold text-emerald-600">{formatCur(item.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

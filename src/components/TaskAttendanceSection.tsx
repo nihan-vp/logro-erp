@@ -282,15 +282,29 @@ export default function TaskAttendanceSection({
                       )}
                     </td>
                     <td className="py-2 px-2 align-middle">
-                      <select
-                        value={w.status}
-                        onChange={(e) => updateWorker(idx, 'status', e.target.value as AttendanceStatus)}
-                        className="w-full min-w-[88px] text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
-                      >
-                        <option value="Present">Present</option>
-                        <option value="Absent">Absent</option>
-                        <option value="Half Day">Half Day</option>
-                      </select>
+                      <div className="flex items-center gap-1 min-w-[210px]">
+                        {[
+                          { key: 'Present', label: 'Present', activeBg: 'bg-emerald-600 text-white border-emerald-600', inactiveBg: 'bg-white hover:bg-emerald-50 text-emerald-600 border-emerald-200' },
+                          { key: 'Absent', label: 'Absent', activeBg: 'bg-rose-600 text-white border-rose-600', inactiveBg: 'bg-white hover:bg-rose-50 text-rose-600 border-rose-200' },
+                          { key: 'Half Day', label: 'Half Day', activeBg: 'bg-blue-600 text-white border-blue-600', inactiveBg: 'bg-white hover:bg-blue-50 text-blue-600 border-blue-200' }
+                        ].map(opt => {
+                          const isActive = w.status === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => {
+                                updateWorker(idx, 'status', opt.key as AttendanceStatus);
+                              }}
+                              className={`px-2 py-1 rounded-lg border text-[9px] font-bold transition-all ${
+                                isActive ? opt.activeBg : opt.inactiveBg
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </td>
                     <td className="py-2 px-2 align-middle">
                       <input
@@ -326,29 +340,17 @@ export default function TaskAttendanceSection({
                         {w.paymentStatus === 'Paid' ? 'Paid' : w.paymentStatus === 'Pending' ? 'Pending' : 'Unpaid'}
                       </span>
                     </td>
-                    <td className="py-2 px-2 align-middle">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleMarkAttendance(idx)}
-                          disabled={isBusy}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-lg text-[9px] font-bold transition-colors whitespace-nowrap"
-                          title="Save attendance for this worker"
-                        >
-                          <BookmarkCheck className="w-3 h-3 shrink-0" />
-                          <span>{isBusy && actionType === 'attendance' ? 'Saving...' : 'Mark'}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handlePay(idx)}
-                          disabled={isBusy || w.paymentStatus === 'Paid' || w.paymentStatus === 'Pending' || !isMarked || due <= 0}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-zinc-200 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-800 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-zinc-200 disabled:hover:text-inherit text-zinc-700 rounded-lg text-[9px] font-bold transition-colors whitespace-nowrap"
-                          title={w.paymentStatus === 'Pending' ? 'Payment request is pending review' : 'Mark wages as paid'}
-                        >
-                          <Banknote className="w-3 h-3 shrink-0" />
-                          <span>{isBusy && actionType === 'pay' ? 'Paying...' : w.paymentStatus === 'Pending' ? 'Pending' : 'Pay'}</span>
-                        </button>
-                      </div>
+                    <td className="py-2 px-2 align-middle text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleMarkAttendance(idx)}
+                        disabled={isBusy}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-lg text-[9px] font-bold transition-colors whitespace-nowrap"
+                        title="Save attendance for this worker"
+                      >
+                        <BookmarkCheck className="w-3 h-3 shrink-0" />
+                        <span>{isBusy && actionType === 'attendance' ? 'Saving...' : 'Save'}</span>
+                      </button>
                     </td>
                   </tr>
                 );

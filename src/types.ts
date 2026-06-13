@@ -53,6 +53,14 @@ export interface PaymentRequest {
     adjustmentType?: 'Edit' | 'Delete';
     targetExpenseId?: string;
     adjustmentData?: string;
+    paymentHistory?: Array<{
+        id: string;
+        amount: number;
+        paymentMethod: string;
+        paidAt: string;
+        paidBy: string;
+        notes?: string;
+    }>;
 }
 export interface AuditLog {
     id: string;
@@ -86,6 +94,7 @@ export interface Project {
   expectedEndDate: string;
   status: ProjectStatus;
   notes?: string;
+  contractBudget?: number;
   createdBy: string;
   createdAt: string;
 }
