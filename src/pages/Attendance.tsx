@@ -490,46 +490,42 @@ export default function AttendancePage() {
 
   const activeVendorCount = vendors.filter(v => v.status === 'active').length;
 
-  const noModalsOpen = !isFormOpen && !isImportOpen && !isVendorFormOpen && !isVendorImportOpen;
-
   return (
     <div className="space-y-6 font-sans">
       {/* ── Tab Bar ── */}
-      {noModalsOpen && (
-        <div className="flex gap-1 p-1 bg-zinc-100 rounded-xl w-fit">
-          <button
-            onClick={() => setActiveTab('crew')}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'crew'
-                ? 'bg-white text-zinc-950 shadow-sm'
-                : 'text-zinc-500 hover:text-zinc-700'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Crew Roster</span>
-            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-              activeTab === 'crew' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
-            }`}>{crew.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('vendors')}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'vendors'
-                ? 'bg-white text-zinc-950 shadow-sm'
-                : 'text-zinc-500 hover:text-zinc-700'
-            }`}
-          >
-            <Store className="w-4 h-4" />
-            <span>Vendors</span>
-            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-              activeTab === 'vendors' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
-            }`}>{vendors.length}</span>
-          </button>
-        </div>
-      )}
+      <div className="flex gap-1 p-1 bg-zinc-100 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('crew')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'crew'
+              ? 'bg-white text-zinc-950 shadow-sm'
+              : 'text-zinc-500 hover:text-zinc-700'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Crew Roster</span>
+          <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+            activeTab === 'crew' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
+          }`}>{crew.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('vendors')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'vendors'
+              ? 'bg-white text-zinc-950 shadow-sm'
+              : 'text-zinc-500 hover:text-zinc-700'
+          }`}
+        >
+          <Store className="w-4 h-4" />
+          <span>Vendors</span>
+          <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+            activeTab === 'vendors' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
+          }`}>{vendors.length}</span>
+        </button>
+      </div>
 
       {/* ══════════════════════════════════ CREW TAB ══════════════════════════════════ */}
-      {activeTab === 'crew' && noModalsOpen && (
+      {activeTab === 'crew' && (
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -663,185 +659,189 @@ export default function AttendancePage() {
 
       {/* Crew Import Modal */}
       {isImportOpen && (
-        <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-2xl mx-auto space-y-4">
-          <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
-            <h2 className="text-base font-extrabold text-zinc-950 flex items-center gap-1.5">
-              <Upload className="w-5 h-5 text-zinc-600" />
-              <span>Bulk Import Crew (CSV)</span>
-            </h2>
-            <button
-              onClick={() => setIsImportOpen(false)}
-              className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-
-          <p className="text-xs text-zinc-500">
-            CSV columns: <span className="font-semibold text-zinc-700">Name, Trade, Daily Wage, Phone, Status, Notes</span>.
-            Header row is optional. Status accepts <code className="text-[10px] bg-zinc-100 px-1 rounded">active</code> or <code className="text-[10px] bg-zinc-100 px-1 rounded">inactive</code>.
-          </p>
-
-          {importError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{importError}</div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors">
-              <Upload className="w-4 h-4" />
-              <span>Choose CSV File</span>
-              <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileSelect} />
-            </label>
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download Template</span>
-            </button>
-          </div>
-
-          {importRows.length > 0 && (
-            <div className="space-y-3">
-              <div className="hidden sm:grid bg-zinc-50 p-2.5 border rounded-t-xl font-bold text-[10px] text-zinc-400 uppercase tracking-wider grid-cols-6 gap-2">
-                <div className="col-span-2">Name</div>
-                <div>Trade</div>
-                <div>Wage</div>
-                <div>Phone</div>
-                <div>Status</div>
-              </div>
-              <div className="border rounded-xl sm:rounded-t-none sm:border-t-0 max-h-[280px] overflow-y-auto divide-y">
-                {importRows.map((row, idx) => (
-                  <div key={idx} className="p-2.5 sm:grid sm:grid-cols-6 gap-2 text-xs items-center">
-                    <div className="sm:col-span-2 font-bold text-zinc-900">{row.name}</div>
-                    <div className="text-zinc-600">{row.trade}</div>
-                    <div className="text-zinc-600">₹{row.dailyWage}</div>
-                    <div className="text-zinc-500 truncate">{row.phone || '—'}</div>
-                    <div className="text-zinc-600 capitalize">{row.status}</div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-zinc-400 font-semibold">{importRows.length} worker(s) ready to import. Duplicates will be skipped.</p>
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-2xl w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+              <h2 className="text-base font-extrabold text-zinc-950 flex items-center gap-1.5">
+                <Upload className="w-5 h-5 text-zinc-600" />
+                <span>Bulk Import Crew (CSV)</span>
+              </h2>
+              <button
+                onClick={() => setIsImportOpen(false)}
+                className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
             </div>
-          )}
 
-          <button
-            onClick={handleBulkImport}
-            disabled={isImporting || importRows.length === 0}
-            className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
-          >
-            <BookmarkCheck className="w-4 h-4" />
-            <span>{isImporting ? 'Importing...' : `Import ${importRows.length || ''} Crew Member${importRows.length === 1 ? '' : 's'}`}</span>
-          </button>
+            <p className="text-xs text-zinc-500">
+              CSV columns: <span className="font-semibold text-zinc-700">Name, Trade, Daily Wage, Phone, Status, Notes</span>.
+              Header row is optional. Status accepts <code className="text-[10px] bg-zinc-100 px-1 rounded">active</code> or <code className="text-[10px] bg-zinc-100 px-1 rounded">inactive</code>.
+            </p>
+
+            {importError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{importError}</div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors">
+                <Upload className="w-4 h-4" />
+                <span>Choose CSV File</span>
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileSelect} />
+              </label>
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Template</span>
+              </button>
+            </div>
+
+            {importRows.length > 0 && (
+              <div className="space-y-3">
+                <div className="hidden sm:grid bg-zinc-50 p-2.5 border rounded-t-xl font-bold text-[10px] text-zinc-400 uppercase tracking-wider grid-cols-6 gap-2">
+                  <div className="col-span-2">Name</div>
+                  <div>Trade</div>
+                  <div>Wage</div>
+                  <div>Phone</div>
+                  <div>Status</div>
+                </div>
+                <div className="border rounded-xl sm:rounded-t-none sm:border-t-0 max-h-[280px] overflow-y-auto divide-y">
+                  {importRows.map((row, idx) => (
+                    <div key={idx} className="p-2.5 sm:grid sm:grid-cols-6 gap-2 text-xs items-center">
+                      <div className="sm:col-span-2 font-bold text-zinc-900">{row.name}</div>
+                      <div className="text-zinc-600">{row.trade}</div>
+                      <div className="text-zinc-600">₹{row.dailyWage}</div>
+                      <div className="text-zinc-500 truncate">{row.phone || '—'}</div>
+                      <div className="text-zinc-600 capitalize">{row.status}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-zinc-400 font-semibold">{importRows.length} worker(s) ready to import. Duplicates will be skipped.</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleBulkImport}
+              disabled={isImporting || importRows.length === 0}
+              className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+            >
+              <BookmarkCheck className="w-4 h-4" />
+              <span>{isImporting ? 'Importing...' : `Import ${importRows.length || ''} Crew Member${importRows.length === 1 ? '' : 's'}`}</span>
+            </button>
+          </div>
         </div>
       )}
 
       {/* Crew Form Modal */}
       {isFormOpen && (
-        <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md mx-auto space-y-4">
-          <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
-            <h2 className="text-base font-extrabold text-zinc-950">
-              {editId ? 'Edit Crew Member' : 'Add Crew Member'}
-            </h2>
-            <button
-              onClick={() => setIsFormOpen(false)}
-              className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-
-          {submitError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{submitError}</div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Full Name</label>
-              <input
-                type="text"
-                required
-                placeholder="Worker name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
-              />
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+              <h2 className="text-base font-extrabold text-zinc-950">
+                {editId ? 'Edit Crew Member' : 'Add Crew Member'}
+              </h2>
+              <button
+                onClick={() => setIsFormOpen(false)}
+                className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{submitError}</div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Trade / Role</label>
-                <select
-                  value={trade}
-                  onChange={(e) => setTrade(e.target.value as CrewTrade)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
-                >
-                  {TRADE_OPTIONS.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Daily Wage (₹)</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Full Name</label>
                 <input
-                  type="number"
+                  type="text"
                   required
-                  min={0}
-                  value={dailyWage}
-                  onChange={(e) => setDailyWage(Number(e.target.value))}
+                  placeholder="Worker name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Trade / Role</label>
+                  <select
+                    value={trade}
+                    onChange={(e) => setTrade(e.target.value as CrewTrade)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
+                  >
+                    {TRADE_OPTIONS.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Daily Wage (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={dailyWage}
+                    onChange={(e) => setDailyWage(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="Optional"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
+                  <select
+                    value={memberStatus}
+                    onChange={(e) => setMemberStatus(e.target.value as CrewMemberStatus)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Phone</label>
-                <input
-                  type="tel"
-                  placeholder="Optional"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Notes</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Skills, certifications, etc."
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-xs"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
-                <select
-                  value={memberStatus}
-                  onChange={(e) => setMemberStatus(e.target.value as CrewMemberStatus)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Notes</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                placeholder="Skills, certifications, etc."
-                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-xs"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white font-bold rounded-xl transition-colors"
-            >
-              {editId ? 'Save Changes' : 'Add to Roster'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white font-bold rounded-xl transition-colors"
+              >
+                {editId ? 'Save Changes' : 'Add to Roster'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
       {/* ══════════════════════════════════ VENDORS TAB ══════════════════════════════════ */}
-      {activeTab === 'vendors' && noModalsOpen && (
+      {activeTab === 'vendors' && (
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -973,164 +973,168 @@ export default function AttendancePage() {
 
       {/* Vendor Import Modal */}
       {isVendorImportOpen && (
-        <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-2xl mx-auto space-y-4">
-          <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
-            <h2 className="text-base font-extrabold text-zinc-950 flex items-center gap-1.5">
-              <Upload className="w-5 h-5 text-zinc-600" />
-              <span>Bulk Import Vendors (CSV)</span>
-            </h2>
-            <button
-              onClick={() => setIsVendorImportOpen(false)}
-              className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-
-          <p className="text-xs text-zinc-500">
-            CSV columns: <span className="font-semibold text-zinc-700">Name, Trade, Phone, Status, Notes</span>.
-            Header row is optional. Status accepts <code className="text-[10px] bg-zinc-100 px-1 rounded">active</code> or <code className="text-[10px] bg-zinc-100 px-1 rounded">inactive</code>.
-          </p>
-
-          {vendorImportError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{vendorImportError}</div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors">
-              <Upload className="w-4 h-4" />
-              <span>Choose CSV File</span>
-              <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleVendorCsvFileSelect} />
-            </label>
-            <button
-              type="button"
-              onClick={handleDownloadVendorTemplate}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download Template</span>
-            </button>
-          </div>
-
-          {vendorImportRows.length > 0 && (
-            <div className="space-y-3">
-              <div className="hidden sm:grid bg-zinc-50 p-2.5 border rounded-t-xl font-bold text-[10px] text-zinc-400 uppercase tracking-wider grid-cols-5 gap-2">
-                <div className="col-span-2">Name</div>
-                <div>Trade</div>
-                <div>Phone</div>
-                <div>Status</div>
-              </div>
-              <div className="border rounded-xl sm:rounded-t-none sm:border-t-0 max-h-[280px] overflow-y-auto divide-y">
-                {vendorImportRows.map((row: CsvVendorRow, idx: number) => (
-                  <div key={idx} className="p-2.5 sm:grid sm:grid-cols-5 gap-2 text-xs items-center">
-                    <div className="sm:col-span-2 font-bold text-zinc-900">{row.name}</div>
-                    <div className="text-zinc-600">{row.trade}</div>
-                    <div className="text-zinc-500 truncate">{row.phone || '—'}</div>
-                    <div className="text-zinc-600 capitalize">{row.status}</div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-zinc-400 font-semibold">{vendorImportRows.length} vendor(s) ready to import. Duplicates will be skipped.</p>
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-2xl w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+              <h2 className="text-base font-extrabold text-zinc-950 flex items-center gap-1.5">
+                <Upload className="w-5 h-5 text-zinc-600" />
+                <span>Bulk Import Vendors (CSV)</span>
+              </h2>
+              <button
+                onClick={() => setIsVendorImportOpen(false)}
+                className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
             </div>
-          )}
 
-          <button
-            onClick={handleVendorBulkImport}
-            disabled={isVendorImporting || vendorImportRows.length === 0}
-            className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
-          >
-            <BookmarkCheck className="w-4 h-4" />
-            <span>{isVendorImporting ? 'Importing...' : `Import ${vendorImportRows.length || ''} Vendor${vendorImportRows.length === 1 ? '' : 's'}`}</span>
-          </button>
+            <p className="text-xs text-zinc-500">
+              CSV columns: <span className="font-semibold text-zinc-700">Name, Trade, Phone, Status, Notes</span>.
+              Header row is optional. Status accepts <code className="text-[10px] bg-zinc-100 px-1 rounded">active</code> or <code className="text-[10px] bg-zinc-100 px-1 rounded">inactive</code>.
+            </p>
+
+            {vendorImportError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{vendorImportError}</div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors">
+                <Upload className="w-4 h-4" />
+                <span>Choose CSV File</span>
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleVendorCsvFileSelect} />
+              </label>
+              <button
+                type="button"
+                onClick={handleDownloadVendorTemplate}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Template</span>
+              </button>
+            </div>
+
+            {vendorImportRows.length > 0 && (
+              <div className="space-y-3">
+                <div className="hidden sm:grid bg-zinc-50 p-2.5 border rounded-t-xl font-bold text-[10px] text-zinc-400 uppercase tracking-wider grid-cols-5 gap-2">
+                  <div className="col-span-2">Name</div>
+                  <div>Trade</div>
+                  <div>Phone</div>
+                  <div>Status</div>
+                </div>
+                <div className="border rounded-xl sm:rounded-t-none sm:border-t-0 max-h-[280px] overflow-y-auto divide-y">
+                  {vendorImportRows.map((row: CsvVendorRow, idx: number) => (
+                    <div key={idx} className="p-2.5 sm:grid sm:grid-cols-5 gap-2 text-xs items-center">
+                      <div className="sm:col-span-2 font-bold text-zinc-900">{row.name}</div>
+                      <div className="text-zinc-600">{row.trade}</div>
+                      <div className="text-zinc-500 truncate">{row.phone || '—'}</div>
+                      <div className="text-zinc-600 capitalize">{row.status}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-zinc-400 font-semibold">{vendorImportRows.length} vendor(s) ready to import. Duplicates will be skipped.</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleVendorBulkImport}
+              disabled={isVendorImporting || vendorImportRows.length === 0}
+              className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+            >
+              <BookmarkCheck className="w-4 h-4" />
+              <span>{isVendorImporting ? 'Importing...' : `Import ${vendorImportRows.length || ''} Vendor${vendorImportRows.length === 1 ? '' : 's'}`}</span>
+            </button>
+          </div>
         </div>
       )}
 
       {/* Vendor Form Modal */}
       {isVendorFormOpen && (
-        <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md mx-auto space-y-4">
-          <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
-            <h2 className="text-base font-extrabold text-zinc-950">
-              {vendorEditId ? 'Edit Vendor' : 'Add Vendor'}
-            </h2>
-            <button
-              onClick={() => setIsVendorFormOpen(false)}
-              className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-
-          {vendorSubmitError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{vendorSubmitError}</div>
-          )}
-
-          <form onSubmit={handleVendorSubmit} className="space-y-4 text-xs sm:text-sm">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Vendor / Company Name</label>
-              <input
-                type="text"
-                required
-                placeholder="Vendor or company name"
-                value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
-              />
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+              <h2 className="text-base font-extrabold text-zinc-950">
+                {vendorEditId ? 'Edit Vendor' : 'Add Vendor'}
+              </h2>
+              <button
+                onClick={() => setIsVendorFormOpen(false)}
+                className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {vendorSubmitError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{vendorSubmitError}</div>
+            )}
+
+            <form onSubmit={handleVendorSubmit} className="space-y-4 text-xs sm:text-sm">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Supply Trade / Type</label>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Vendor / Company Name</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Steel, Cement, Electrical"
-                  value={vendorTrade}
-                  onChange={(e) => setVendorTrade(e.target.value)}
+                  placeholder="Vendor or company name"
+                  value={vendorName}
+                  onChange={(e) => setVendorName(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Supply Trade / Type</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Steel, Cement, Electrical"
+                    value={vendorTrade}
+                    onChange={(e) => setVendorTrade(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="Optional"
+                    value={vendorPhone}
+                    onChange={(e) => setVendorPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Phone</label>
-                <input
-                  type="tel"
-                  placeholder="Optional"
-                  value={vendorPhone}
-                  onChange={(e) => setVendorPhone(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
+                <select
+                  value={vendorStatus}
+                  onChange={(e) => setVendorStatus(e.target.value as 'active' | 'inactive')}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Notes</label>
+                <textarea
+                  value={vendorNotes}
+                  onChange={(e) => setVendorNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Payment terms, delivery notes, etc."
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-xs"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
-              <select
-                value={vendorStatus}
-                onChange={(e) => setVendorStatus(e.target.value as 'active' | 'inactive')}
-                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white font-bold rounded-xl transition-colors"
               >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Notes</label>
-              <textarea
-                value={vendorNotes}
-                onChange={(e) => setVendorNotes(e.target.value)}
-                rows={2}
-                placeholder="Payment terms, delivery notes, etc."
-                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-xs"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white font-bold rounded-xl transition-colors"
-            >
-              {vendorEditId ? 'Save Changes' : 'Register Vendor'}
-            </button>
-          </form>
+                {vendorEditId ? 'Save Changes' : 'Register Vendor'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>
