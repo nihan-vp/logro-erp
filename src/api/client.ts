@@ -91,6 +91,7 @@ async function request(endpoint: string, options: RequestInit = {}) {
 export const api = {
   // Auth
   login: (credentials: any) => request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+  activate: (data: { email: string; productKey: string }) => request('/auth/activate', { method: 'POST', body: JSON.stringify(data) }),
   me: () => request('/auth/me'),
   
   // Users
@@ -186,6 +187,8 @@ export const api = {
   createCompany: (data: any) => request('/superadmin/companies', { method: 'POST', body: JSON.stringify(data) }),
   updateCompanyStatus: (id: string, status: string) => request(`/superadmin/companies/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   extendSubscription: (id: string, months: number) => request(`/superadmin/companies/${id}/subscription`, { method: 'PATCH', body: JSON.stringify({ months }) }),
+  updateCompanyValidity: (id: string, data: { validUntil?: string | null; trialUntil?: string | null }) => request(`/superadmin/companies/${id}/subscription`, { method: 'PATCH', body: JSON.stringify(data) }),
+  generateProductKey: (id: string, data: { status: string; durationValue: number; durationUnit: string }) => request(`/superadmin/companies/${id}/generate-key`, { method: 'POST', body: JSON.stringify(data) }),
   
   getTenantUsers: (companyName: string) => request(`/superadmin/companies/${companyName}/users`),
   createTenantUser: (companyName: string, data: any) => request(`/superadmin/companies/${companyName}/users`, { method: 'POST', body: JSON.stringify(data) }),

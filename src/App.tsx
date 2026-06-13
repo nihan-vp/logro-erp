@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Building2, Briefcase, FileText, Users, DollarSign,
   Receipt, BarChart3, LogOut, ShieldAlert, ChevronDown, Landmark,
-  ShieldCheck
+  ShieldCheck, Key
 } from 'lucide-react';
 import SuperadminDashboard from './pages/SuperadminDashboard';
-import { getAuthToken, getCurrentUser, setAuthToken, setCurrentUser as setClientUser } from './api/client';
+import { getAuthToken, getCurrentUser, setAuthToken, setCurrentUser as setClientUser, api } from './api/client';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
@@ -19,16 +19,49 @@ import OfflineScreen from './pages/OfflineScreen';
 import AppToasts from './components/AppToasts';
 import { useConfirm } from './context/ConfirmContext';
 import { initSocket, disconnectSocket } from './api/socket';
+import { notify } from './utils/toast';
 
 export default function App() {
   const confirm = useConfirm();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const isSuperAdmin = currentUser?.id === 'superadmin';
   const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('erp_activeTab') || 'dashboard');
   const [tabParams, setTabParams] = useState<any>(() => {
     const saved = localStorage.getItem('erp_tabParams');
     return saved ? JSON.parse(saved) : null;
   });
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+
+  // Trial expiry validation states
+  const [isTrialExpired, setIsTrialExpired] = useState(false);
+  const [appProductKey, setAppProductKey] = useState('');
+  const [appActivationLoading, setAppActivationLoading] = useState(false);
+  const [activationError, setActivationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!currentUser || isSuperAdmin) {
+      setIsTrialExpired(false);
+      return;
+    }
+
+    const checkExpiry = () => {
+      if (currentUser.companyStatus === 'trial' && currentUser.companyTrialUntil) {
+        if (new Date(currentUser.companyTrialUntil) < new Date()) {
+          setIsTrialExpired(true);
+          return;
+        }
+      }
+      if (currentUser.companyValidUntil && new Date(currentUser.companyValidUntil) < new Date()) {
+        setIsTrialExpired(true);
+        return;
+      }
+      setIsTrialExpired(false);
+    };
+
+    checkExpiry();
+    const interval = setInterval(checkExpiry, 4000);
+    return () => clearInterval(interval);
+  }, [currentUser, isSuperAdmin]);
 
   useEffect(() => {
     localStorage.setItem('erp_activeTab', activeTab);
@@ -99,7 +132,6 @@ export default function App() {
   }, []);
 
   const userRole = currentUser?.role || 'manager';
-  const isSuperAdmin = currentUser?.id === 'superadmin';
 
   const projectsComponent = useMemo(() => (
     <Projects
@@ -108,7 +140,7 @@ export default function App() {
       initialParams={tabParams}
     />
   ), [userRole, tabParams, navigateTo]);
-  
+
   const superadminComponent = useMemo(() => (
     <SuperadminDashboard />
   ), []);
@@ -201,8 +233,8 @@ export default function App() {
                       key={item.id}
                       onClick={() => navigateTo(item.id)}
                       className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
-                          ? 'bg-zinc-950 text-white shadow-sm'
-                          : 'text-zinc-650 hover:bg-zinc-100 hover:text-zinc-900'
+                        ? 'bg-zinc-950 text-white shadow-sm'
+                        : 'text-zinc-650 hover:bg-zinc-100 hover:text-zinc-900'
                         }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
@@ -274,8 +306,8 @@ export default function App() {
               key={item.id}
               onClick={() => navigateTo(item.id)}
               className={`flex flex-col items-center justify-center flex-1 py-1 px-0.5 rounded-xl transition-all cursor-pointer ${isActive
-                  ? 'text-zinc-950 scale-105'
-                  : 'text-zinc-400 hover:text-zinc-600'
+                ? 'text-zinc-950 scale-105'
+                : 'text-zinc-400 hover:text-zinc-600'
                 }`}
             >
               <div className={`p-1.5 rounded-xl transition-all duration-300 ${isActive ? 'bg-zinc-950 text-white shadow-sm' : 'text-zinc-400'}`}>
@@ -288,6 +320,125 @@ export default function App() {
           );
         })}
       </div>
+      {isTrialExpired && (
+        <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[9999] select-none">
+          <div className="bg-white border border-zinc-200/80 rounded-2xl w-full max-w-md shadow-2xl p-6 sm:p-8 relative overflow-hidden animate-scale-in">
+            {/* Header decoration */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-zinc-900"></div>
+
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 mb-3 animate-pulse">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <h1 className="text-xl sm:text-2xl font-black text-zinc-900 tracking-tight">
+                Trial / Subscription Expired
+              </h1>
+              <p className="text-xs sm:text-sm text-zinc-500 mt-1">
+                Your Construct ERP trial period or subscription has ended. Enter a product key to restore database access.
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {activationError && (
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 text-xs sm:text-sm text-red-750 mb-4">
+                <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5 text-red-600" />
+                <span>{activationError}</span>
+              </div>
+            )}
+
+            {/* Support Information */}
+            <div className="bg-zinc-50 border border-zinc-150 p-3.5 rounded-xl text-center mb-4 text-xs font-semibold text-zinc-650">
+              Need assistance? Contact support at:
+              <div className="text-sm font-black text-zinc-900 mt-1 select-text">
+                +91 77367-08566
+              </div>
+            </div>
+
+            {/* Activation Form */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!appProductKey) {
+                  setActivationError('Please enter a product key');
+                  return;
+                }
+                try {
+                  setAppActivationLoading(true);
+                  setActivationError(null);
+                  const res = await api.activate({ email: currentUser.email, productKey: appProductKey });
+                  notify.success('Account successfully activated!');
+
+                  // Update current user state with new subscription data
+                  const updatedUser = {
+                    ...currentUser,
+                    companyStatus: res.companyStatus,
+                    companyTrialUntil: res.companyTrialUntil,
+                    companyValidUntil: res.companyValidUntil,
+                  };
+                  setClientUser(updatedUser);
+                  setCurrentUser(updatedUser);
+                  setAppProductKey('');
+                  setIsTrialExpired(false);
+                } catch (err: any) {
+                  setActivationError(err?.message || 'Activation failed');
+                  notify.error(err?.message || 'Activation failed');
+                } finally {
+                  setAppActivationLoading(false);
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                  Product Key
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
+                    <Key className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={appProductKey}
+                    onChange={(e) => setAppProductKey(e.target.value)}
+                    placeholder="LOGRO-ACTIVE-COMPANY-9999"
+                    className="w-full pl-9 pr-3 py-2.5 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-all uppercase font-mono tracking-wider"
+                    disabled={appActivationLoading}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setAuthToken(null);
+                    setClientUser(null);
+                    setCurrentUser(null);
+                    setIsTrialExpired(false);
+                    setAppProductKey('');
+                    setActivationError(null);
+                  }}
+                  className="flex-1 py-2.5 bg-zinc-50 border border-zinc-250 hover:bg-zinc-100 text-zinc-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Sign Out
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs rounded-xl transition-colors focus:ring-2 focus:ring-zinc-950 flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-zinc-950/10"
+                  disabled={appActivationLoading}
+                >
+                  {appActivationLoading ? (
+                    <span className="w-4.5 h-4.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  ) : (
+                    <span>Activate Plan</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <OfflineScreen />
       <AppToasts />
     </div>

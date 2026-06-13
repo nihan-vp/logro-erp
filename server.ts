@@ -183,6 +183,7 @@ app.post('/api/auth/login', async (req, res) => {
 
   let targetCompanyName = companyName || 'DefaultCompany';
   let user: any = null;
+  let company: any = null;
 
   try {
     const registryDb = await getRegistryDb();
@@ -212,7 +213,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Block logins for suspended or expired companies
-    const company = companies.find(c => c.companyName.toLowerCase() === targetCompanyName.toLowerCase());
+    company = companies.find(c => c.companyName.toLowerCase() === targetCompanyName.toLowerCase());
     if (company) {
       if (company.status === 'suspended') {
         return res.status(403).json({ error: 'This company account has been suspended. Please contact the system administrator.' });
@@ -276,9 +277,116 @@ app.post('/api/auth/login', async (req, res) => {
       role: user.role,
       phone: user.phone,
       status: user.status,
-      companyName: targetCompanyName
+      companyName: targetCompanyName,
+      companyStatus: company?.status,
+      companyTrialUntil: company?.trialUntil,
+      companyValidUntil: company?.validUntil
     }
   });
+});
+
+app.post('/api/auth/activate', async (req, res) => {
+  const { email, productKey } = req.body;
+  if (!email || !productKey) {
+    return res.status(400).json({ error: 'Email and product key are required.' });
+  }
+
+  try {
+    const registryDb = await getRegistryDb();
+    const companies = await registryDb.collection('companies').find({}).toArray();
+
+    const submittedKey = productKey.trim().toUpperCase();
+
+    // 1. Search for a generated unique key
+    let foundCompany = companies.find(c => c.activationKey && c.activationKey.key.toUpperCase() === submittedKey);
+    let newStatus = '';
+    let expiry = new Date();
+    let isTrial = false;
+    let isLifetime = false;
+    let targetCompanyName = '';
+
+    if (foundCompany) {
+      const actKey = foundCompany.activationKey;
+      newStatus = actKey.status;
+      isTrial = newStatus === 'trial';
+      isLifetime = actKey.durationUnit === 'lifetime';
+      const durationVal = Number(actKey.durationValue) || 12;
+
+      if (!isLifetime) {
+        if (actKey.durationUnit === 'minutes') {
+          expiry.setMinutes(expiry.getMinutes() + durationVal);
+        } else if (actKey.durationUnit === 'hours') {
+          expiry.setHours(expiry.getHours() + durationVal);
+        } else if (actKey.durationUnit === 'days') {
+          expiry.setDate(expiry.getDate() + durationVal);
+        } else if (actKey.durationUnit === 'months') {
+          expiry.setMonth(expiry.getMonth() + durationVal);
+        }
+      }
+      targetCompanyName = foundCompany.companyName;
+    } else {
+      // 2. Fallback to name-based keys
+      const emailKey = email.toLowerCase().trim();
+      for (const comp of companies) {
+        const tenantDb = await getTenantDb(comp.companyName);
+        const foundUser = await tenantDb.collection('users').findOne({ email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
+        if (foundUser) {
+          targetCompanyName = comp.companyName;
+          break;
+        }
+      }
+
+      if (!targetCompanyName) {
+        return res.status(404).json({ error: 'No associated company found for this email address.' });
+      }
+
+      foundCompany = companies.find(c => c.companyName === targetCompanyName);
+      if (!foundCompany) {
+        return res.status(404).json({ error: 'Company not found.' });
+      }
+
+      const companyCleanName = targetCompanyName.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const expectedTrialKey = `LOGRO-TRIAL-${companyCleanName}-2026`;
+      const expectedActiveKey = `LOGRO-ACTIVE-${companyCleanName}-9999`;
+
+      if (submittedKey !== expectedTrialKey && submittedKey !== expectedActiveKey) {
+        return res.status(400).json({ error: 'Invalid product key. Please check the spelling or contact support.' });
+      }
+
+      const isTrialKey = submittedKey === expectedTrialKey;
+      newStatus = isTrialKey ? 'trial' : 'active';
+      isTrial = isTrialKey;
+      if (isTrialKey) {
+        expiry.setDate(expiry.getDate() + 14); // 14 days
+      } else {
+        expiry.setFullYear(expiry.getFullYear() + 1); // 1 year
+      }
+    }
+
+    // Update DB
+    await registryDb.collection('companies').updateOne(
+      { _id: foundCompany._id },
+      {
+        $set: {
+          status: newStatus,
+          validUntil: isLifetime ? null : (isTrial ? null : expiry.toISOString()),
+          trialUntil: isLifetime ? null : (isTrial ? expiry.toISOString() : null),
+          activationKey: null // consume key
+        }
+      }
+    );
+
+    return res.json({
+      success: true,
+      message: `Account activated successfully! Subscription type set to "${newStatus}"${isLifetime ? ' (Lifetime)' : ` valid until ${expiry.toLocaleDateString()}`}.`,
+      companyStatus: newStatus,
+      companyTrialUntil: isLifetime ? null : (isTrial ? expiry.toISOString() : null),
+      companyValidUntil: isLifetime ? null : (isTrial ? null : expiry.toISOString())
+    });
+  } catch (err: any) {
+    console.error('Activation error:', err);
+    return res.status(500).json({ error: 'Internal server error during activation.' });
+  }
 });
 
 
@@ -318,23 +426,72 @@ app.patch('/api/superadmin/companies/:id/status', requireAuth, async (req: any, 
 
 app.patch('/api/superadmin/companies/:id/subscription', requireAuth, async (req: any, res) => {
     if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
-    const { months } = req.body;
+    const { months, validUntil, trialUntil } = req.body;
     const db = await getRegistryDb();
     const company = await db.collection('companies').findOne({ _id: new ObjectId(req.params.id) });
     
     if (!company) return res.status(404).json({ error: 'Company not found' });
     
-    let currentValidUntil = company.validUntil ? new Date(company.validUntil) : new Date();
-    if (currentValidUntil < new Date()) currentValidUntil = new Date();
+    const updateDoc: any = {};
+    if (validUntil !== undefined) {
+        updateDoc.validUntil = validUntil;
+    }
+    if (trialUntil !== undefined) {
+        updateDoc.trialUntil = trialUntil;
+    }
     
-    currentValidUntil.setMonth(currentValidUntil.getMonth() + months);
+    if (months !== undefined) {
+        let currentValidUntil = company.validUntil ? new Date(company.validUntil) : new Date();
+        if (currentValidUntil < new Date()) currentValidUntil = new Date();
+        currentValidUntil.setMonth(currentValidUntil.getMonth() + months);
+        updateDoc.validUntil = currentValidUntil.toISOString();
+    }
     
     const result = await db.collection('companies').findOneAndUpdate(
         { _id: new ObjectId(req.params.id) },
-        { $set: { validUntil: currentValidUntil.toISOString() } },
+        { $set: updateDoc },
         { returnDocument: 'after' }
     );
     res.json(result);
+});
+
+app.post('/api/superadmin/companies/:id/generate-key', requireAuth, async (req: any, res) => {
+    if (req.user.email !== process.env.SUPERADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+    const { status, durationValue, durationUnit } = req.body;
+    
+    if (!status || !durationValue || !durationUnit) {
+        return res.status(400).json({ error: 'Status, durationValue and durationUnit are required' });
+    }
+
+    try {
+        const db = await getRegistryDb();
+        const company = await db.collection('companies').findOne({ _id: new ObjectId(req.params.id) });
+        if (!company) return res.status(404).json({ error: 'Company not found' });
+
+        // Generate a highly unique 16-character alphanumeric key (LOGRO-XXXX-XXXX-XXXX-XXXX)
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        const segment = () => Array.from({length: 4}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        const newProductKey = `LOGRO-${segment()}-${segment()}-${segment()}-${segment()}`;
+
+        const activationKey = {
+            key: newProductKey,
+            status,
+            durationValue: Number(durationValue),
+            durationUnit,
+            createdAt: new Date().toISOString()
+        };
+
+        const result = await db.collection('companies').findOneAndUpdate(
+            { _id: new ObjectId(req.params.id) },
+            { $set: { activationKey } },
+            { returnDocument: 'after' }
+        );
+
+        res.json(result);
+    } catch (err: any) {
+        console.error('Error generating product key:', err);
+        res.status(500).json({ error: 'Failed to generate product key' });
+    }
 });
 
 // Superadmin: Tenant User Management

@@ -23,9 +23,15 @@ export default function SuperadminDashboard() {
   const [newCompanyDurationValue, setNewCompanyDurationValue] = useState<string>('12'); // in months or days
   const [newCompanyCustomDate, setNewCompanyCustomDate] = useState<string>(''); // custom exact date
   const [useCustomDate, setUseCustomDate] = useState(false);
+  const [trialUnit, setTrialUnit] = useState<'minutes' | 'hours' | 'days'>('days');
+  const [extensionMode, setExtensionMode] = useState<'extend' | 'edit'>('extend');
+  const [editExpiryDate, setEditExpiryDate] = useState<string>('');
 
   // Extend subscription state
   const [extendCompany, setExtendCompany] = useState<any | null>(null);
+  const [extendCompanyStatus, setExtendCompanyStatus] = useState<'active' | 'trial' | 'suspended'>('active');
+  const [extendTrialUnit, setExtendTrialUnit] = useState<'minutes' | 'hours' | 'days'>('days');
+  const [extendTrialDurationValue, setExtendTrialDurationValue] = useState<string>('30');
   const [extendMonthsValue, setExtendMonthsValue] = useState<string>('1');
   const [customExtendMonths, setCustomExtendMonths] = useState(false);
 
@@ -91,13 +97,20 @@ export default function SuperadminDashboard() {
       let validUntil: string | null = null;
 
       if (newCompanyStatus === 'trial') {
-        const trialDays = useCustomDate ? 
-          Math.max(1, Math.ceil((new Date(newCompanyCustomDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 
-          Number(newCompanyDurationValue) || 30;
-        
-        const date = new Date();
-        date.setDate(date.getDate() + trialDays);
-        trialUntil = date.toISOString();
+        if (useCustomDate && newCompanyCustomDate) {
+          trialUntil = new Date(newCompanyCustomDate).toISOString();
+        } else {
+          const trialVal = Number(newCompanyDurationValue) || 30;
+          const date = new Date();
+          if (trialUnit === 'minutes') {
+            date.setMinutes(date.getMinutes() + trialVal);
+          } else if (trialUnit === 'hours') {
+            date.setHours(date.getHours() + trialVal);
+          } else {
+            date.setDate(date.getDate() + trialVal);
+          }
+          trialUntil = date.toISOString();
+        }
       } else if (newCompanyStatus === 'active') {
         if (useCustomDate && newCompanyCustomDate) {
           validUntil = new Date(newCompanyCustomDate).toISOString();
@@ -130,6 +143,7 @@ export default function SuperadminDashboard() {
     setNewCompanyDurationValue('12');
     setNewCompanyCustomDate('');
     setUseCustomDate(false);
+    setTrialUnit('days');
   };
 
   // Toggle company status (Suspend / Activate) with safety checks
@@ -161,20 +175,132 @@ export default function SuperadminDashboard() {
     if (!extendCompany) return;
     
     try {
-      const months = Number(extendMonthsValue);
-      if (isNaN(months) || months <= 0) {
-        notify.error('Please specify a valid number of months');
-        return;
+      // 1. Update status if changed
+      if (extendCompanyStatus !== extendCompany.status) {
+        await api.updateCompanyStatus(extendCompany._id, extendCompanyStatus);
       }
 
-      await api.extendSubscription(extendCompany._id, months);
-      notify.success(`Subscription for "${extendCompany.companyName}" successfully extended by ${months} month(s)`);
+      // 2. Compute validity dates based on selected status
+      let validUntil: string | null | undefined = undefined;
+      let trialUntil: string | null | undefined = undefined;
+
+      if (extendCompanyStatus === 'suspended') {
+        // Suspended doesn't modify validity date by default
+      } else if (extendCompanyStatus === 'trial') {
+        // If changing status to trial (or extending trial), clear validUntil
+        validUntil = null;
+        if (extensionMode === 'edit') {
+          trialUntil = editExpiryDate ? new Date(editExpiryDate).toISOString() : null;
+        } else {
+          const trialVal = Number(extendTrialDurationValue) || 30;
+          const date = new Date();
+          if (extendTrialUnit === 'minutes') {
+            date.setMinutes(date.getMinutes() + trialVal);
+          } else if (extendTrialUnit === 'hours') {
+            date.setHours(date.getHours() + trialVal);
+          } else {
+            date.setDate(date.getDate() + trialVal);
+          }
+          trialUntil = date.toISOString();
+        }
+      } else if (extendCompanyStatus === 'active') {
+        // If changing status to active, clear trialUntil
+        trialUntil = null;
+        if (extensionMode === 'edit') {
+          validUntil = editExpiryDate ? new Date(editExpiryDate).toISOString() : null;
+        } else {
+          const months = Number(extendMonthsValue);
+          if (isNaN(months) || months <= 0) {
+            notify.error('Please specify a valid number of months');
+            return;
+          }
+
+          // Compute extension starting from existing date (if valid and in future) or now
+          let baseDate = extendCompany.validUntil ? new Date(extendCompany.validUntil) : new Date();
+          if (baseDate < new Date()) baseDate = new Date();
+          baseDate.setMonth(baseDate.getMonth() + months);
+          validUntil = baseDate.toISOString();
+        }
+      }
+
+      // 3. Save validity details if not suspended (or even if suspended, if desired)
+      if (extendCompanyStatus !== 'suspended') {
+        await api.updateCompanyValidity(extendCompany._id, { validUntil, trialUntil });
+      }
+
+      notify.success(`Company plan & validity successfully updated`);
       setExtendCompany(null);
       setExtendMonthsValue('1');
       setCustomExtendMonths(false);
+      setExtensionMode('extend');
+      setEditExpiryDate('');
       fetchCompanies();
     } catch (err: any) {
-      notify.error(err.message || 'Failed to extend subscription');
+      notify.error(err.message || 'Failed to update validity');
+    }
+  };
+
+  const handleGenerateKey = async () => {
+    if (!extendCompany) return;
+    
+    try {
+      let status = extendCompanyStatus;
+      let durationValue = 12;
+      let durationUnit = 'months';
+
+      if (status === 'trial') {
+        if (extensionMode === 'edit') {
+          if (editExpiryDate) {
+            const diffMs = new Date(editExpiryDate).getTime() - Date.now();
+            durationValue = Math.max(1, Math.ceil(diffMs / (60 * 1000)));
+            durationUnit = 'minutes';
+          } else {
+            durationValue = 14;
+            durationUnit = 'days';
+          }
+        } else {
+          durationValue = Number(extendTrialDurationValue) || 30;
+          durationUnit = extendTrialUnit;
+        }
+      } else if (status === 'active') {
+        if (extensionMode === 'edit') {
+          if (editExpiryDate) {
+            const diffMs = new Date(editExpiryDate).getTime() - Date.now();
+            durationValue = Math.max(1, Math.ceil(diffMs / (30 * 24 * 60 * 60 * 1000)));
+            durationUnit = 'months';
+          } else {
+            durationValue = 9999;
+            durationUnit = 'lifetime';
+          }
+        } else {
+          durationValue = Number(extendMonthsValue) || 12;
+          durationUnit = 'months';
+        }
+      }
+
+      const res = await api.generateProductKey(extendCompany._id, {
+        status,
+        durationValue,
+        durationUnit
+      });
+
+      const generatedKey = res.activationKey?.key || 'Failed to generate key';
+      notify.success(`Product key generated successfully!`);
+      
+      // Copy to clipboard automatically
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(generatedKey);
+        notify.success('Key copied to clipboard!');
+      }
+
+      setExtendCompany(null);
+      setExtendMonthsValue('1');
+      setCustomExtendMonths(false);
+      setExtensionMode('extend');
+      setEditExpiryDate('');
+      fetchCompanies();
+    } catch (err: any) {
+      notify.error(err.message || 'Failed to generate product key');
     }
   };
 
@@ -287,13 +413,21 @@ export default function SuperadminDashboard() {
     const date = new Date();
     const val = Number(newCompanyDurationValue) || 0;
     if (newCompanyStatus === 'trial') {
-      date.setDate(date.getDate() + val);
-      return `Trial expires on: ${date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (${val} days)`;
+      if (trialUnit === 'minutes') {
+        date.setMinutes(date.getMinutes() + val);
+        return `Trial expires on: ${date.toLocaleString()} (${val} minutes)`;
+      } else if (trialUnit === 'hours') {
+        date.setHours(date.getHours() + val);
+        return `Trial expires on: ${date.toLocaleString()} (${val} hours)`;
+      } else {
+        date.setDate(date.getDate() + val);
+        return `Trial expires on: ${date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (${val} days)`;
+      }
     } else {
       date.setMonth(date.getMonth() + val);
       return `Subscription valid until: ${date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (${val} months)`;
     }
-  }, [newCompanyStatus, newCompanyDurationValue, newCompanyCustomDate, useCustomDate]);
+  }, [newCompanyStatus, newCompanyDurationValue, newCompanyCustomDate, useCustomDate, trialUnit]);
 
   const computedExtendExpiryPreview = useMemo(() => {
     if (!extendCompany) return null;
@@ -304,6 +438,22 @@ export default function SuperadminDashboard() {
     startFrom.setMonth(startFrom.getMonth() + months);
     return startFrom.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   }, [extendCompany, extendMonthsValue]);
+
+  const computedExtendTrialExpiryPreview = useMemo(() => {
+    if (!extendCompany) return null;
+    const date = new Date();
+    const val = Number(extendTrialDurationValue) || 0;
+    if (extendTrialUnit === 'minutes') {
+      date.setMinutes(date.getMinutes() + val);
+      return `${date.toLocaleString()} (${val} minutes)`;
+    } else if (extendTrialUnit === 'hours') {
+      date.setHours(date.getHours() + val);
+      return `${date.toLocaleString()} (${val} hours)`;
+    } else {
+      date.setDate(date.getDate() + val);
+      return `${date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (${val} days)`;
+    }
+  }, [extendCompany, extendTrialDurationValue, extendTrialUnit]);
 
   // Filter and search logic
   const filteredCompanies = useMemo(() => {
@@ -333,6 +483,17 @@ export default function SuperadminDashboard() {
         return { label: 'Trial Expired', style: 'text-rose-600 bg-rose-50 border-rose-200 font-bold', isWarning: true };
       }
       const diffTime = trialDate.getTime() - now.getTime();
+      if (diffTime < 60 * 1000) {
+        return { label: 'Trial: <1 min remaining', style: 'text-amber-700 bg-amber-50 border-amber-200 animate-pulse font-semibold', isWarning: true };
+      }
+      if (diffTime < 60 * 60 * 1000) {
+        const mins = Math.ceil(diffTime / (60 * 1000));
+        return { label: `Trial: ${mins} min${mins > 1 ? 's' : ''} remaining`, style: 'text-amber-700 bg-amber-50 border-amber-200 animate-pulse font-semibold', isWarning: true };
+      }
+      if (diffTime < 24 * 60 * 60 * 1000) {
+        const hrs = Math.ceil(diffTime / (60 * 60 * 1000));
+        return { label: `Trial: ${hrs} hr${hrs > 1 ? 's' : ''} remaining`, style: 'text-amber-700 bg-amber-50 border-amber-200 animate-pulse font-semibold', isWarning: true };
+      }
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       return { 
         label: `Trial: ${diffDays} day${diffDays > 1 ? 's' : ''} remaining`, 
@@ -571,10 +732,30 @@ export default function SuperadminDashboard() {
                         </div>
                       </td>
                       <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border ${expiry.style}`}>
-                            {expiry.label}
-                          </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border ${expiry.style}`}>
+                              {expiry.label}
+                            </span>
+                          </div>
+                          {c.activationKey && (
+                            <div className="flex items-center gap-1.5 bg-zinc-55 border border-zinc-200 rounded-lg p-1 px-1.5 text-[9px] font-mono text-zinc-600 max-w-fit mt-1">
+                              <Key className="w-3 h-3 text-zinc-400 shrink-0" />
+                              <span className="font-bold tracking-tight select-text">{c.activationKey.key}</span>
+                              <button
+                                onClick={() => {
+                                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                                    navigator.clipboard.writeText(c.activationKey.key);
+                                    notify.success('Key copied to clipboard!');
+                                  }
+                                }}
+                                className="text-[8px] text-zinc-400 hover:text-zinc-950 underline font-extrabold ml-1.5 cursor-pointer active:scale-95 transition-all"
+                                title="Copy Key"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="p-4 text-right pr-6">
@@ -611,8 +792,18 @@ export default function SuperadminDashboard() {
                           <button 
                             onClick={() => {
                               setExtendCompany(c);
+                              setExtendCompanyStatus(c.status);
                               setExtendMonthsValue('1');
                               setCustomExtendMonths(false);
+                              setExtensionMode('extend');
+                              const tzOffset = new Date().getTimezoneOffset() * 60000;
+                              setEditExpiryDate(
+                                c.status === 'trial'
+                                  ? (c.trialUntil ? new Date(new Date(c.trialUntil).getTime() - tzOffset).toISOString().slice(0, 16) : '')
+                                  : (c.validUntil ? new Date(new Date(c.validUntil).getTime() - tzOffset).toISOString().slice(0, 16) : '')
+                              );
+                              setExtendTrialUnit('days');
+                              setExtendTrialDurationValue('30');
                             }} 
                             disabled={c.status === 'suspended'}
                             className={`flex items-center gap-1 px-3 py-2 rounded-xl border text-[10px] font-black transition-all active:scale-95 cursor-pointer ${
@@ -732,40 +923,101 @@ export default function SuperadminDashboard() {
                       required
                     />
                   ) : (
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {newCompanyStatus === 'trial' ? (
-                        // Trial presets (Days)
-                        (['7', '14', '30', '90'] as const).map((days) => (
-                          <button
-                            key={days}
-                            type="button"
-                            onClick={() => setNewCompanyDurationValue(days)}
-                            className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
-                              newCompanyDurationValue === days
-                                ? 'bg-zinc-900 border-zinc-900 text-white font-black'
-                                : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
-                            }`}
-                          >
-                            {days} Days
-                          </button>
-                        ))
-                      ) : (
-                        // Active subscription presets (Months)
-                        (['1', '3', '12', 'lifetime'] as const).map((opt) => (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => setNewCompanyDurationValue(opt)}
-                            className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
-                              newCompanyDurationValue === opt
-                                ? 'bg-zinc-900 border-zinc-900 text-white font-black'
-                                : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
-                            }`}
-                          >
-                            {opt === 'lifetime' ? 'Lifetime' : `${opt} Mon`}
-                          </button>
-                        ))
+                    <div className="space-y-2.5">
+                      {newCompanyStatus === 'trial' && (
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Trial Unit</span>
+                          <div className="flex bg-zinc-150 p-0.5 rounded-lg border gap-0.5">
+                            {(['minutes', 'hours', 'days'] as const).map(unit => (
+                              <button
+                                key={unit}
+                                type="button"
+                                onClick={() => {
+                                  setTrialUnit(unit);
+                                  if (unit === 'minutes') setNewCompanyDurationValue('30');
+                                  else if (unit === 'hours') setNewCompanyDurationValue('1');
+                                  else setNewCompanyDurationValue('30');
+                                }}
+                                className={`px-2 py-1 text-[9px] font-extrabold capitalize rounded-md transition-all cursor-pointer ${
+                                  trialUnit === unit
+                                    ? 'bg-white text-zinc-950 shadow-sm border border-zinc-200/50'
+                                    : 'text-zinc-500 hover:text-zinc-900'
+                                }`}
+                              >
+                                {unit}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
+
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {newCompanyStatus === 'trial' ? (
+                          trialUnit === 'minutes' ? (
+                            (['5', '15', '30', '60'] as const).map((mins) => (
+                              <button
+                                key={mins}
+                                type="button"
+                                onClick={() => setNewCompanyDurationValue(mins)}
+                                className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                  newCompanyDurationValue === mins
+                                    ? 'bg-zinc-900 border-zinc-900 text-white font-black'
+                                    : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                                }`}
+                              >
+                                {mins} Mins
+                              </button>
+                            ))
+                          ) : trialUnit === 'hours' ? (
+                            (['1', '3', '6', '12'] as const).map((hrs) => (
+                              <button
+                                key={hrs}
+                                type="button"
+                                onClick={() => setNewCompanyDurationValue(hrs)}
+                                className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                  newCompanyDurationValue === hrs
+                                    ? 'bg-zinc-900 border-zinc-900 text-white font-black'
+                                    : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                                }`}
+                              >
+                                {hrs} Hrs
+                              </button>
+                            ))
+                          ) : (
+                            // Trial presets (Days)
+                            (['7', '14', '30', '90'] as const).map((days) => (
+                              <button
+                                key={days}
+                                type="button"
+                                onClick={() => setNewCompanyDurationValue(days)}
+                                className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                  newCompanyDurationValue === days
+                                    ? 'bg-zinc-900 border-zinc-900 text-white font-black'
+                                    : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                                }`}
+                              >
+                                {days} Days
+                              </button>
+                            ))
+                          )
+                        ) : (
+                          // Active subscription presets (Months)
+                          (['1', '3', '12', 'lifetime'] as const).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setNewCompanyDurationValue(opt)}
+                              className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                newCompanyDurationValue === opt
+                                  ? 'bg-zinc-900 border-zinc-900 text-white font-black'
+                                  : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                              }`}
+                            >
+                              {opt === 'lifetime' ? 'Lifetime' : `${opt} Mon`}
+                            </button>
+                          ))
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -820,102 +1072,309 @@ export default function SuperadminDashboard() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              {/* Target info card */}
-              <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-150 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-black text-zinc-400 block uppercase">Tenant Domain</span>
-                  <span className="text-xs font-extrabold text-zinc-900 block mt-0.5">{extendCompany.companyName}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-black text-zinc-400 block uppercase">Current Expiry</span>
-                  <span className="text-xs font-bold text-zinc-800 block mt-0.5">
-                    {extendCompany.validUntil 
-                      ? new Date(extendCompany.validUntil).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-                      : 'Lifetime / None'}
-                  </span>
-                </div>
-              </div>
+             <div className="space-y-4">
+               {/* Target info card */}
+               <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-150 flex items-center justify-between">
+                 <div>
+                   <span className="text-[10px] font-black text-zinc-400 block uppercase">Tenant Domain</span>
+                   <span className="text-xs font-extrabold text-zinc-900 block mt-0.5">{extendCompany.companyName}</span>
+                 </div>
+                 <div className="text-right">
+                   <span className="text-[10px] font-black text-zinc-400 block uppercase">Current Expiry</span>
+                   <span className="text-xs font-bold text-zinc-800 block mt-0.5">
+                     {extendCompany.status === 'trial' ? (
+                       extendCompany.trialUntil 
+                         ? new Date(extendCompany.trialUntil).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                         : 'No Expiry Set'
+                     ) : (
+                       extendCompany.validUntil 
+                         ? new Date(extendCompany.validUntil).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+                         : 'Lifetime / None'
+                     )}
+                   </span>
+                 </div>
+               </div>
+ 
+               {/* Plan Status Segment */}
+               <div className="space-y-1">
+                 <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500 block">Plan Status</label>
+                 <div className="grid grid-cols-3 bg-zinc-50 p-1 border rounded-xl gap-1">
+                   {(['active', 'trial', 'suspended'] as const).map((st) => (
+                     <button
+                       key={st}
+                       type="button"
+                       onClick={() => {
+                         setExtendCompanyStatus(st);
+                         if (st === 'trial') {
+                           setExtensionMode('extend');
+                         }
+                       }}
+                       className={`py-1.5 text-[10px] font-extrabold capitalize rounded-lg transition-all cursor-pointer ${
+                         extendCompanyStatus === st
+                           ? 'bg-white text-zinc-950 shadow-sm border border-zinc-200/50 font-black'
+                           : 'text-zinc-500 hover:text-zinc-900'
+                       }`}
+                     >
+                       {st}
+                     </button>
+                   ))}
+                 </div>
+               </div>
 
-              {/* Presets Grid */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Extension Period</label>
-                  <button
-                    onClick={() => setCustomExtendMonths(!customExtendMonths)}
-                    className="text-[9px] text-zinc-650 hover:text-zinc-950 font-black underline"
-                  >
-                    {customExtendMonths ? 'Use Presets' : 'Custom Duration'}
-                  </button>
-                </div>
+               {extendCompanyStatus !== 'suspended' && (
+                 <>
+                   {/* Mode Tabs */}
+                   <div className="grid grid-cols-2 bg-zinc-50 p-1 border rounded-xl gap-1">
+                     {(['extend', 'edit'] as const).map((mode) => {
+                       const label = mode === 'extend' 
+                         ? (extendCompanyStatus === 'trial' ? 'Trial Presets' : 'Add Months')
+                         : (extendCompanyStatus === 'trial' ? 'Specific Date & Time' : 'Edit Validity Date');
+                       return (
+                         <button
+                           key={mode}
+                           type="button"
+                           onClick={() => setExtensionMode(mode)}
+                           className={`py-1.5 text-[10px] font-extrabold capitalize rounded-lg transition-all cursor-pointer ${
+                             extensionMode === mode
+                               ? 'bg-white text-zinc-950 shadow-sm border border-zinc-200/50'
+                               : 'text-zinc-500 hover:text-zinc-900'
+                           }`}
+                         >
+                           {label}
+                         </button>
+                       );
+                     })}
+                   </div>
 
-                {customExtendMonths ? (
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number"
-                      value={extendMonthsValue}
-                      onChange={e => setExtendMonthsValue(Math.max(1, parseInt(e.target.value) || 1).toString())}
-                      min="1"
-                      className="w-full p-2 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-950 focus:border-zinc-950 outline-none"
-                    />
-                    <span className="text-xs font-black text-zinc-500">Months</span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-4 gap-2">
-                    {(['1', '3', '6', '12'] as const).map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => setExtendMonthsValue(opt)}
-                        className={`py-2 text-xs font-black rounded-xl border transition-all cursor-pointer ${
-                          extendMonthsValue === opt
-                            ? 'bg-zinc-900 border-zinc-900 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
-                        }`}
-                      >
-                        +{opt}m
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                   {extensionMode === 'extend' ? (
+                     extendCompanyStatus === 'trial' ? (
+                       <div className="space-y-2.5">
+                         <div className="flex justify-between items-center">
+                           <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Trial Unit</span>
+                           <div className="flex bg-zinc-150 p-0.5 rounded-lg border gap-0.5">
+                             {(['minutes', 'hours', 'days'] as const).map(unit => (
+                               <button
+                                 key={unit}
+                                 type="button"
+                                 onClick={() => {
+                                   setExtendTrialUnit(unit);
+                                   if (unit === 'minutes') setExtendTrialDurationValue('30');
+                                   else if (unit === 'hours') setExtendTrialDurationValue('1');
+                                   else setExtendTrialDurationValue('30');
+                                 }}
+                                 className={`px-2 py-1 text-[9px] font-extrabold capitalize rounded-md transition-all cursor-pointer ${
+                                   extendTrialUnit === unit
+                                     ? 'bg-white text-zinc-950 shadow-sm border border-zinc-200/50'
+                                     : 'text-zinc-500 hover:text-zinc-900'
+                                 }`}
+                               >
+                                 {unit}
+                               </button>
+                             ))}
+                           </div>
+                         </div>
 
-              {/* Dynamic Preview Timeline */}
-              <div className="bg-emerald-50 border border-emerald-150 p-3 rounded-xl space-y-1.5 select-none">
-                <span className="text-[10px] font-black uppercase text-emerald-800 tracking-wider block">Real-time Validity Calculator</span>
-                <div className="flex items-center gap-2 text-xs font-extrabold text-emerald-950">
-                  <span>
-                    {extendCompany.validUntil 
-                      ? new Date(extendCompany.validUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-                      : 'Today'}
-                  </span>
-                  <ChevronRight className="w-4.5 h-4.5 stroke-[3] text-emerald-500" />
-                  <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-0.5 shadow-sm shadow-emerald-700/20">
-                    <ArrowUpRight className="w-3 h-3 stroke-[3]" />
-                    +{extendMonthsValue} Months
-                  </span>
-                  <ChevronRight className="w-4.5 h-4.5 stroke-[3] text-emerald-500" />
-                  <span className="text-emerald-700 underline underline-offset-2 decoration-emerald-400">
-                    {computedExtendExpiryPreview}
-                  </span>
-                </div>
-              </div>
-            </div>
+                         <div className="grid grid-cols-4 gap-1.5">
+                           {extendTrialUnit === 'minutes' ? (
+                             (['5', '15', '30', '60'] as const).map((mins) => (
+                               <button
+                                 key={mins}
+                                 type="button"
+                                 onClick={() => setExtendTrialDurationValue(mins)}
+                                 className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                   extendTrialDurationValue === mins
+                                     ? 'bg-zinc-900 border-zinc-900 text-white font-black'
+                                     : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                                 }`}
+                               >
+                                 {mins} Mins
+                               </button>
+                             ))
+                           ) : extendTrialUnit === 'hours' ? (
+                             (['1', '3', '6', '12'] as const).map((hrs) => (
+                               <button
+                                 key={hrs}
+                                 type="button"
+                                 onClick={() => setExtendTrialDurationValue(hrs)}
+                                 className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                   extendTrialDurationValue === hrs
+                                     ? 'bg-zinc-900 border-zinc-900 text-white font-black'
+                                     : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                                 }`}
+                               >
+                                 {hrs} Hrs
+                               </button>
+                             ))
+                           ) : (
+                             (['7', '14', '30', '90'] as const).map((days) => (
+                               <button
+                                 key={days}
+                                 type="button"
+                                 onClick={() => setExtendTrialDurationValue(days)}
+                                 className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                   extendTrialDurationValue === days
+                                     ? 'bg-zinc-900 border-zinc-900 text-white font-black'
+                                     : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                                 }`}
+                               >
+                                 {days} Days
+                               </button>
+                             ))
+                           )}
+                         </div>
 
-            <div className="mt-5 flex gap-2 border-t border-zinc-150 pt-4">
-              <button 
-                onClick={() => setExtendCompany(null)}
-                className="flex-1 py-2.5 bg-zinc-50 border border-zinc-250 text-zinc-700 hover:bg-zinc-100 rounded-xl text-xs font-black transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleApplyExtension}
-                className="flex-1 py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-black transition-colors shadow-md shadow-black/10 cursor-pointer"
-              >
-                Apply Extension
-              </button>
-            </div>
+                         {/* Dynamic Preview Timeline */}
+                         <div className="bg-amber-50 border border-amber-150 p-3 rounded-xl space-y-1.5 select-none">
+                           <span className="text-[10px] font-black uppercase text-amber-800 tracking-wider block">Real-time Trial Calculator</span>
+                           <div className="flex items-center gap-2 text-xs font-extrabold text-amber-950">
+                             <span>Now</span>
+                             <ChevronRight className="w-4.5 h-4.5 stroke-[3] text-amber-500" />
+                             <span className="bg-amber-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-0.5 shadow-sm shadow-amber-700/20">
+                               <ArrowUpRight className="w-3 h-3 stroke-[3]" />
+                               +{extendTrialDurationValue} {extendTrialUnit}
+                             </span>
+                             <ChevronRight className="w-4.5 h-4.5 stroke-[3] text-amber-500" />
+                             <span className="text-amber-700 underline underline-offset-2 decoration-amber-400">
+                               {computedExtendTrialExpiryPreview}
+                             </span>
+                           </div>
+                         </div>
+                       </div>
+                     ) : (
+                       <>
+                         <div className="space-y-2">
+                           <div className="flex justify-between items-center">
+                             <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Extension Period</label>
+                             <button
+                               onClick={() => setCustomExtendMonths(!customExtendMonths)}
+                               className="text-[9px] text-zinc-650 hover:text-zinc-950 font-black underline"
+                             >
+                               {customExtendMonths ? 'Use Presets' : 'Custom Duration'}
+                             </button>
+                           </div>
+
+                           {customExtendMonths ? (
+                             <div className="flex items-center gap-2">
+                               <input 
+                                 type="number"
+                                 value={extendMonthsValue}
+                                 onChange={e => setExtendMonthsValue(Math.max(1, parseInt(e.target.value) || 1).toString())}
+                                 min="1"
+                                 className="w-full p-2 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-950 focus:border-zinc-950 outline-none"
+                               />
+                               <span className="text-xs font-black text-zinc-500">Months</span>
+                             </div>
+                           ) : (
+                             <div className="grid grid-cols-4 gap-2">
+                               {(['1', '3', '6', '12'] as const).map((opt) => (
+                                 <button
+                                   key={opt}
+                                   type="button"
+                                   onClick={() => setExtendMonthsValue(opt)}
+                                   className={`py-2 text-xs font-black rounded-xl border transition-all cursor-pointer ${
+                                     extendMonthsValue === opt
+                                       ? 'bg-zinc-900 border-zinc-900 text-white'
+                                       : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-350'
+                                   }`}
+                                 >
+                                   +{opt}m
+                                 </button>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+
+                         {/* Dynamic Preview Timeline */}
+                         <div className="bg-emerald-50 border border-emerald-150 p-3 rounded-xl space-y-1.5 select-none">
+                           <span className="text-[10px] font-black uppercase text-emerald-800 tracking-wider block">Real-time Validity Calculator</span>
+                           <div className="flex items-center gap-2 text-xs font-extrabold text-emerald-950">
+                             <span>
+                               {extendCompany.validUntil 
+                                 ? new Date(extendCompany.validUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                                 : 'Today'}
+                             </span>
+                             <ChevronRight className="w-4.5 h-4.5 stroke-[3] text-emerald-500" />
+                             <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-0.5 shadow-sm shadow-emerald-700/20">
+                               <ArrowUpRight className="w-3 h-3 stroke-[3]" />
+                               +{extendMonthsValue} Months
+                             </span>
+                             <ChevronRight className="w-4.5 h-4.5 stroke-[3] text-emerald-500" />
+                             <span className="text-emerald-700 underline underline-offset-2 decoration-emerald-400">
+                               {computedExtendExpiryPreview}
+                             </span>
+                           </div>
+                         </div>
+                       </>
+                     )
+                   ) : (
+                     <div className="space-y-2.5">
+                       <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500 block">
+                         {extendCompanyStatus === 'trial' ? 'Set Custom Trial Expiry' : 'Set Custom Subscription Expiry'}
+                       </label>
+                       <div className="flex gap-2">
+                         <input 
+                           type="datetime-local"
+                           value={editExpiryDate}
+                           onChange={e => setEditExpiryDate(e.target.value)}
+                           className="w-full p-2 border border-zinc-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-zinc-950 transition-all bg-white"
+                         />
+                         <button
+                           type="button"
+                           onClick={() => setEditExpiryDate('')}
+                           className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 border text-zinc-700 rounded-xl text-[10px] font-black whitespace-nowrap transition-colors"
+                           title="Clear Expiry / Set Lifetime"
+                         >
+                           Clear / Lifetime
+                         </button>
+                       </div>
+                       <p className="text-[9px] text-zinc-400 font-bold">
+                         This will directly set the expiry timestamp. Clear it to grant lifetime/unlimited access.
+                       </p>
+                     </div>
+                   )}
+                 </>
+               )}
+
+               {extendCompanyStatus === 'suspended' && (
+                 <div className="p-4 bg-rose-50 border border-rose-150 rounded-xl flex items-start gap-2.5">
+                   <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                   <div>
+                     <span className="text-xs font-extrabold text-rose-950 block">Confirm Suspension</span>
+                     <span className="text-[10px] text-rose-700 block mt-0.5">
+                       Switching this company to Suspended status will immediately block all users from logging in or conducting database transactions.
+                     </span>
+                   </div>
+                 </div>
+               )}
+             </div>
+ 
+             <div className="mt-5 flex gap-2 border-t border-zinc-150 pt-4">
+               <button 
+                 type="button"
+                 onClick={() => setExtendCompany(null)}
+                 className="px-4 py-2.5 bg-zinc-50 border border-zinc-250 text-zinc-700 hover:bg-zinc-100 rounded-xl text-xs font-black transition-colors cursor-pointer"
+               >
+                 Cancel
+               </button>
+               {extendCompanyStatus !== 'suspended' && (
+                 <button 
+                   type="button"
+                   onClick={handleGenerateKey}
+                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-colors shadow-sm shadow-emerald-700/20 cursor-pointer flex items-center justify-center gap-1.5"
+                   title="Generate unique activation product key"
+                 >
+                   <Key className="w-3.5 h-3.5" />
+                   Generate Key
+                 </button>
+               )}
+               <button 
+                 type="button"
+                 onClick={handleApplyExtension}
+                 className="flex-1 py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-black transition-colors shadow-md shadow-black/10 cursor-pointer"
+               >
+                 {extensionMode === 'edit' ? 'Update Expiry' : 'Apply Extension'}
+               </button>
+             </div>
           </div>
         </div>
       )}
