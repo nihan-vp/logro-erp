@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Plus, Search, Trash2, Edit2, Users, X, Phone, Briefcase, Upload, Download, BookmarkCheck, Store,
-  Calendar, FileSpreadsheet, Activity, DollarSign, Wallet, ClipboardCheck, FileText
+  Calendar, FileSpreadsheet, Activity, DollarSign, Wallet, ClipboardCheck, FileText,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { api } from '../api/client';
@@ -16,6 +17,7 @@ const formatLocalDate = (d: Date) => {
 };
 
 const TRADE_OPTIONS: CrewTrade[] = ['Mason', 'Electrician', 'Plumber', 'Carpenter', 'Helper', 'Supervisor', 'Other'];
+const ROSTER_ROW_HEIGHT_PX = 53;
 
 const CSV_TEMPLATE = 'Name,Trade,Daily Wage,Phone,Status,Notes\nDave Cooper,Mason,250,9876543210,active,\nManny Ramirez,Helper,200,,active,';
 
@@ -171,6 +173,18 @@ export default function AttendancePage() {
   const [showSidebarCalendars, setShowSidebarCalendars] = useState(true);
   const [payWagesProjectId, setPayWagesProjectId] = useState<string>('');
   const [payWagesTaskId, setPayWagesTaskId] = useState<string>('');
+  const [rosterPage, setRosterPage] = useState(1);
+  const [rosterRowsPerPage, setRosterRowsPerPage] = useState<number>(() => {
+    return Number(localStorage.getItem('roster_rows_per_page')) || 10;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('roster_rows_per_page', String(rosterRowsPerPage));
+  }, [rosterRowsPerPage]);
+
+  useEffect(() => {
+    setRosterPage(1);
+  }, [searchQuery, statusFilter]);
 
   useEffect(() => {
     if (isPayWagesOpen) {
@@ -827,56 +841,138 @@ export default function AttendancePage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5">
-              {filteredCrew.map((member) => (
-                <div
-                  key={member.id}
-                  className="bg-white border rounded-xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${member.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
-                        }`}>
-                        {member.status}
-                      </span>
-                      <h4 className="text-sm font-extrabold text-zinc-950">{member.name}</h4>
-                    </div>
-                    <p className="text-[10px] text-zinc-400 font-semibold mt-1 flex items-center gap-2">
-                      <Briefcase className="w-3 h-3" />
-                      <span>{member.trade}</span>
-                      <span>•</span>
-                      <span>{formatCur(member.dailyWage)}/day</span>
-                      {member.phone && (
-                        <>
-                          <span>•</span>
-                          <Phone className="w-3 h-3" />
-                          <span>{member.phone}</span>
-                        </>
-                      )}
-                    </p>
-                    {member.notes && (
-                      <p className="text-[11px] text-zinc-400 mt-1 italic">&quot;{member.notes}&quot;</p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-1.5 justify-end">
-                    <button
-                      onClick={() => handleOpenEdit(member)}
-                      className="p-1.5 bg-zinc-50 border text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
-                      title="Edit crew member"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(member.id)}
-                      className="p-1.5 bg-zinc-50 border text-rose-500 hover:text-rose-900 rounded-lg hover:bg-rose-50 transition-colors"
-                      title="Remove crew member"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+            <div className="space-y-4">
+              <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-zinc-600 border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[10px] tracking-wider border-b border-zinc-200">
+                        <th className="py-3 px-4">Name</th>
+                        <th className="py-3 px-4">Trade</th>
+                        <th className="py-3 px-4 text-right">Daily Wage</th>
+                        <th className="py-3 px-4">Phone</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4">Notes</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 text-zinc-900">
+                      {(() => {
+                        const paginatedCrew = filteredCrew.slice(
+                          (rosterPage - 1) * rosterRowsPerPage,
+                          rosterPage * rosterRowsPerPage
+                        );
+                        const emptyRowCount = Math.max(0, rosterRowsPerPage - paginatedCrew.length);
+                        return (
+                          <>
+                            {paginatedCrew.map((member) => (
+                              <tr key={member.id} className="hover:bg-zinc-50/50 transition-colors" style={{ height: ROSTER_ROW_HEIGHT_PX }}>
+                                <td className="py-3 px-4 font-bold text-zinc-950 text-sm align-middle">
+                                  {member.name}
+                                </td>
+                                <td className="py-3 px-4 font-semibold text-zinc-700 align-middle">{member.trade}</td>
+                                <td className="py-3 px-4 text-right font-black text-zinc-950 align-middle">{formatCur(member.dailyWage)}</td>
+                                <td className="py-3 px-4 font-medium text-zinc-600 align-middle">{member.phone || '—'}</td>
+                                <td className="py-3 px-4 text-center align-middle">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-tight uppercase ${member.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-zinc-100 text-zinc-500 border border-zinc-200'}`}>
+                                    {member.status}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-zinc-400 italic max-w-[200px] truncate align-middle" title={member.notes || ''}>
+                                  {member.notes ? `"${member.notes}"` : '—'}
+                                </td>
+                                <td className="py-3 px-4 text-right align-middle">
+                                  <div className="flex gap-1.5 justify-end">
+                                    <button
+                                      onClick={() => handleOpenEdit(member)}
+                                      className="p-1.5 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
+                                      title="Edit crew member"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(member.id)}
+                                      className="p-1.5 bg-zinc-50 border border-zinc-200 text-rose-500 hover:text-rose-900 rounded-lg hover:bg-rose-50 transition-colors"
+                                      title="Remove crew member"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                            {Array.from({ length: emptyRowCount }).map((_, idx) => (
+                              <tr key={`roster-empty-${idx}`} style={{ height: ROSTER_ROW_HEIGHT_PX }} aria-hidden="true">
+                                <td colSpan={7} className="px-4 py-3 align-middle">&nbsp;</td>
+                              </tr>
+                            ))}
+                          </>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
+
+                {/* Table Pagination Footer */}
+                {(() => {
+                  const totalRosterPages = Math.max(1, Math.ceil(filteredCrew.length / rosterRowsPerPage));
+                  const activePage = Math.min(rosterPage, totalRosterPages);
+                  const startIndex = (activePage - 1) * rosterRowsPerPage;
+                  const rangeStart = filteredCrew.length === 0 ? 0 : startIndex + 1;
+                  const rangeEnd = Math.min(startIndex + rosterRowsPerPage, filteredCrew.length);
+                  return (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-t border-zinc-100 bg-zinc-50/50 rounded-b-2xl">
+                      <p className="text-[11px] text-zinc-500 font-medium font-sans">
+                        Showing <span className="font-semibold text-zinc-700">{rangeStart}–{rangeEnd}</span> of{' '}
+                        <span className="font-semibold text-zinc-700">{filteredCrew.length}</span>
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3 font-sans">
+                        <div className="flex items-center gap-2">
+                          <label htmlFor="roster-rows-per-page" className="text-[10px] font-bold text-zinc-400 uppercase whitespace-nowrap">
+                            Rows per page
+                          </label>
+                          <select
+                            id="roster-rows-per-page"
+                            value={rosterRowsPerPage}
+                            onChange={(e) => {
+                              setRosterRowsPerPage(Number(e.target.value));
+                              setRosterPage(1);
+                            }}
+                            className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs font-semibold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
+                          >
+                            {[5, 10, 25, 50].map((n) => (
+                              <option key={n} value={n}>{n}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setRosterPage(Math.max(1, activePage - 1))}
+                            disabled={activePage <= 1}
+                            className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Previous page"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <span className="text-xs font-semibold text-zinc-600 min-w-[64px] text-center">
+                            {activePage} / {totalRosterPages}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setRosterPage(Math.min(totalRosterPages, activePage + 1))}
+                            disabled={activePage >= totalRosterPages}
+                            className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Next page"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           )}
         </>
