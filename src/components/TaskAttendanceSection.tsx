@@ -7,7 +7,7 @@ import { useConfirm } from '../context/ConfirmContext';
 
 interface WorkerAttendanceRow {
   workerName: string;
-  status: AttendanceStatus;
+  status?: AttendanceStatus;
   dailyWage: number;
   overtimeAmount: number;
   paymentStatus: 'Paid' | 'Pending' | 'Unpaid';
@@ -69,7 +69,7 @@ export default function TaskAttendanceSection({
         const crewMember = roster.find(c => c.name.toLowerCase() === name.toLowerCase());
         return {
           workerName: name,
-          status: record?.status || 'Present',
+          status: record?.status,
           dailyWage: record?.dailyWage ?? crewMember?.dailyWage ?? 200,
           overtimeAmount: record?.overtimeAmount || 0,
           paymentStatus: record?.paymentStatus || 'Unpaid',
@@ -100,50 +100,52 @@ export default function TaskAttendanceSection({
   const formatCur = (num: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
 
-  const handleMarkAttendance = async (idx: number) => {
+  const handleMarkAttendance = async (idx: number, newStatus?: AttendanceStatus | null, newDailyWage?: number, newOvertimeAmount?: number) => {
     const w = workers[idx];
-    const due = calcDue(w);
-
-    const ok = await confirm({
-      title: 'Mark attendance?',
-      message: `Record ${w.status} for ${w.workerName} on ${date}? Wage due: ${formatCur(due)}.`,
-      confirmLabel: 'Mark Attendance',
-      variant: 'default',
-    });
-    if (!ok) return;
+    const shouldDelete = newStatus === null;
+    const status = newStatus !== undefined ? newStatus : w.status;
+    const dailyWage = newDailyWage !== undefined ? newDailyWage : w.dailyWage;
+    const overtimeAmount = newOvertimeAmount !== undefined ? newOvertimeAmount : w.overtimeAmount;
 
     try {
       setActionWorker(w.workerName);
       setActionType('attendance');
 
-      if (w.recordId) {
-        await api.updateAttendance(w.recordId, {
-          workerName: w.workerName,
-          status: w.status,
-          dailyWage: w.dailyWage,
-          overtimeAmount: w.overtimeAmount,
-          paymentStatus: w.paymentStatus,
-        });
+      if (shouldDelete) {
+        if (w.recordId) {
+          await api.deleteAttendance(w.recordId);
+        }
       } else {
-        await api.bulkAttendance({
-          projectId,
-          taskId,
-          date,
-          workers: [{
+        if (!status) return;
+
+        if (w.recordId) {
+          await api.updateAttendance(w.recordId, {
             workerName: w.workerName,
-            status: w.status,
-            dailyWage: w.dailyWage,
-            overtimeAmount: w.overtimeAmount,
+            status,
+            dailyWage,
+            overtimeAmount,
             paymentStatus: w.paymentStatus,
-          }]
-        });
+          });
+        } else {
+          await api.bulkAttendance({
+            projectId,
+            taskId,
+            date,
+            workers: [{
+              workerName: w.workerName,
+              status,
+              dailyWage,
+              overtimeAmount,
+              paymentStatus: w.paymentStatus,
+            }]
+          });
+        }
       }
 
-      notify.success(`Attendance marked for ${w.workerName}.`);
       loadAttendance();
       onSaved?.();
     } catch (err: any) {
-      notify.error(err?.message || 'Failed to mark attendance');
+      notify.error(err?.message || 'Failed to update attendance');
     } finally {
       setActionWorker(null);
       setActionType(null);
@@ -254,7 +256,7 @@ export default function TaskAttendanceSection({
         </div>
       ) : (
         <div className="overflow-x-auto -mx-1 px-1">
-          <table className="w-full text-[10px] text-left border-collapse min-w-[640px]">
+          <table className="w-full text-[10px] text-left border-collapse min-w-[560px]">
             <thead>
               <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
                 <th className="py-2 px-2">Worker</th>
@@ -263,7 +265,6 @@ export default function TaskAttendanceSection({
                 <th className="py-2 px-2">OT</th>
                 <th className="py-2 px-2 text-right">Due</th>
                 <th className="py-2 px-2 text-center">Payout</th>
-                <th className="py-2 px-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -271,7 +272,6 @@ export default function TaskAttendanceSection({
                 const crewMember = crewRoster.find(c => c.name.toLowerCase() === w.workerName.toLowerCase());
                 const due = calcDue(w);
                 const isBusy = actionWorker === w.workerName;
-                const isMarked = Boolean(w.recordId);
 
                 return (
                   <tr key={w.workerName} className="hover:bg-zinc-50/60">
@@ -293,8 +293,15 @@ export default function TaskAttendanceSection({
                             <button
                               key={opt.key}
                               type="button"
+                              disabled={isBusy}
                               onClick={() => {
-                                updateWorker(idx, 'status', opt.key as AttendanceStatus);
+                                if (isActive) {
+                                  updateWorker(idx, 'status', undefined);
+                                  handleMarkAttendance(idx, null);
+                                } else {
+                                  updateWorker(idx, 'status', opt.key as AttendanceStatus);
+                                  handleMarkAttendance(idx, opt.key as AttendanceStatus);
+                                }
                               }}
                               className={`px-2 py-1 rounded-lg border text-[9px] font-bold transition-all ${
                                 isActive ? opt.activeBg : opt.inactiveBg
@@ -311,8 +318,10 @@ export default function TaskAttendanceSection({
                         type="number"
                         min={0}
                         value={w.dailyWage}
+                        disabled={isBusy}
                         onChange={(e) => updateWorker(idx, 'dailyWage', Number(e.target.value))}
-                        className="w-16 text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
+                        onBlur={(e) => handleMarkAttendance(idx, undefined, Number(e.target.value))}
+                        className="w-16 text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white focus:border-zinc-950 outline-none"
                         title="Daily wage"
                       />
                     </td>
@@ -321,8 +330,10 @@ export default function TaskAttendanceSection({
                         type="number"
                         min={0}
                         value={w.overtimeAmount}
+                        disabled={isBusy}
                         onChange={(e) => updateWorker(idx, 'overtimeAmount', Number(e.target.value))}
-                        className="w-14 text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white"
+                        onBlur={(e) => handleMarkAttendance(idx, undefined, undefined, Number(e.target.value))}
+                        className="w-14 text-[10px] font-semibold border border-zinc-200 rounded-lg px-1.5 py-1 bg-white focus:border-zinc-950 outline-none"
                         title="Overtime"
                       />
                     </td>
@@ -339,18 +350,6 @@ export default function TaskAttendanceSection({
                       }`}>
                         {w.paymentStatus === 'Paid' ? 'Paid' : w.paymentStatus === 'Pending' ? 'Pending' : 'Unpaid'}
                       </span>
-                    </td>
-                    <td className="py-2 px-2 align-middle text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleMarkAttendance(idx)}
-                        disabled={isBusy}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-lg text-[9px] font-bold transition-colors whitespace-nowrap"
-                        title="Save attendance for this worker"
-                      >
-                        <BookmarkCheck className="w-3 h-3 shrink-0" />
-                        <span>{isBusy && actionType === 'attendance' ? 'Saving...' : 'Save'}</span>
-                      </button>
                     </td>
                   </tr>
                 );
