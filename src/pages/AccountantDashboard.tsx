@@ -474,13 +474,6 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <button
-            onClick={() => onNavigate('projects')}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white hover:bg-zinc-100 border border-zinc-200/80 rounded-xl text-xs sm:text-sm font-semibold text-zinc-700 transition-colors"
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Projects</span>
-          </button>
-          <button
             onClick={() => fetchAccountantData()}
             className="p-2.5 bg-white hover:bg-zinc-100 border border-zinc-200/80 rounded-xl transition-colors text-zinc-600"
             title="Refresh"
@@ -656,13 +649,12 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                             <button
                               onClick={() => handleApprove(r)}
                               disabled={approvingId === r.id}
-                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap ${
-                                r.adjustmentType === 'Delete'
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap ${r.adjustmentType === 'Delete'
                                   ? 'bg-rose-600 hover:bg-rose-700'
                                   : r.status === 'Partially Paid'
                                     ? 'bg-blue-600 hover:bg-blue-700'
                                     : 'bg-emerald-600 hover:bg-emerald-700'
-                              }`}
+                                }`}
                             >
                               <Wallet className="w-3.5 h-3.5" />
                               {approvingId === r.id
@@ -773,18 +765,16 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                           )}
                         </td>
                         <td className="px-3 align-middle">
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                            t.type === 'Cash In'
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${t.type === 'Cash In'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}>
+                            }`}>
                             {t.type === 'Cash In' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                             {t.type}
                           </span>
                         </td>
-                        <td className={`px-3 align-middle text-right font-extrabold whitespace-nowrap ${
-                          t.type === 'Cash In' ? 'text-emerald-700' : 'text-rose-700'
-                        }`}>
+                        <td className={`px-3 align-middle text-right font-extrabold whitespace-nowrap ${t.type === 'Cash In' ? 'text-emerald-700' : 'text-rose-700'
+                          }`}>
                           {t.type === 'Cash In' ? '+' : '−'} {formatCur(t.amount)}
                         </td>
                       </tr>
