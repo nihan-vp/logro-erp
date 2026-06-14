@@ -7,6 +7,12 @@ import { api } from '../api/client';
 import { CrewMember, CrewTrade, CrewMemberStatus } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
+const formatLocalDate = (d: Date) => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
 
 const TRADE_OPTIONS: CrewTrade[] = ['Mason', 'Electrician', 'Plumber', 'Carpenter', 'Helper', 'Supervisor', 'Other'];
 
@@ -153,6 +159,8 @@ export default function AttendancePage() {
   const [selectedWeekOffset, setSelectedWeekOffset] = useState<number>(0); // 0 means current week, negative for past weeks
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
   const [paymentRequestsLogs, setPaymentRequestsLogs] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewPage, setOverviewPage] = useState(1);
   const [isMobileWorkerListOpen, setIsMobileWorkerListOpen] = useState(false);
@@ -160,13 +168,56 @@ export default function AttendancePage() {
   const [payWagesAmount, setPayWagesAmount] = useState<string>('');
   const [isSubmittingPayWages, setIsSubmittingPayWages] = useState(false);
   const [showSidebarCalendars, setShowSidebarCalendars] = useState(true);
+  const [payWagesProjectId, setPayWagesProjectId] = useState<string>('');
+  const [payWagesTaskId, setPayWagesTaskId] = useState<string>('');
+
+  useEffect(() => {
+    if (isPayWagesOpen) {
+      const worker = crew.find(c => c.id === selectedWorkerId) || crew[0];
+      if (worker) {
+        let startDate: Date;
+        let endDate: Date;
+
+        if (overviewFilterType === 'weekly') {
+          const curr = new Date();
+          const dayOffset = curr.getDay();
+          const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
+          startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 6);
+          endDate.setHours(23, 59, 59, 999);
+        } else {
+          startDate = new Date(selectedYearVal, selectedMonthVal, 1, 0, 0, 0, 0);
+          endDate = new Date(selectedYearVal, selectedMonthVal + 1, 0, 23, 59, 59, 999);
+        }
+
+        const startStr = formatLocalDate(startDate);
+        const endStr = formatLocalDate(endDate);
+
+        const workerAtt = attendanceLogs.filter(a =>
+          a.workerName === worker.name &&
+          a.date >= startStr &&
+          a.date <= endStr
+        );
+
+        const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+        const firstLog = unpaidLogs[0] || workerAtt[0];
+        setPayWagesProjectId(firstLog?.projectId || '');
+        setPayWagesTaskId(firstLog?.taskId || '');
+      }
+    } else {
+      setPayWagesProjectId('');
+      setPayWagesTaskId('');
+    }
+  }, [isPayWagesOpen, selectedWorkerId, overviewFilterType, selectedYearVal, selectedMonthVal, selectedWeekOffset, attendanceLogs, crew]);
 
   useEffect(() => {
     fetchCrew();
     fetchVendors();
   }, []);
 
-  
+
   const renderDottedCalendar = (workerName: string, compact: boolean = false) => {
     let days: Date[] = [];
     if (overviewFilterType === 'weekly') {
@@ -187,11 +238,12 @@ export default function AttendancePage() {
     }
 
     return (
-      <div className={`flex flex-wrap gap-1 ${compact ? 'justify-end' : 'justify-start'}`}>
+      <div className="flex flex-wrap gap-1 justify-center">
         {days.map((d, i) => {
-          const dateStr = d.toISOString().split('T')[0];
+          const dateStr = formatLocalDate(d);
           const log = attendanceLogs.find(a => a.workerName === workerName && a.date === dateStr);
-          
+          const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+
           let colorClass = 'bg-zinc-100 border border-zinc-200';
           if (log) {
             if (log.status === 'Present') colorClass = 'bg-emerald-500 shadow-sm';
@@ -199,24 +251,28 @@ export default function AttendancePage() {
             else if (log.status === 'Absent') colorClass = 'bg-rose-500 shadow-sm';
           }
 
-          const isToday = new Date().toISOString().split('T')[0] === dateStr;
+          const isToday = formatLocalDate(new Date()) === dateStr;
 
           if (compact) {
             return (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 className={`w-2 h-2 rounded-full ${colorClass} ${isToday ? 'ring-1 ring-zinc-900 ring-offset-1' : ''}`}
-                title={`${dateStr}: ${log?.status || 'No Log'}`}
+                title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}`}
               />
             );
           }
 
           return (
-            <div 
-              key={i} 
-              className={`w-4 h-4 sm:w-5 sm:h-5 rounded-md ${colorClass} ${isToday ? 'ring-2 ring-zinc-900 ring-offset-1' : ''} transition-all hover:scale-110 cursor-help`}
-              title={`${dateStr}: ${log?.status || 'No Log'}`}
-            />
+            <div
+              key={i}
+              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${colorClass} ${isToday ? 'ring-2 ring-zinc-900' : ''} transition-all hover:scale-110 cursor-help flex items-center justify-center`}
+              title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}`}
+            >
+              <span className={`text-[9px] sm:text-[10px] font-black ${log ? 'text-white' : 'text-zinc-500'}`}>
+                {d.getDate()}
+              </span>
+            </div>
           );
         })}
       </div>
@@ -226,12 +282,16 @@ export default function AttendancePage() {
   const fetchOverviewLogs = async () => {
     try {
       setOverviewLoading(true);
-      const [attRes, payRes] = await Promise.all([
+      const [attRes, payRes, projRes, taskRes] = await Promise.all([
         api.getAttendance(),
-        api.getPaymentRequests()
+        api.getPaymentRequests(),
+        api.getProjects(),
+        api.getTasks()
       ]);
       setAttendanceLogs(attRes.attendance || []);
       setPaymentRequestsLogs(payRes.paymentRequests || []);
+      setProjects(projRes.projects || []);
+      setTasks(taskRes.tasks || []);
     } catch (err: any) {
       notify.error(err?.message || 'Failed to fetch logs for crew overview');
     } finally {
@@ -240,10 +300,6 @@ export default function AttendancePage() {
   };
 
   const handleRequestWagesPayment = async (worker: any, unpaidLogs: any[], remainingAmount: number) => {
-    if (unpaidLogs.length === 0) {
-      notify.warning('No unpaid logs found for this period.');
-      return;
-    }
     const amt = Number(payWagesAmount);
     if (isNaN(amt) || amt <= 0) {
       notify.warning('Please enter a valid amount.');
@@ -258,30 +314,32 @@ export default function AttendancePage() {
       setIsSubmittingPayWages(true);
 
       // Update all unpaid logs to "Pending"
-      await Promise.all(
-        unpaidLogs.map(log =>
-          api.updateAttendance(log.id, {
-            workerName: log.workerName,
-            status: log.status,
-            dailyWage: log.dailyWage,
-            overtimeAmount: log.overtimeAmount,
-            paymentStatus: 'Pending'
-          })
-        )
-      );
+      if (unpaidLogs.length > 0) {
+        await Promise.all(
+          unpaidLogs.map(log =>
+            api.updateAttendance(log.id, {
+              workerName: log.workerName,
+              status: log.status,
+              dailyWage: log.dailyWage,
+              overtimeAmount: log.overtimeAmount,
+              paymentStatus: 'Pending'
+            })
+          )
+        );
+      }
 
       // Create a single consolidated payment request for the selected worker and period
-      const firstLog = unpaidLogs[0];
+      const firstLog = unpaidLogs[0] || attendanceLogs.find(l => l.workerName === worker.name);
       const attendanceIds = unpaidLogs.map(log => log.id);
 
       await api.createPaymentRequest({
-        projectId: firstLog.projectId,
-        taskId: firstLog.taskId,
+        projectId: payWagesProjectId || '',
+        taskId: payWagesTaskId || '',
         payeeName: worker.name,
         category: 'Worker',
         amount: amt,
-        description: `Wages payment request for ${worker.name} (${overviewFilterType} view: ${firstLog.date} onwards)`,
-        dueDate: firstLog.date,
+        description: `Wages payment request for ${worker.name} (${overviewFilterType} view: ${firstLog ? firstLog.date : formatLocalDate(new Date())} onwards)`,
+        dueDate: firstLog ? firstLog.date : formatLocalDate(new Date()),
         priority: 'Medium',
         paymentMethod: 'Bank Transfer',
         status: 'Pending',
@@ -657,39 +715,34 @@ export default function AttendancePage() {
       <div className="flex flex-wrap gap-1 p-1 bg-zinc-100 rounded-xl w-full sm:w-fit">
         <button
           onClick={() => setActiveTab('crew')}
-          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeTab === 'crew'
-              ? 'bg-white text-zinc-950 shadow-sm'
-              : 'text-zinc-500 hover:text-zinc-700'
-          }`}
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'crew'
+            ? 'bg-white text-zinc-950 shadow-sm'
+            : 'text-zinc-500 hover:text-zinc-700'
+            }`}
         >
           <Users className="w-4 h-4" />
           <span>Crew Roster</span>
-          <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-            activeTab === 'crew' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
-          }`}>{crew.length}</span>
+          <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${activeTab === 'crew' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
+            }`}>{crew.length}</span>
         </button>
         <button
           onClick={() => setActiveTab('vendors')}
-          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeTab === 'vendors'
-              ? 'bg-white text-zinc-950 shadow-sm'
-              : 'text-zinc-500 hover:text-zinc-700'
-          }`}
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'vendors'
+            ? 'bg-white text-zinc-950 shadow-sm'
+            : 'text-zinc-500 hover:text-zinc-700'
+            }`}
         >
           <Store className="w-4 h-4" />
           <span>Vendors</span>
-          <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-            activeTab === 'vendors' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
-          }`}>{vendors.length}</span>
+          <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${activeTab === 'vendors' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
+            }`}>{vendors.length}</span>
         </button>
         <button
           onClick={() => setActiveTab('overview')}
-          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeTab === 'overview'
-              ? 'bg-white text-zinc-950 shadow-sm'
-              : 'text-zinc-500 hover:text-zinc-700'
-          }`}
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'overview'
+            ? 'bg-white text-zinc-950 shadow-sm'
+            : 'text-zinc-500 hover:text-zinc-700'
+            }`}
         >
           <BookmarkCheck className="w-4 h-4" />
           <span>Crew Overview</span>
@@ -781,9 +834,8 @@ export default function AttendancePage() {
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${
-                        member.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
-                      }`}>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${member.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
+                        }`}>
                         {member.status}
                       </span>
                       <h4 className="text-sm font-extrabold text-zinc-950">{member.name}</h4>
@@ -1097,9 +1149,8 @@ export default function AttendancePage() {
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${
-                        vend.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
-                      }`}>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${vend.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
+                        }`}>
                         {vend.status}
                       </span>
                       <h4 className="text-sm font-extrabold text-zinc-950">{vend.name}</h4>
@@ -1317,12 +1368,6 @@ export default function AttendancePage() {
               <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Crew Financial & Attendance Overview</h1>
               <p className="text-xs sm:text-sm text-zinc-500">Track logs, wage distributions, and payment status for individual workers</p>
             </div>
-            <button
-              onClick={fetchOverviewLogs}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white border border-zinc-200 text-zinc-800 rounded-xl text-xs font-semibold hover:bg-zinc-50 transition-colors"
-            >
-              <span>Refresh Logs</span>
-            </button>
           </div>
 
           {crew.length === 0 ? (
@@ -1335,7 +1380,7 @@ export default function AttendancePage() {
               {/* Workers sidebar - hidden on mobile, shown on lg */}
               <div className="hidden lg:flex lg:col-span-1 bg-white border border-zinc-200/80 rounded-2xl p-4 space-y-4 shadow-sm flex-col lg:self-start">
                 <h3 className="font-bold text-zinc-950 text-xs uppercase tracking-wider">Select Crew Worker</h3>
-                <div className="space-y-1 overflow-y-auto pr-1 max-h-[652px]">
+                <div className="space-y-1 overflow-y-auto pr-1 max-h-[740px]">
                   {crew.map(m => {
                     const isSelected = selectedWorkerId === m.id || (!selectedWorkerId && crew[0]?.id === m.id);
                     // Select first worker by default if none selected
@@ -1346,11 +1391,10 @@ export default function AttendancePage() {
                       <button
                         key={m.id}
                         onClick={() => setSelectedWorkerId(m.id)}
-                        className={`w-full text-left p-3 rounded-xl transition-all border text-xs ${
-                          isSelected
-                            ? 'bg-zinc-950 text-white border-zinc-950 shadow-md font-bold'
-                            : 'bg-zinc-50/50 hover:bg-zinc-50 text-zinc-800 border-zinc-150 hover:border-zinc-300'
-                        }`}
+                        className={`w-full text-left p-3 rounded-xl transition-all border text-xs ${isSelected
+                          ? 'bg-zinc-950 text-white border-zinc-950 shadow-md font-bold'
+                          : 'bg-zinc-50/50 hover:bg-zinc-50 text-zinc-800 border-zinc-150 hover:border-zinc-300'
+                          }`}
                       >
                         <span className="block font-bold truncate">{m.name}</span>
                         <span className={`text-[10px] mt-0.5 block ${isSelected ? 'text-zinc-300' : 'text-zinc-500'}`}>
@@ -1385,11 +1429,10 @@ export default function AttendancePage() {
                               setSelectedWorkerId(m.id);
                               setIsMobileWorkerListOpen(false);
                             }}
-                            className={`w-full text-left p-3 rounded-xl transition-all border text-xs ${
-                              isSelected
-                                ? 'bg-zinc-950 text-white border-zinc-950 shadow-md font-bold'
-                                : 'bg-zinc-50/50 hover:bg-zinc-50 text-zinc-800 border-zinc-150 hover:border-zinc-300'
-                            }`}
+                            className={`w-full text-left p-3 rounded-xl transition-all border text-xs ${isSelected
+                              ? 'bg-zinc-950 text-white border-zinc-950 shadow-md font-bold'
+                              : 'bg-zinc-50/50 hover:bg-zinc-50 text-zinc-800 border-zinc-150 hover:border-zinc-300'
+                              }`}
                           >
                             <span className="block font-bold truncate">{m.name}</span>
                             <span className={`text-[10px] mt-0.5 block ${isSelected ? 'text-zinc-300' : 'text-zinc-500'}`}>
@@ -1450,25 +1493,27 @@ export default function AttendancePage() {
                     endDate = new Date(selectedYearVal, selectedMonthVal + 1, 0, 23, 59, 59, 999);
                   }
 
-                  const formatIsoDate = (d: Date) => d.toISOString().split('T')[0];
-                  const startStr = formatIsoDate(startDate);
-                  const endStr = formatIsoDate(endDate);
+                  const startStr = formatLocalDate(startDate);
+                  const endStr = formatLocalDate(endDate);
 
                   // Filter attendance logs matching this worker & date range
-                  const workerAtt = attendanceLogs.filter(a => 
-                    a.workerName === worker.name && 
-                    a.date >= startStr && 
+                  const workerAtt = attendanceLogs.filter(a =>
+                    a.workerName === worker.name &&
+                    a.date >= startStr &&
                     a.date <= endStr
                   );
 
-                  // Filter payment history matching this worker & date range
-                  // Payouts for labor are stored under Category labour/Worker or custom payeeName matches.
-                  const workerPayments = paymentRequestsLogs.filter(pr => 
-                    pr.payeeName === worker.name && 
-                    pr.category === 'Worker' &&
-                    pr.createdAt >= startDate.toISOString() &&
-                    pr.createdAt <= endDate.toISOString()
-                  );
+                  const workerPayments = paymentRequestsLogs.filter(pr => {
+                    const isWorkerMatch = pr.payeeName.trim().toLowerCase() === worker.name.trim().toLowerCase();
+                    if (!isWorkerMatch) return false;
+
+                    if (pr.attendanceIds && pr.attendanceIds.length > 0) {
+                      const matchesAttendance = pr.attendanceIds.some((id: string) => workerAtt.some(a => a.id === id));
+                      if (matchesAttendance) return true;
+                    }
+
+                    return pr.dueDate >= startStr && pr.dueDate <= endStr;
+                  });
 
                   // Calculate stats
                   const daysPresent = workerAtt.filter(a => a.status === 'Present').length;
@@ -1552,17 +1597,15 @@ export default function AttendancePage() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setOverviewFilterType('weekly')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                              overviewFilterType === 'weekly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
-                            }`}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${overviewFilterType === 'weekly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
+                              }`}
                           >
                             Weekly
                           </button>
                           <button
                             onClick={() => setOverviewFilterType('monthly')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                              overviewFilterType === 'monthly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
-                            }`}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${overviewFilterType === 'monthly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
+                              }`}
                           >
                             Monthly
                           </button>
@@ -1624,28 +1667,12 @@ export default function AttendancePage() {
                         </div>
                       </div>
 
-                      {/* Period Banner info */}
-                      <div className="bg-zinc-950 text-white rounded-2xl p-4 flex items-center justify-between shadow-md">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-                            <Calendar className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-wider leading-none">Selected Range Period</p>
-                            <p className="font-extrabold text-sm mt-1">{startStr} to {endStr}</p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] bg-white/20 font-bold px-2.5 py-1 rounded-full uppercase">
-                          {overviewFilterType} view
-                        </span>
-                      </div>
-
                       {/* KPI Summary Grid */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-white border border-zinc-200/80 rounded-xl p-4 flex flex-col justify-between shadow-sm">
                           <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Present / Half / Absent</span>
                           <span className="text-base font-extrabold text-zinc-950 block mt-2">
-                            <span className="text-emerald-600">{daysPresent}d</span> • <span className="text-blue-600">{daysHalf}d</span> • <span className="text-rose-600">{daysAbsent}d</span>
+                            <span className="text-emerald-600">{daysPresent}D</span> • <span className="text-blue-600">{daysHalf}D</span> • <span className="text-rose-600">{daysAbsent}D</span>
                           </span>
                         </div>
 
@@ -1661,8 +1688,8 @@ export default function AttendancePage() {
 
                         <div className="bg-white border border-zinc-200/80 rounded-xl p-4 flex flex-col justify-between shadow-sm">
                           <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Remaining Due</span>
-                          <div className="flex items-end justify-between mt-2">
-                            <span className="text-lg font-black text-amber-600">{formatCur(remainingToPay)}</span>
+                          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mt-2">
+                            <span className="text-lg font-black text-amber-600 truncate">{formatCur(remainingToPay)}</span>
                             {remainingToPay > 0 && (
                               <button
                                 type="button"
@@ -1670,14 +1697,14 @@ export default function AttendancePage() {
                                   setPayWagesAmount(remainingToPay.toString());
                                   setIsPayWagesOpen(true);
                                 }}
-                                className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm"
+                                className="w-full sm:w-auto px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm text-center flex items-center justify-center whitespace-nowrap"
                               >
                                 Pay Wages
                               </button>
                             )}
                           </div>
                         </div>
-                                            </div>
+                      </div>
 
                       {/* Attendance Calendar Visualizer */}
                       <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
@@ -1695,115 +1722,118 @@ export default function AttendancePage() {
                         </div>
                       </div>
 
-                      {/* Logs Table */}
+                      {/* Wage Payment Requests Table */}
                       <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
-                        <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Attendance & Wage Log Breakdown</h3>
-                        {workerAtt.length === 0 ? (
-                          <div className="p-8 border border-dashed rounded-xl text-center bg-zinc-50">
-                            <ClipboardCheck className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
-                            <p className="text-xs text-zinc-500 font-medium">No logs matched this date range.</p>
-                          </div>
-                        ) : (
-                          (() => {
-                            // Row limiter (5 rows per page) using parent state
-                            const limit = 5;
-                            const totalPages = Math.max(1, Math.ceil(workerAtt.length / limit));
-                            const currPage = Math.min(overviewPage, totalPages);
-                            const paginated = workerAtt.slice((currPage - 1) * limit, currPage * limit);
-                            const emptyRows = Math.max(0, limit - paginated.length);
+                        <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Wage Payment Requests</h3>
+                        {(() => {
+                          // Row limiter (5 rows per page) using parent state
+                          const limit = 5;
+                          const totalPages = Math.max(1, Math.ceil(workerPayments.length / limit));
+                          const currPage = Math.min(overviewPage, totalPages);
+                          const paginated = workerPayments.slice((currPage - 1) * limit, currPage * limit);
+                          const emptyRows = Math.max(0, limit - paginated.length);
 
-                            return (
-                              <div className="border border-zinc-200/80 rounded-xl overflow-hidden">
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-xs text-left text-zinc-600 border-collapse">
-                                    <thead>
-                                      <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
-                                        <th className="py-2.5 px-3">Date</th>
-                                        <th className="py-2.5 px-3">Project / Task</th>
-                                        <th className="py-2.5 px-3">Status</th>
-                                        <th className="py-2.5 px-3 text-right">Base Wage</th>
-                                        <th className="py-2.5 px-3 text-right">OT Amount</th>
-                                        <th className="py-2.5 px-3 text-right">Total Day Wage</th>
-                                        <th className="py-2.5 px-3 text-center">Payment</th>
+                          return (
+                            <div className="border border-zinc-200/80 rounded-xl overflow-hidden">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-left text-zinc-600 border-collapse">
+                                  <thead>
+                                    <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200 h-[36px]">
+                                      <th className="py-2.5 px-3">Date</th>
+                                      <th className="py-2.5 px-3">Project Scope / Memo</th>
+                                      <th className="py-2.5 px-3">Method</th>
+                                      <th className="py-2.5 px-3 text-right">Requested</th>
+                                      <th className="py-2.5 px-3 text-right">Paid</th>
+                                      <th className="py-2.5 px-3 text-right">Remaining</th>
+                                      <th className="py-2.5 px-3 text-center">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-zinc-100 text-zinc-900 bg-white">
+                                    {workerPayments.length === 0 ? (
+                                      <tr className="h-[280px]">
+                                        <td colSpan={7} className="text-center py-8">
+                                          <div className="flex flex-col items-center justify-center">
+                                            <ClipboardCheck className="w-8 h-8 text-zinc-400 mb-2" />
+                                            <p className="text-xs text-zinc-500 font-medium">No wage payment requests found for this period.</p>
+                                          </div>
+                                        </td>
                                       </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-zinc-100 text-zinc-900 bg-white">
-                                      {paginated.map(a => {
-                                        let wages = 0;
-                                        if (a.status === 'Present') wages = a.dailyWage || worker.dailyWage;
-                                        else if (a.status === 'Half Day') wages = (a.dailyWage || worker.dailyWage) * 0.5;
-                                        const totalDay = wages + (a.overtimeAmount || 0);
+                                    ) : (
+                                      <>
+                                        {paginated.map(pr => {
+                                          let paidAmt = 0;
+                                          if (pr.status === 'Paid') {
+                                            paidAmt = pr.amount;
+                                          } else if (pr.status === 'Partially Paid') {
+                                            paidAmt = (pr.paymentHistory || []).reduce((s: number, item: any) => s + item.amount, 0);
+                                          }
+                                          const remaining = Math.max(0, pr.amount - paidAmt);
 
-                                        return (
-                                          <tr key={a.id} className="hover:bg-zinc-50/50 transition-colors">
-                                            <td className="py-3 px-3 font-semibold whitespace-nowrap">{a.date}</td>
-                                            <td className="py-3 px-3">
-                                              <span className="font-bold text-zinc-800 block truncate max-w-[150px]">{a.projectName}</span>
-                                              <span className="text-[10px] text-zinc-400 block mt-0.5">{a.taskName}</span>
-                                            </td>
-                                            <td className="py-3 px-3">
-                                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                a.status === 'Present'
-                                                  ? 'bg-emerald-50 text-emerald-700'
-                                                  : a.status === 'Half Day'
-                                                    ? 'bg-blue-50 text-blue-700'
-                                                    : 'bg-rose-50 text-rose-700'
-                                              }`}>
-                                                {a.status}
-                                              </span>
-                                            </td>
-                                            <td className="py-3 px-3 text-right font-medium text-zinc-700">{formatCur(wages)}</td>
-                                            <td className="py-3 px-3 text-right text-zinc-500">{formatCur(a.overtimeAmount || 0)}</td>
-                                            <td className="py-3 px-3 text-right font-bold text-zinc-950">{formatCur(totalDay)}</td>
-                                            <td className="py-3 px-3 text-center">
-                                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                a.paymentStatus === 'Paid'
-                                                  ? 'bg-emerald-50 text-emerald-700'
-                                                  : 'bg-amber-50 text-amber-700'
-                                              }`}>
-                                                {a.paymentStatus || 'Unpaid'}
-                                              </span>
-                                            </td>
+                                          const prjName = projects.find(p => p.id === pr.projectId)?.projectName || 'Unknown Project';
+                                          const tskName = tasks.find(t => t.id === pr.taskId)?.taskName || pr.description || '—';
+
+                                          let statusBadgeClass = 'bg-amber-50 text-amber-700';
+                                          if (pr.status === 'Paid') statusBadgeClass = 'bg-emerald-50 text-emerald-700';
+                                          else if (pr.status === 'Partially Paid') statusBadgeClass = 'bg-blue-50 text-blue-700';
+                                          else if (pr.status === 'Cancelled') statusBadgeClass = 'bg-zinc-150 text-zinc-650';
+
+                                          return (
+                                            <tr key={pr.id} className="h-[56px] hover:bg-zinc-50/50 transition-colors">
+                                              <td className="py-3 px-3 font-semibold whitespace-nowrap">{pr.dueDate}</td>
+                                              <td className="py-3 px-3">
+                                                <span className="font-bold text-zinc-800 block truncate max-w-[150px]">{prjName}</span>
+                                                <span className="text-[10px] text-zinc-400 block mt-0.5 truncate max-w-[150px]">{tskName}</span>
+                                              </td>
+                                              <td className="py-3 px-3 font-medium text-zinc-600">{pr.paymentMethod || 'Bank Transfer'}</td>
+                                              <td className="py-3 px-3 text-right font-medium text-zinc-700">{formatCur(pr.amount)}</td>
+                                              <td className="py-3 px-3 text-right font-medium text-emerald-600">{formatCur(paidAmt)}</td>
+                                              <td className="py-3 px-3 text-right font-bold text-zinc-950">{formatCur(remaining)}</td>
+                                              <td className="py-3 px-3 text-center">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusBadgeClass}`}>
+                                                  {pr.status || 'Pending'}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                        {Array.from({ length: emptyRows }).map((_, i) => (
+                                          <tr key={`empty-${i}`} className="h-[56px] opacity-0 select-none">
+                                            <td colSpan={7} className="py-3 px-3">&nbsp;</td>
                                           </tr>
-                                        );
-                                      })}
-                                      {Array.from({ length: emptyRows }).map((_, i) => (
-                                        <tr key={`empty-${i}`} className="opacity-0 select-none">
-                                          <td colSpan={7} className="py-3 px-3">&nbsp;</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                                
-                                {/* Pagination controls */}
-                                <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-100 bg-zinc-50/50">
-                                  <span className="text-[10px] text-zinc-400 font-bold">
-                                    Page {currPage} of {totalPages} ({workerAtt.length} items)
-                                  </span>
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      disabled={currPage <= 1}
-                                      onClick={() => setOverviewPage(p => Math.max(1, p - 1))}
-                                      className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
-                                    >
-                                      Prev
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={currPage >= totalPages}
-                                      onClick={() => setOverviewPage(p => Math.min(totalPages, p + 1))}
-                                      className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
-                                    >
-                                      Next
-                                    </button>
-                                  </div>
+                                        ))}
+                                      </>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* Pagination controls */}
+                              <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-100 bg-zinc-50/50">
+                                <span className="text-[10px] text-zinc-400 font-bold">
+                                  Page {currPage} of {totalPages} ({workerPayments.length} items)
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={currPage <= 1}
+                                    onClick={() => setOverviewPage(p => Math.max(1, p - 1))}
+                                    className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
+                                  >
+                                    Prev
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={currPage >= totalPages}
+                                    onClick={() => setOverviewPage(p => Math.min(totalPages, p + 1))}
+                                    className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
+                                  >
+                                    Next
+                                  </button>
                                 </div>
                               </div>
-                            );
-                          })()
-                        )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -1834,13 +1864,12 @@ export default function AttendancePage() {
               endDate = new Date(selectedYearVal, selectedMonthVal + 1, 0, 23, 59, 59, 999);
             }
 
-            const formatIsoDate = (d: Date) => d.toISOString().split('T')[0];
-            const startStr = formatIsoDate(startDate);
-            const endStr = formatIsoDate(endDate);
+            const startStr = formatLocalDate(startDate);
+            const endStr = formatLocalDate(endDate);
 
-            const workerAtt = attendanceLogs.filter(a => 
-              a.workerName === worker.name && 
-              a.date >= startStr && 
+            const workerAtt = attendanceLogs.filter(a =>
+              a.workerName === worker.name &&
+              a.date >= startStr &&
               a.date <= endStr
             );
 
@@ -1853,13 +1882,23 @@ export default function AttendancePage() {
               return sum + rate + (a.overtimeAmount || 0);
             }, 0);
 
-            const paidWages = paymentRequestsLogs
-              .filter(pr => pr.payeeName === worker.name && pr.category === 'Worker' && pr.createdAt >= startDate.toISOString() && pr.createdAt <= endDate.toISOString())
+            const workerPayments = paymentRequestsLogs.filter(pr => {
+              const isWorkerMatch = pr.payeeName.trim().toLowerCase() === worker.name.trim().toLowerCase();
+              if (!isWorkerMatch) return false;
+
+              if (pr.attendanceIds && pr.attendanceIds.length > 0) {
+                const matchesAttendance = pr.attendanceIds.some((id: string) => workerAtt.some(a => a.id === id));
+                if (matchesAttendance) return true;
+              }
+
+              return pr.dueDate >= startStr && pr.dueDate <= endStr;
+            });
+
+            const paidWages = workerPayments
               .filter(pr => pr.status === 'Paid')
               .reduce((sum, pr) => sum + pr.amount, 0);
 
-            const partialPaidSum = paymentRequestsLogs
-              .filter(pr => pr.payeeName === worker.name && pr.category === 'Worker' && pr.createdAt >= startDate.toISOString() && pr.createdAt <= endDate.toISOString())
+            const partialPaidSum = workerPayments
               .filter(pr => pr.status === 'Partially Paid')
               .reduce((sum, pr) => {
                 const history = pr.paymentHistory || [];
@@ -1891,7 +1930,44 @@ export default function AttendancePage() {
                   <div className="text-xs text-zinc-655 space-y-2">
                     <p><strong>Worker:</strong> {worker.name} ({worker.trade})</p>
                     <p><strong>Outstanding Balance:</strong> {formatCur(remainingToPay)}</p>
-                    <p><strong>Unpaid Days:</strong> {unpaidLogs.length} day(s)</p>
+                    {unpaidLogs.length > 0 && (
+                      <p><strong>Unpaid Days:</strong> {unpaidLogs.length} day(s)</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Project (Optional)</label>
+                    <select
+                      value={payWagesProjectId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPayWagesProjectId(val);
+                        setPayWagesTaskId('');
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none"
+                    >
+                      <option value="">-- Select Project (Optional) --</option>
+                      {projects.map(p => (
+                        <option key={p.id} value={p.id}>{p.projectName}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Task (Optional)</label>
+                    <select
+                      value={payWagesTaskId}
+                      onChange={(e) => setPayWagesTaskId(e.target.value)}
+                      disabled={!payWagesProjectId}
+                      className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
+                    >
+                      <option value="">-- Select Task (Optional) --</option>
+                      {tasks
+                        .filter(t => t.projectId === payWagesProjectId)
+                        .map(t => (
+                          <option key={t.id} value={t.id}>{t.taskName}</option>
+                        ))}
+                    </select>
                   </div>
 
                   <div className="space-y-2">

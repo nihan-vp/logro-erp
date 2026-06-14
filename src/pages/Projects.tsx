@@ -29,13 +29,13 @@ const parseNumericQty = (qty: string) => parseFloat(qty.replace(/[^0-9.]/g, ''))
 // ─── Helper: Determine icon + colour for a given MIME / extension ───────────
 const getFileIcon = (type: string) => {
   if (!type) return <FileText className="w-5 h-5 text-zinc-400" />;
-  if (type.startsWith('image/'))   return <FileImage className="w-5 h-5 text-blue-500" />;
-  if (type.startsWith('video/'))   return <FileVideo className="w-5 h-5 text-purple-500" />;
-  if (type.includes('pdf'))        return <FileText className="w-5 h-5 text-rose-500" />;
+  if (type.startsWith('image/')) return <FileImage className="w-5 h-5 text-blue-500" />;
+  if (type.startsWith('video/')) return <FileVideo className="w-5 h-5 text-purple-500" />;
+  if (type.includes('pdf')) return <FileText className="w-5 h-5 text-rose-500" />;
   if (type.includes('zip') || type.includes('rar') || type.includes('7z'))
-                                   return <FileArchive className="w-5 h-5 text-amber-500" />;
+    return <FileArchive className="w-5 h-5 text-amber-500" />;
   if (type.includes('sheet') || type.includes('csv') || type.includes('excel'))
-                                   return <FileCog className="w-5 h-5 text-emerald-500" />;
+    return <FileCog className="w-5 h-5 text-emerald-500" />;
   return <File className="w-5 h-5 text-zinc-400" />;
 };
 
@@ -786,10 +786,10 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       return;
     }
 
-    const titleText = isEditingPaidExpense 
-      ? 'Submit edit approval request?' 
-      : expenseEditId 
-        ? 'Update payment request?' 
+    const titleText = isEditingPaidExpense
+      ? 'Submit edit approval request?'
+      : expenseEditId
+        ? 'Update payment request?'
         : 'Submit expense request?';
 
     const messageText = isEditingPaidExpense
@@ -1060,8 +1060,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight ${p.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/40' :
-                              p.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border border-zinc-200/40' :
-                                p.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/40' : 'bg-zinc-50 text-zinc-500'
+                            p.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border border-zinc-200/40' :
+                              p.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/40' : 'bg-zinc-50 text-zinc-500'
                             }`}>
                             {p.status}
                           </span>
@@ -1093,21 +1093,21 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       </div>
 
                       {userRole !== 'manager' && (
-                      <div className="grid grid-cols-2 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[11px] font-bold border border-zinc-100">
-                        <div>
-                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">
-                            {p.contractBudget > 0 ? 'Contract Budget' : 'Task Budgets'}
-                          </span>
-                          <span className="text-zinc-900">
-                            {formatCur(p.contractBudget > 0 ? p.contractBudget : (p.totalBudget || 0))}
-                          </span>
+                        <div className="grid grid-cols-2 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[11px] font-bold border border-zinc-100">
+                          <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">
+                              {p.contractBudget > 0 ? 'Contract Budget' : 'Task Budgets'}
+                            </span>
+                            <span className="text-zinc-900">
+                              {formatCur(p.contractBudget > 0 ? p.contractBudget : (p.totalBudget || 0))}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Total Expenses</span>
+                            <span className="text-zinc-900">{formatCur(p.totalExpenses || 0)}</span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Total Expenses</span>
-                          <span className="text-zinc-900">{formatCur(p.totalExpenses || 0)}</span>
-                        </div>
-                      </div>
-                    )}
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-100 text-xs">
@@ -1178,8 +1178,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
               <div className="flex items-center gap-2">
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${selectedProject.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' :
-                    selectedProject.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border' :
-                      selectedProject.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/50' : 'bg-zinc-50 text-zinc-500'
+                  selectedProject.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border' :
+                    selectedProject.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/50' : 'bg-zinc-50 text-zinc-500'
                   }`}>
                   {selectedProject.status}
                 </span>
@@ -1305,26 +1305,26 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   </select>
                 </div>
 
-                                {userRole === 'admin' && (
-                                  <button
-                                    onClick={handleOpenCreateTask}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm"
-                                  >
-                                    <Plus className="w-3.5 h-3.5" /> Add Task
-                                  </button>
-                                )}
+                {userRole === 'admin' && (
+                  <button
+                    onClick={handleOpenCreateTask}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Task
+                  </button>
+                )}
 
               </div>
 
-               {loadingDetails ? (
-                 <div className="flex justify-center p-8">
-                   <div className="w-7 h-7 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin"></div>
-                 </div>
-               ) : filteredTasksList.length === 0 ? (
-                 <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
-                   <p className="text-xs text-zinc-500">No project tasks found. {userRole === 'admin' && 'Click Add Task to add.'}</p>
-                 </div>
-               ) : (
+              {loadingDetails ? (
+                <div className="flex justify-center p-8">
+                  <div className="w-7 h-7 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin"></div>
+                </div>
+              ) : filteredTasksList.length === 0 ? (
+                <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
+                  <p className="text-xs text-zinc-500">No project tasks found. {userRole === 'admin' && 'Click Add Task to add.'}</p>
+                </div>
+              ) : (
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredTasksList.map((t) => {
@@ -1348,8 +1348,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                               value={t.status}
                               onChange={(e) => handleQuickStatusUpdate(t, e.target.value as TaskStatus)}
                               className={`text-[10px] font-bold px-2 py-0.5 rounded-full outline-none border cursor-pointer ${t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                  t.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border-zinc-200' :
-                                    t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-100 text-zinc-500 border-zinc-200'
+                                t.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border-zinc-200' :
+                                  t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-100 text-zinc-500 border-zinc-200'
                                 }`}
                             >
                               <option value="Pending">Pending</option>
@@ -1433,22 +1433,22 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                               <span>Details</span>
                               <ChevronRight className="w-3.5 h-3.5" />
                             </button>
-                               <button
-                                 onClick={() => handleOpenEditTask(t)}
-                                 className={`p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40 ${userRole !== 'admin' ? 'hidden' : ''}`}
-                                 title="Edit"
-                               >
-                                 <Edit2 className="w-3.5 h-3.5" />
-                               </button>
-                               {userRole === 'admin' && (
-                                 <button
-                                   onClick={() => handleDeleteTask(t.id)}
-                                   className="p-1 text-rose-500 hover:text-rose-700 bg-zinc-50 border border-zinc-200/40 rounded"
-                                   title="Delete"
-                                 >
-                                   <Trash2 className="w-3.5 h-3.5" />
-                                 </button>
-                               )}
+                            <button
+                              onClick={() => handleOpenEditTask(t)}
+                              className={`p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40 ${userRole !== 'admin' ? 'hidden' : ''}`}
+                              title="Edit"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            {userRole === 'admin' && (
+                              <button
+                                onClick={() => handleDeleteTask(t.id)}
+                                className="p-1 text-rose-500 hover:text-rose-700 bg-zinc-50 border border-zinc-200/40 rounded"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
 
                           </div>
                         </div>
@@ -1502,16 +1502,16 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   </select>
                 </div>
 
-                    <div className="flex gap-2">
-                      {userRole === 'admin' && (
-                        <button
-                          onClick={() => handleOpenCreateExpense()}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Log Expenditure
-                        </button>
-                      )}
-                    </div>
+                <div className="flex gap-2">
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => handleOpenCreateExpense()}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Log Expenditure
+                    </button>
+                  )}
+                </div>
 
               </div>
 
@@ -1582,26 +1582,26 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
                         <div className="text-right flex items-center sm:block gap-2">
                           <span className="text-sm font-bold text-zinc-950 block">{formatCur(e.amount)}</span>
-                             <div className="flex items-center gap-1 justify-end mt-1">
-                              {userRole === 'admin' && (
-                                <button
-                                  onClick={() => handleOpenEditExpense(e)}
-                                  className="p-1 bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 border rounded"
-                                  title={e.isPendingRequest ? "Edit request" : "Request Edit (Paid Expense)"}
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                </button>
-                              )}
-                              {userRole === 'admin' && (
-                                <button
-                                  onClick={() => handleDeleteExpense(e.id)}
-                                  className="p-1 bg-zinc-50 hover:bg-rose-50 text-rose-500 hover:text-rose-700 border rounded"
-                                  title={e.isPendingRequest ? "Cancel request" : "Request Delete (Paid Expense)"}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
+                          <div className="flex items-center gap-1 justify-end mt-1">
+                            {userRole === 'admin' && (
+                              <button
+                                onClick={() => handleOpenEditExpense(e)}
+                                className="p-1 bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 border rounded"
+                                title={e.isPendingRequest ? "Edit request" : "Request Edit (Paid Expense)"}
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                            {userRole === 'admin' && (
+                              <button
+                                onClick={() => handleDeleteExpense(e.id)}
+                                className="p-1 bg-zinc-50 hover:bg-rose-50 text-rose-500 hover:text-rose-700 border rounded"
+                                title={e.isPendingRequest ? "Cancel request" : "Request Delete (Paid Expense)"}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
 
                         </div>
                       </div>
@@ -1775,22 +1775,22 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               </div>
             )}
 
-                    <div className="flex justify-end gap-2 border-t pt-4">
-                      {userRole === 'admin' && (
-                        <button
-                          onClick={() => { handleOpenEditTask(activeTask); }}
-                          className="px-3 py-1.5 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 rounded-xl text-xs font-bold transition"
-                        >
-                          Modify Task
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setActiveTask(null)}
-                        className="px-4 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition"
-                      >
-                        Done
-                      </button>
-                    </div>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              {userRole === 'admin' && (
+                <button
+                  onClick={() => { handleOpenEditTask(activeTask); }}
+                  className="px-3 py-1.5 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 rounded-xl text-xs font-bold transition"
+                >
+                  Modify Task
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTask(null)}
+                className="px-4 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition"
+              >
+                Done
+              </button>
+            </div>
 
           </div>
         </div>
@@ -1827,7 +1827,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 <input
                   type="text"
                   required
-                  placeholder=""
+                  placeholder="Project Name"
                   value={projName}
                   onChange={(e) => setProjName(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
@@ -1840,7 +1840,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   <input
                     type="text"
                     required
-                    placeholder=""
+                    placeholder="Client Name"
                     value={projClient}
                     onChange={(e) => setProjClient(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
@@ -1852,7 +1852,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   <input
                     type="text"
                     required
-                    placeholder=""
+                    placeholder="Site Location"
                     value={projLocation}
                     onChange={(e) => setProjLocation(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
