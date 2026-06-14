@@ -40,7 +40,7 @@ function ensureAdminLoginSeed(data: DatabaseSchema): { data: DatabaseSchema; cha
       id: 'usr_accountant',
       name: 'Accountant',
       email: 'accountant@logro.com',
-      password: 'password123',
+      password: 'acc.Logro@9090',
       phone: '',
       role: 'accountant',
       status: 'active'
@@ -341,7 +341,7 @@ function generateSeedData(): DatabaseSchema {
       id: 'usr_accountant',
       name: 'Accountant',
       email: 'accountant@logro.com',
-      password: 'password123',
+      password: 'acc.Logro@9090',
       phone: '',
       role: 'accountant',
       status: 'active'

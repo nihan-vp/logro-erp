@@ -7,26 +7,26 @@ const router = Router();
 
 router.post('/login', async (req, res) => {
   const { email, password, companyName } = req.body;
-  
+
   // Superadmin bypass
   if (email === process.env.SUPERADMIN_EMAIL && password === process.env.SUPERADMIN_PASSWORD) {
-      const token = signToken({
-        userId: 'superadmin',
-        role: 'admin',
+    const token = signToken({
+      userId: 'superadmin',
+      role: 'admin',
+      name: 'Super Admin',
+      companyName: 'SUPERADMIN',
+      email: process.env.SUPERADMIN_EMAIL || 'superadmin@logro.com'
+    });
+    return res.json({
+      token,
+      user: {
+        id: 'superadmin',
         name: 'Super Admin',
-        companyName: 'SUPERADMIN',
-        email: process.env.SUPERADMIN_EMAIL || 'superadmin@logro.com'
-      });
-      return res.json({
-        token,
-        user: {
-          id: 'superadmin',
-          name: 'Super Admin',
-          email: process.env.SUPERADMIN_EMAIL,
-          role: 'admin',
-          status: 'active'
-        }
-      });
+        email: process.env.SUPERADMIN_EMAIL,
+        role: 'admin',
+        status: 'active'
+      }
+    });
   }
 
   if (!email || !password) {
@@ -93,11 +93,11 @@ router.post('/login', async (req, res) => {
     return res.status(500).json({ error: 'Internal server error during authentication' });
   }
 
-  const expectedPassword = user.password || 'password123';
+  const expectedPassword = user.password || 'acc.Logro@9090';
   if (password !== expectedPassword) {
     // Record failed attempt
     const currentAttempt = loginAttempts[emailKey] || { attempts: 0, lockoutUntil: 0 };
-    
+
     // If lockout expired, reset
     if (currentAttempt.lockoutUntil > 0 && currentAttempt.lockoutUntil <= Date.now()) {
       currentAttempt.attempts = 0;
