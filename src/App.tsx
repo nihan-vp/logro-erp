@@ -197,7 +197,6 @@ export default function App() {
     ] : userRole === 'accountant' ? [
       { id: 'dashboard', label: 'Overview', icon: BarChart3 },
       { id: 'finance', label: 'Finance Hub', icon: DollarSign },
-      { id: 'projects', label: 'Projects', icon: Building2 },
       { id: 'accountant', label: 'Accountant', icon: Landmark },
     ] : []),
   ];
