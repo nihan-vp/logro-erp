@@ -8,6 +8,7 @@ import {
 import { api } from '../api/client';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
+import BackupSection from '../components/BackupSection';
 
 export default function SuperadminDashboard() {
   const confirm = useConfirm();
@@ -15,6 +16,7 @@ export default function SuperadminDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'trial' | 'suspended'>('all');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'backups'>('tenants');
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -639,9 +641,31 @@ export default function SuperadminDashboard() {
         </div>
       </div>
 
-      {/* Toolbar / Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-3">
-        <div className="relative w-full md:max-w-xs">
+      {/* Tabs Navigation */}
+      <div className="flex border-b border-zinc-200 gap-6 mb-4">
+        <button
+          onClick={() => setActiveTab('tenants')}
+          className={`pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            activeTab === 'tenants' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
+          }`}
+        >
+          Tenant Databases
+        </button>
+        <button
+          onClick={() => setActiveTab('backups')}
+          className={`pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            activeTab === 'backups' ? 'border-zinc-950 text-zinc-950' : 'border-transparent text-zinc-400 hover:text-zinc-650'
+          }`}
+        >
+          Database Backups
+        </button>
+      </div>
+
+      {activeTab === 'tenants' ? (
+        <>
+          {/* Toolbar / Filters */}
+          <div className="flex flex-col md:flex-row justify-between items-center gap-3">
+            <div className="relative w-full md:max-w-xs">
           <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-4 w-4 text-zinc-400" />
           </span>
@@ -826,6 +850,10 @@ export default function SuperadminDashboard() {
           </div>
         )}
       </div>
+      </>
+      ) : (
+        <BackupSection />
+      )}
 
       {/* Register Tenant Modal */}
       {showAddModal && (

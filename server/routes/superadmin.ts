@@ -3,6 +3,8 @@ import { ObjectId } from 'mongodb';
 import { getTenantDb } from '../tenantDb';
 import { registerCompany, getRegistryDb } from '../registry';
 import { requireAuth } from '../middleware/auth';
+import { listUserDatabases, runBackup } from '../utils/backupRunner';
+import fs from 'fs';
 
 const router = Router();
 
@@ -179,6 +181,37 @@ router.delete('/companies/:companyName/users/:userId', async (req: any, res) => 
         res.json({ success: true, message: 'User deleted successfully' });
     } catch (err: any) {
         res.status(500).json({ error: 'Failed to delete user' });
+    }
+});
+
+router.get('/backup/databases', async (req: any, res) => {
+    try {
+        const databases = await listUserDatabases();
+        res.json(databases);
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to list databases: ' + err.message });
+    }
+});
+
+router.post('/backup', async (req: any, res) => {
+    const { database } = req.body;
+    try {
+        const zipPath = await runBackup(database);
+        res.download(zipPath, (err) => {
+            try {
+                if (fs.existsSync(zipPath)) {
+                    fs.unlinkSync(zipPath);
+                }
+            } catch (cleanupErr) {
+                console.error('Failed to delete zip file:', cleanupErr);
+            }
+            if (err) {
+                console.error('Failed to send backup file:', err);
+            }
+        });
+    } catch (err: any) {
+        console.error('Backup API error:', err);
+        res.status(500).json({ error: 'Backup failed: ' + err.message });
     }
 });
 
