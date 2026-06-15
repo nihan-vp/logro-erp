@@ -16,16 +16,16 @@ const REQUEST_TO_EXPENSE_CATEGORY: Record<string, ExpenseCategory> = {
   Vendor: 'Material',
   Transportation: 'Transport',
   'Vendor Payment': 'Vendor Payment',
-  Purchase: 'Purchase',
+  Purchase: 'Material',
   Other: 'Other',
 };
 
 function expenseCategoryToRequestCategory(category: ExpenseCategory | string): PaymentRequest['category'] {
-  if (category === 'Material' || category === 'Tools') return 'Vendor';
+  if (category === 'Material') return 'Purchase';
+  if (category === 'Tools') return 'Vendor';
   if (category === 'Labour') return 'Worker';
   if (category === 'Transport') return 'Transportation';
   if (category === 'Vendor Payment') return 'Vendor Payment';
-  if (category === 'Purchase') return 'Purchase';
   return 'Other';
 }
 
@@ -1324,7 +1324,7 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
             'Vendor': 'Material',
             'Transportation': 'Transport',
             'Vendor Payment': 'Vendor Payment',
-            'Purchase': 'Purchase',
+            'Purchase': 'Material',
             'Other': 'Other'
           };
           
@@ -1427,7 +1427,7 @@ router.get('/office/funds', async (req: any, res) => {
 });
 
 router.post('/office/funds', requireAdminOrAccountant, async (req: any, res) => {
-    const { type, amount, description, date, projectId, source, paymentMethod, reference } = req.body;
+    const { type, amount, description, date, projectId, source, paymentMethod, reference, inflowType } = req.body;
     const tenantDb = await getTenantDb(req.user.companyName);
     
     const newTransaction = {
@@ -1439,7 +1439,8 @@ router.post('/office/funds', requireAdminOrAccountant, async (req: any, res) => 
         createdBy: req.user.userId,
         source,
         paymentMethod,
-        reference
+        reference,
+        inflowType
     };
     await tenantDb.collection('officeTransactions').insertOne(newTransaction);
     

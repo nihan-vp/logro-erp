@@ -130,6 +130,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
   const [inflowSource, setInflowSource] = useState('');
   const [inflowMethod, setInflowMethod] = useState('');
   const [inflowRef, setInflowRef] = useState('');
+  const [inflowType, setInflowType] = useState('client payment');
   const [inflowSubmitError, setInflowSubmitError] = useState<string | null>(null);
   const [requestSearch, setRequestSearch] = useState('');
   const [txnSearch, setTxnSearch] = useState('');
@@ -354,6 +355,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
     setInflowSource('');
     setInflowMethod('');
     setInflowRef('');
+    setInflowType('client payment');
     setInflowSubmitError(null);
   };
 
@@ -379,6 +381,7 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
         source: inflowSource,
         paymentMethod: inflowMethod,
         reference: inflowRef,
+        inflowType,
       });
       resetInflowForm();
       setShowInflowForm(false);
@@ -650,10 +653,10 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                               onClick={() => handleApprove(r)}
                               disabled={approvingId === r.id}
                               className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-[10px] font-semibold transition-all disabled:opacity-50 whitespace-nowrap ${r.adjustmentType === 'Delete'
-                                  ? 'bg-rose-600 hover:bg-rose-700'
-                                  : r.status === 'Partially Paid'
-                                    ? 'bg-blue-600 hover:bg-blue-700'
-                                    : 'bg-emerald-600 hover:bg-emerald-700'
+                                ? 'bg-rose-600 hover:bg-rose-700'
+                                : r.status === 'Partially Paid'
+                                  ? 'bg-blue-600 hover:bg-blue-700'
+                                  : 'bg-emerald-600 hover:bg-emerald-700'
                                 }`}
                             >
                               <Wallet className="w-3.5 h-3.5" />
@@ -755,6 +758,11 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                           {t.type === 'Cash In' && t.source && (
                             <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">From: {t.source}</span>
                           )}
+                          {t.type === 'Cash In' && t.inflowType && (
+                            <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded mt-1">
+                              {t.inflowType}
+                            </span>
+                          )}
                           {t.type === 'Cash Out' && t.description?.includes('Payment to ') && (
                             <span className="text-[10px] text-zinc-500 block mt-0.5">
                               To: {t.description.split('Payment to ')[1]?.split(' for')[0]}
@@ -766,8 +774,8 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                         </td>
                         <td className="px-3 align-middle">
                           <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${t.type === 'Cash In'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
                             }`}>
                             {t.type === 'Cash In' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                             {t.type}
@@ -824,18 +832,33 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
             )}
 
             <form onSubmit={handleInflowSubmit} className="space-y-4">
-              <div>
-                <label className={labelClass}>Amount (₹)</label>
-                <input
-                  type="number"
-                  required
-                  min={0.01}
-                  step="any"
-                  placeholder="e.g. 50000"
-                  value={inflowAmount}
-                  onChange={e => setInflowAmount(e.target.value)}
-                  className={inputClass}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Amount (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    min={0.01}
+                    step="any"
+                    placeholder="e.g. 50000"
+                    value={inflowAmount}
+                    onChange={e => setInflowAmount(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Inflow Type</label>
+                  <select
+                    value={inflowType}
+                    onChange={e => setInflowType(e.target.value)}
+                    required
+                    className={inputClass}
+                  >
+                    <option value="client payment">Client Payment</option>
+                    <option value="credit">Credit</option>
+                    <option value="custom">Other</option>
+                  </select>
+                </div>
               </div>
 
               <div>

@@ -15,6 +15,7 @@ export interface OfficeTransaction {
     source?: string;
     paymentMethod?: string;
     reference?: string;
+    inflowType?: string;
 }
 export interface PurchaseLineItem {
     materialName: string;

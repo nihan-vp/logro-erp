@@ -13,6 +13,7 @@ export default function AccountantPage() {
   const [showInflowForm, setShowInflowForm] = useState(false);
   const [inflowAmount, setInflowAmount] = useState('');
   const [inflowDesc, setInflowDesc] = useState('');
+  const [inflowType, setInflowType] = useState('client payment');
 
   useEffect(() => {
     fetchAccountantData();
@@ -79,10 +80,12 @@ export default function AccountantPage() {
           await api.postOfficeFund({
               type: 'Cash In',
               amount: Number(inflowAmount),
-              description: inflowDesc
+              description: inflowDesc,
+              inflowType
           });
           setInflowAmount('');
           setInflowDesc('');
+          setInflowType('client payment');
           setShowInflowForm(false);
           fetchAccountantData();
           notify.success('Inflow recorded successfully!');
@@ -119,9 +122,22 @@ export default function AccountantPage() {
                 <form onSubmit={handleInflowSubmit} className="bg-white p-6 rounded-2xl w-full max-w-sm space-y-4">
                     <div className="flex justify-between items-center">
                         <h2 className="text-lg font-bold">Record Cash Inflow</h2>
-                        <button onClick={() => setShowInflowForm(false)}><X className="w-5 h-5"/></button>
+                        <button type="button" onClick={() => setShowInflowForm(false)}><X className="w-5 h-5"/></button>
                     </div>
                     <input type="number" placeholder="Amount (₹)" className="w-full border p-2 rounded-lg" value={inflowAmount} onChange={e => setInflowAmount(e.target.value)} required />
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-zinc-650 block">Inflow Type</label>
+                        <select 
+                            value={inflowType} 
+                            onChange={e => setInflowType(e.target.value)} 
+                            className="w-full border p-2 rounded-lg bg-white"
+                            required
+                        >
+                            <option value="client payment">Client Payment</option>
+                            <option value="credit">Credit</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
                     <input type="text" placeholder="Description" className="w-full border p-2 rounded-lg" value={inflowDesc} onChange={e => setInflowDesc(e.target.value)} required />
                     <button type="submit" className="w-full bg-emerald-600 text-white p-2 rounded-lg font-semibold">Submit</button>
                 </form>
@@ -157,9 +173,16 @@ export default function AccountantPage() {
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><ClipboardList /> Recent Transactions</h3>
                 <div className="space-y-3">
                     {transactions.slice(-10).reverse().map(t => (
-                        <div key={t.id} className="text-sm border-b py-2 flex justify-between">
-                            <span>{t.description}</span>
-                            <span className={`font-semibold ${t.type === 'Cash In' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <div key={t.id} className="text-sm border-b py-2 flex justify-between items-start">
+                            <div>
+                                <span className="block font-medium">{t.description}</span>
+                                {t.type === 'Cash In' && t.inflowType && (
+                                    <span className="inline-flex text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 px-1 py-0.5 rounded mt-1">
+                                        {t.inflowType}
+                                    </span>
+                                )}
+                            </div>
+                            <span className={`font-semibold shrink-0 ${t.type === 'Cash In' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {t.type === 'Cash In' ? '+' : '-'} ₹{t.amount}
                             </span>
                         </div>

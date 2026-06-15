@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, FileText, X, Trash, UploadCloud, Eye, Clock, CheckCircle2, XCircle, AlertCircle, AlertTriangle,
-  ChevronLeft, ChevronRight, Edit2, Trash2
+  ChevronLeft, ChevronRight, Edit2, Trash2, ChevronDown
 } from 'lucide-react';
 import { api } from '../api/client';
 import { ExpenseCategory, PaymentRequest, PurchaseLineItem } from '../types';
@@ -45,11 +45,10 @@ const getStatusIcon = (status: PaymentRequest['status']) => {
 };
 
 const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest['category'] => {
-  if (cat === 'Material') return 'Vendor';
+  if (cat === 'Material') return 'Purchase';
   if (cat === 'Labour') return 'Worker';
   if (cat === 'Transport') return 'Transportation';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
-  if (cat === 'Purchase') return 'Purchase';
   return 'Other';
 };
 
@@ -58,7 +57,7 @@ const paymentCategoryToExpenseCategory = (cat: PaymentRequest['category']): Expe
   if (cat === 'Worker') return 'Labour';
   if (cat === 'Transportation') return 'Transport';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
-  if (cat === 'Purchase') return 'Purchase';
+  if (cat === 'Purchase') return 'Material';
   return 'Other';
 };
 
@@ -112,7 +111,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [reqProjectId, setReqProjectId] = useState('');
   const [reqTaskId, setReqTaskId] = useState('');
   const [reqCategory, setReqCategory] = useState<ExpenseCategory>('Material');
-  const [reqAmount, setReqAmount] = useState<number>(0);
+  const [reqAmount, setReqAmount] = useState<number | ''>('');
   const [reqPaidTo, setReqPaidTo] = useState('');
   const [reqPaymentMethod, setReqPaymentMethod] = useState('Bank Transfer');
   const [reqDate, setReqDate] = useState('');
@@ -128,13 +127,23 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [reqMaterialQty, setReqMaterialQty] = useState('');
   const [reqTools, setReqTools] = useState<string[]>([]);
   const [reqToolInput, setReqToolInput] = useState('');
-  const [reqVendorTotalToPay, setReqVendorTotalToPay] = useState<number>(0);
+  const [reqVendorTotalToPay, setReqVendorTotalToPay] = useState<number | ''>('');
   const [reqVendorPaid, setReqVendorPaid] = useState<number>(0);
-  const [reqPurchaseItems, setReqPurchaseItems] = useState<PurchaseLineItem[]>([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+  const [reqPurchaseItems, setReqPurchaseItems] = useState<Array<Omit<PurchaseLineItem, 'pricePerCount'> & { pricePerCount: number | '' }>>([{ materialName: '', qty: '', pricePerCount: '', total: 0 }]);
   const [vendorsList, setVendorsList] = useState<any[]>([]);
+  const [isVendorDropdownOpen, setIsVendorDropdownOpen] = useState(false);
+  const [vendorSearchQuery, setVendorSearchQuery] = useState('');
   const [showVendorSuggestions, setShowVendorSuggestions] = useState(false);
   const [crewSuggestions, setCrewSuggestions] = useState<string[]>([]);
   const [showCrewSuggestions, setShowCrewSuggestions] = useState(false);
+
+  // Quick Add Vendor states
+  const [isQuickAddVendorOpen, setIsQuickAddVendorOpen] = useState(false);
+  const [quickVendorName, setQuickVendorName] = useState('');
+  const [quickVendorTrade, setQuickVendorTrade] = useState('Supplier');
+  const [quickVendorPhone, setQuickVendorPhone] = useState('');
+  const [quickVendorError, setQuickVendorError] = useState<string | null>(null);
+  const [isSavingQuickVendor, setIsSavingQuickVendor] = useState(false);
 
   const selectedReqProjectName = projects.find(p => p.id === reqProjectId)?.projectName;
 
@@ -223,7 +232,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setIsEditingPaidExpense(false);
     setReqProjectId(projects[0]?.id || '');
     setReqCategory('Material');
-    setReqAmount(0);
+    setReqAmount('');
     setReqPaidTo('');
     setReqPaymentMethod('Bank Transfer');
     setReqDate(new Date().toISOString().split('T')[0]);
@@ -237,11 +246,13 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqMaterialQty('');
     setReqTools([]);
     setReqToolInput('');
-    setReqVendorTotalToPay(0);
+    setReqVendorTotalToPay('');
     setReqVendorPaid(0);
-    setReqPurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+    setReqPurchaseItems([{ materialName: '', qty: '', pricePerCount: '', total: 0 }]);
     setShowVendorSuggestions(false);
     setShowCrewSuggestions(false);
+    setIsVendorDropdownOpen(false);
+    setVendorSearchQuery('');
   };
 
   const handleOpenCreateRequest = () => {
@@ -278,23 +289,35 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqMaterialQty(request.materialQty || '');
     setReqTools(request.tools || []);
     setReqToolInput('');
-    setReqVendorTotalToPay(request.vendorTotalToPay || 0);
+    setReqVendorTotalToPay(request.vendorTotalToPay === undefined ? '' : request.vendorTotalToPay);
     setReqVendorPaid(request.vendorPaid || 0);
     if (request.purchaseItems && request.purchaseItems.length > 0) {
-      setReqPurchaseItems(request.purchaseItems);
+      setReqPurchaseItems(request.purchaseItems.map(item => ({
+        ...item,
+        pricePerCount: item.pricePerCount === 0 ? 0 : (item.pricePerCount || '')
+      })));
     } else if (request.materialName) {
       // Backward compatibility: convert old single-item data to array
       setReqPurchaseItems([{
         materialName: request.materialName || '',
         qty: request.materialQty || '',
-        pricePerCount: request.purchasePricePerCount || 0,
+        pricePerCount: request.purchasePricePerCount === undefined ? '' : request.purchasePricePerCount,
         total: request.purchaseTotalFull || 0,
       }]);
+    } else if (request.tools && request.tools.length > 0 && paymentCategoryToExpenseCategory(request.category) === 'Tools') {
+      setReqPurchaseItems(request.tools.map((t: string) => ({
+        materialName: t,
+        qty: '1',
+        pricePerCount: '',
+        total: 0,
+      })));
     } else {
-      setReqPurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+      setReqPurchaseItems([{ materialName: '', qty: '', pricePerCount: '', total: 0 }]);
     }
     setShowVendorSuggestions(false);
     setShowCrewSuggestions(false);
+    setIsVendorDropdownOpen(false);
+    setVendorSearchQuery('');
 
     try {
       const res = await api.getTasks(request.projectId);
@@ -382,23 +405,65 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     reader.readAsDataURL(file);
   };
 
+  const handleOpenAddVendorQuick = (initialName: string) => {
+    setQuickVendorName(initialName);
+    setQuickVendorTrade('Supplier');
+    setQuickVendorPhone('');
+    setQuickVendorError(null);
+    setIsQuickAddVendorOpen(true);
+  };
+
+  const handleQuickVendorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickVendorName.trim()) {
+      setQuickVendorError('Vendor name is required.');
+      return;
+    }
+    setIsSavingQuickVendor(true);
+    setQuickVendorError(null);
+    try {
+      const payload = {
+        name: quickVendorName.trim(),
+        trade: quickVendorTrade.trim() || 'Supplier',
+        phone: quickVendorPhone.trim(),
+        status: 'active',
+        notes: 'Added quickly from payment request form'
+      };
+      await api.createVendor(payload);
+      notify.success(`Vendor "${payload.name}" registered.`);
+      
+      const vendorsRes = await api.getVendors('active').catch(() => ({ vendors: [] }));
+      const updatedList = vendorsRes.vendors || [];
+      setVendorsList(updatedList);
+      
+      setReqPaidTo(payload.name);
+      setIsVendorDropdownOpen(false);
+      setVendorSearchQuery('');
+      setIsQuickAddVendorOpen(false);
+    } catch (err: any) {
+      setQuickVendorError(err?.message || 'Failed to register new vendor.');
+    } finally {
+      setIsSavingQuickVendor(false);
+    }
+  };
+
   const handleRequestSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!reqProjectId || !reqTaskId || !reqCategory || !reqPaidTo || !reqPaymentMethod || !reqDate) {
       notify.warning('All core fields are required.');
       return;
     }
-    if (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') {
-      if (reqVendorTotalToPay <= 0) {
+    if (reqCategory === 'Vendor Payment' || reqCategory === 'Material' || reqCategory === 'Tools') {
+      if (reqVendorTotalToPay === '' || reqVendorTotalToPay <= 0) {
         notify.warning('Total to pay must be greater than 0.');
         return;
       }
-    } else if (reqAmount <= 0) {
+    } else if (reqAmount === '' || reqAmount <= 0) {
       notify.warning('Spent amount must be greater than 0.');
       return;
     }
 
-    const amountLabel = formatCur(reqAmount);
+    const amountLabel = formatCur(Number(reqAmount));
     const titleText = isEditingPaidExpense
       ? 'Submit edit approval request?'
       : reqEditId
@@ -438,14 +503,14 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       priority: reqPriority,
       paymentMethod: reqPaymentMethod,
       billImage: reqBillImage || undefined,
-      materialName: (reqCategory === 'Material') ? reqMaterialName : (reqCategory === 'Purchase' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].materialName : undefined,
-      materialQty: (reqCategory === 'Material') ? reqMaterialQty : (reqCategory === 'Purchase' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].qty : undefined,
-      tools: reqCategory === 'Tools' ? reqTools : undefined,
-      vendorTotalToPay: (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') ? Number(reqVendorTotalToPay) : undefined,
-      purchasePricePerCount: reqCategory === 'Purchase' && reqPurchaseItems.length > 0 ? reqPurchaseItems[0].pricePerCount : undefined,
-      purchaseTotalFull: reqCategory === 'Purchase' ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
-      purchaseTotal: reqCategory === 'Purchase' ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
-      purchaseItems: reqCategory === 'Purchase' ? reqPurchaseItems : undefined,
+      materialName: (reqCategory === 'Material' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].materialName : undefined,
+      materialQty: (reqCategory === 'Material' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].qty : undefined,
+      tools: reqCategory === 'Tools' ? reqPurchaseItems.map(it => it.materialName).filter(Boolean) : undefined,
+      vendorTotalToPay: (reqCategory === 'Vendor Payment' || reqCategory === 'Material' || reqCategory === 'Tools') ? Number(reqVendorTotalToPay) : undefined,
+      purchasePricePerCount: (reqCategory === 'Material' || reqCategory === 'Tools') && reqPurchaseItems.length > 0 ? (reqPurchaseItems[0].pricePerCount === '' ? 0 : Number(reqPurchaseItems[0].pricePerCount)) : undefined,
+      purchaseTotalFull: (reqCategory === 'Material' || reqCategory === 'Tools') ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
+      purchaseTotal: (reqCategory === 'Material' || reqCategory === 'Tools') ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
+      purchaseItems: (reqCategory === 'Material' || reqCategory === 'Tools') ? reqPurchaseItems.map(it => ({ ...it, pricePerCount: it.pricePerCount === '' ? 0 : Number(it.pricePerCount) })) : undefined,
     };
     try {
       setReqSubmitError(null);
@@ -506,7 +571,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const rangeStart = filteredRequests.length === 0 ? 0 : startIndex + 1;
   const rangeEnd = Math.min(startIndex + rowsPerPage, filteredRequests.length);
 
-  const insufficientOfficeFunds = userRole === 'admin' && reqAmount > 0 && reqAmount > officeBalance;
+  const insufficientOfficeFunds = userRole === 'admin' && reqAmount !== '' && reqAmount > 0 && reqAmount > officeBalance;
 
   const pendingRequests = requests.filter(r => r.status === 'Pending' && !r.adjustmentType);
   const paidRequests = requests.filter(r => r.status === 'Paid' && !r.adjustmentType);
@@ -627,7 +692,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
             <table className="w-full text-xs text-left text-zinc-600 border-collapse min-w-[720px]">
               <thead>
                 <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
-                  <th className="py-3 px-4">Payee</th>
+                  <th className="py-3 px-4">Vendor</th>
                   <th className="py-3 px-4">Project</th>
                   <th className="py-3 px-4">Task</th>
                   <th className="py-3 px-4">Category</th>
@@ -799,7 +864,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                   <p className="font-bold">Insufficient office funds</p>
                   <p className="mt-0.5 font-medium leading-relaxed">
                     Available office balance is <span className="font-bold">{formatCur(officeBalance)}</span>, but this
-                    request is for <span className="font-bold">{formatCur(reqAmount)}</span>. You can still submit —
+                    request is for <span className="font-bold">{formatCur(Number(reqAmount))}</span>. You can still submit —
                     the accountant may need to record a cash inflow before approval.
                   </p>
                 </div>
@@ -847,12 +912,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none"
                   >
                     <option value="Material">Material</option>
-                    <option value="Labour">Labour</option>
                     <option value="Transport">Transport</option>
                     <option value="Tools">Tools</option>
-                    <option value="Company Payment">Company Payment</option>
-                    <option value="Vendor Payment">Vendor Payment</option>
-                    <option value="Purchase">Purchase</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -870,167 +931,28 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="relative">
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid To</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Alliance Steel Builders"
-                    value={reqPaidTo}
-                    onChange={(e) => {
-                      setReqPaidTo(e.target.value);
-                      if (reqCategory === 'Labour') setShowCrewSuggestions(true);
-                      else if (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') setShowVendorSuggestions(true);
-                    }}
-                    onFocus={() => {
-                      if (reqCategory === 'Labour') setShowCrewSuggestions(true);
-                      else if (reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') setShowVendorSuggestions(true);
-                    }}
-                    onBlur={() => {
-                      setTimeout(() => {
-                        setShowCrewSuggestions(false);
-                        setShowVendorSuggestions(false);
-                      }, 200);
-                    }}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                  />
-                  {reqCategory === 'Labour' && showCrewSuggestions && crewSuggestions.length > 0 && (
-                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
-                      {crewSuggestions
-                        .filter(worker => !reqPaidTo || worker.toLowerCase().includes(reqPaidTo.toLowerCase()))
-                        .map(worker => (
-                          <button
-                            key={worker}
-                            type="button"
-                            onClick={() => {
-                              setReqPaidTo(worker);
-                              setShowCrewSuggestions(false);
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
-                          >
-                            <span>{worker}</span>
-                            <span className="text-[9px] text-zinc-400 font-bold uppercase">Crew</span>
-                          </button>
-                        ))
-                      }
-                    </div>
-                  )}
-                  {(reqCategory === 'Vendor Payment' || reqCategory === 'Purchase') && showVendorSuggestions && vendorsList.length > 0 && (
-                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
-                      {vendorsList
-                        .filter(v => !reqPaidTo || v.name.toLowerCase().includes(reqPaidTo.toLowerCase()))
-                        .map(v => (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => {
-                              setReqPaidTo(v.name);
-                              setShowVendorSuggestions(false);
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
-                          >
-                            <span>{v.name}</span>
-                            <span className="text-[9px] text-zinc-400 font-bold uppercase">{v.trade}</span>
-                          </button>
-                        ))
-                      }
-                    </div>
-                  )}
-                </div>
-                {reqCategory !== 'Vendor Payment' && reqCategory !== 'Purchase' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      min={0.01}
-                      step="any"
-                      placeholder="e.g. 1500"
-                      value={reqAmount || ''}
-                      onChange={(e) => setReqAmount(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {reqCategory === 'Material' && (
+              {/* Transport fields */}
+              {reqCategory === 'Transport' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Material Name</label>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">From Location</label>
                     <input
                       type="text"
-                      required
-                      placeholder="e.g. Cement, Steel"
-                      value={reqMaterialName}
-                      onChange={(e) => setReqMaterialName(e.target.value)}
+                      placeholder="e.g. Site A"
+                      value={reqFromLocation}
+                      onChange={(e) => setReqFromLocation(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Quantity</label>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">To Location</label>
                     <input
                       type="text"
-                      required
-                      placeholder="e.g. 50 bags"
-                      value={reqMaterialQty}
-                      onChange={(e) => setReqMaterialQty(e.target.value)}
+                      placeholder="e.g. Warehouse B"
+                      value={reqToLocation}
+                      onChange={(e) => setReqToLocation(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                     />
-                  </div>
-                </div>
-              )}
-
-              {reqCategory === 'Tools' && (
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Tools List</label>
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-zinc-50 border border-zinc-200 rounded-xl min-h-[38px] items-center">
-                    {reqTools.map((t) => (
-                      <span key={t} className="inline-flex items-center gap-1 bg-zinc-900 text-white text-[10px] font-bold pl-2 pr-1 py-0.5 rounded-lg">
-                        <span>{t}</span>
-                        <button
-                          type="button"
-                          onClick={() => setReqTools(reqTools.filter(x => x !== t))}
-                          className="hover:text-red-300 font-extrabold w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-white/10"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                    {reqTools.length === 0 && (
-                      <span className="text-[10px] text-zinc-400 italic">No tools added yet. Type tool name below and click Add.</span>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Add tool name... (e.g. Hammer, Drill)"
-                      value={reqToolInput}
-                      onChange={(e) => setReqToolInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          if (reqToolInput.trim() && !reqTools.includes(reqToolInput.trim())) {
-                            setReqTools([...reqTools, reqToolInput.trim()]);
-                            setReqToolInput('');
-                          }
-                        }
-                      }}
-                      className="flex-1 px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (reqToolInput.trim() && !reqTools.includes(reqToolInput.trim())) {
-                          setReqTools([...reqTools, reqToolInput.trim()]);
-                          setReqToolInput('');
-                        }
-                      }}
-                      className="px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition"
-                    >
-                      Add Tool
-                    </button>
                   </div>
                 </div>
               )}
@@ -1045,9 +967,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       min={0.01}
                       step="any"
                       placeholder="e.g. 50000"
-                      value={reqVendorTotalToPay || ''}
+                      value={reqVendorTotalToPay}
                       onChange={(e) => {
-                        const val = Number(e.target.value);
+                        const val = e.target.value === '' ? '' : Number(e.target.value);
                         setReqVendorTotalToPay(val);
                         setReqAmount(val);
                       }}
@@ -1063,13 +985,13 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
               )}
 
               {/* Purchase fields — multi-line items table */}
-              {reqCategory === 'Purchase' && (
+              {(reqCategory === 'Material' || reqCategory === 'Tools') && (
                 <div className="space-y-4">
                   <div className="border border-zinc-200 rounded-xl overflow-hidden">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
-                          <th className="text-left px-3 py-2.5 w-[30%]">Material</th>
+                          <th className="text-left px-3 py-2.5 w-[30%]">{reqCategory === 'Tools' ? 'Tool' : 'Material'}</th>
                           <th className="text-left px-3 py-2.5 w-[18%]">Qty</th>
                           <th className="text-right px-3 py-2.5 w-[20%]">Price / Unit (₹)</th>
                           <th className="text-right px-3 py-2.5 w-[20%]">Total (₹)</th>
@@ -1083,7 +1005,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                               <input
                                 type="text"
                                 required
-                                placeholder="e.g. Cement"
+                                placeholder={reqCategory === 'Tools' ? 'e.g. Hammer' : 'e.g. Cement'}
                                 value={item.materialName}
                                 onChange={(e) => {
                                   const items = [...reqPurchaseItems];
@@ -1102,7 +1024,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                                 onChange={(e) => {
                                   const items = [...reqPurchaseItems];
                                   const numericQty = parseNumericQty(e.target.value);
-                                  const total = numericQty * items[idx].pricePerCount;
+                                  const total = numericQty * (items[idx].pricePerCount === '' ? 0 : items[idx].pricePerCount);
                                   items[idx] = { ...items[idx], qty: e.target.value, total };
                                   setReqPurchaseItems(items);
                                   const grandTotal = items.reduce((s, it) => s + it.total, 0);
@@ -1118,12 +1040,12 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                                 min={0}
                                 step="any"
                                 placeholder="400"
-                                value={item.pricePerCount || ''}
+                                value={item.pricePerCount}
                                 onChange={(e) => {
                                   const items = [...reqPurchaseItems];
-                                  const price = Number(e.target.value);
+                                  const price = e.target.value === '' ? '' : Number(e.target.value);
                                   const numericQty = parseNumericQty(items[idx].qty);
-                                  const total = numericQty * price;
+                                  const total = numericQty * (price === '' ? 0 : price);
                                   items[idx] = { ...items[idx], pricePerCount: price, total };
                                   setReqPurchaseItems(items);
                                   const grandTotal = items.reduce((s, it) => s + it.total, 0);
@@ -1166,19 +1088,150 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                   </div>
                   <button
                     type="button"
-                    onClick={() => setReqPurchaseItems([...reqPurchaseItems, { materialName: '', qty: '', pricePerCount: 0, total: 0 }])}
+                    onClick={() => setReqPurchaseItems([...reqPurchaseItems, { materialName: '', qty: '', pricePerCount: '', total: 0 }])}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-xs font-semibold transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Material</span>
+                    <span>{reqCategory === 'Tools' ? 'Add Tool' : 'Add Material'}</span>
                   </button>
-                  <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
-                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Grand Total to Pay:</span>
-                    <span className="text-sm font-black text-zinc-900">{formatCur(reqVendorTotalToPay)}</span>
-                    <p className="text-[11px] text-zinc-400 ml-auto">Accountant will track installments.</p>
-                  </div>
                 </div>
               )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="relative">
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Vendor</label>
+                  <input
+                    type="text"
+                    required
+                    value={reqPaidTo}
+                    onChange={() => {}}
+                    className="absolute opacity-0 pointer-events-none w-0 h-0"
+                  />
+                  <div
+                    onClick={() => setIsVendorDropdownOpen(!isVendorDropdownOpen)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 flex items-center justify-between text-xs min-h-[38px] cursor-pointer"
+                  >
+                    <span className={reqPaidTo ? "text-zinc-950 font-medium" : "text-zinc-400"}>
+                      {reqPaidTo || "Select Vendor..."}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+                  </div>
+
+                  {isVendorDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40 cursor-default"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsVendorDropdownOpen(false);
+                        }}
+                      />
+                      <div className="absolute left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs flex flex-col max-h-60 overflow-hidden">
+                        <div className="p-2 border-b border-zinc-100 flex items-center gap-2 bg-zinc-50">
+                          <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <input
+                            type="text"
+                            placeholder="Search vendor..."
+                            value={vendorSearchQuery}
+                            onChange={(e) => setVendorSearchQuery(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const filtered = vendorsList.filter(v =>
+                                  v.name.toLowerCase().includes(vendorSearchQuery.toLowerCase()) ||
+                                  v.trade.toLowerCase().includes(vendorSearchQuery.toLowerCase())
+                                );
+                                if (filtered.length > 0) {
+                                  setReqPaidTo(filtered[0].name);
+                                  setVendorSearchQuery('');
+                                  setIsVendorDropdownOpen(false);
+                                }
+                              }
+                            }}
+                            className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 focus:outline-none text-zinc-900"
+                            autoFocus
+                          />
+                          {vendorSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVendorSearchQuery('');
+                              }}
+                              className="text-zinc-400 hover:text-zinc-600 font-bold px-1 text-sm"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        <div className="overflow-y-auto divide-y divide-zinc-100 max-h-48">
+                          {vendorsList
+                            .filter(v => v.name.toLowerCase().includes(vendorSearchQuery.toLowerCase()) || v.trade.toLowerCase().includes(vendorSearchQuery.toLowerCase()))
+                            .map(v => (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReqPaidTo(v.name);
+                                  setVendorSearchQuery('');
+                                  setIsVendorDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                              >
+                                <span>{v.name}</span>
+                                <span className="text-[9px] text-zinc-400 font-bold uppercase">{v.trade}</span>
+                              </button>
+                            ))
+                          }
+                          {vendorsList.filter(v => v.name.toLowerCase().includes(vendorSearchQuery.toLowerCase()) || v.trade.toLowerCase().includes(vendorSearchQuery.toLowerCase())).length === 0 && (
+                            <div className="p-3 text-zinc-400 text-center font-medium flex flex-col gap-2">
+                              <span>No vendors found</span>
+                              {vendorSearchQuery.trim() && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenAddVendorQuick(vendorSearchQuery);
+                                  }}
+                                  className="w-full py-1.5 bg-zinc-950 hover:bg-zinc-800 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                                >
+                                  + Add &quot;{vendorSearchQuery}&quot;
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {(reqCategory === 'Material' || reqCategory === 'Tools') ? (
+                  <div className="flex flex-col justify-center bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 min-h-[58px]">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Grand Total to Pay</span>
+                    <span className="text-sm font-black text-zinc-900 mt-0.5">{formatCur(reqPurchaseItems.reduce((s, it) => s + it.total, 0))}</span>
+                  </div>
+                ) : (
+                  reqCategory !== 'Vendor Payment' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Amount (₹)</label>
+                      <input
+                        type="number"
+                        required
+                        min={0.01}
+                        step="any"
+                        placeholder="e.g. 1500"
+                        value={reqAmount}
+                        onChange={(e) => setReqAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
+                      />
+                    </div>
+                  )
+                )}
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -1205,31 +1258,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                   </select>
                 </div>
               </div>
-
-              {reqCategory === 'Transport' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">From Location</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Site A"
-                      value={reqFromLocation}
-                      onChange={(e) => setReqFromLocation(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">To Location</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Warehouse B"
-                      value={reqToLocation}
-                      onChange={(e) => setReqToLocation(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Upload Doc</label>
@@ -1378,20 +1406,24 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       </p>
                     </div>
                   )}
-                  {(selectedPaymentRequest.category === 'Vendor Payment' || selectedPaymentRequest.category === 'Purchase') && selectedPaymentRequest.vendorTotalToPay !== undefined && (
+                  {(selectedPaymentRequest.category === 'Vendor Payment' || selectedPaymentRequest.category === 'Purchase' || selectedPaymentRequest.category === 'Vendor') && selectedPaymentRequest.vendorTotalToPay !== undefined && (
                     <div className="bg-zinc-50 rounded-xl p-3 col-span-2">
                       <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Total to Pay</p>
                       <p className="font-bold text-zinc-900 text-sm">{formatCur(selectedPaymentRequest.vendorTotalToPay)}</p>
                     </div>
                   )}
-                  {selectedPaymentRequest.category === 'Purchase' && selectedPaymentRequest.purchaseItems && selectedPaymentRequest.purchaseItems.length > 0 && (
+                  {selectedPaymentRequest.purchaseItems && selectedPaymentRequest.purchaseItems.length > 0 && (
                     <div className="bg-zinc-50 rounded-xl p-3 col-span-2 space-y-2">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Purchased Materials</p>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">
+                        {paymentCategoryToExpenseCategory(selectedPaymentRequest.category) === 'Tools' ? 'Purchased Tools' : 'Purchased Materials'}
+                      </p>
                       <div className="overflow-x-auto border border-zinc-200/60 rounded-lg">
                         <table className="min-w-full divide-y divide-zinc-200/60 text-[11px]">
                           <thead className="bg-zinc-100/80">
                             <tr>
-                              <th className="px-3 py-1.5 text-left font-bold text-zinc-500 uppercase tracking-wider">Material</th>
+                              <th className="px-3 py-1.5 text-left font-bold text-zinc-500 uppercase tracking-wider">
+                                {paymentCategoryToExpenseCategory(selectedPaymentRequest.category) === 'Tools' ? 'Tool' : 'Material'}
+                              </th>
                               <th className="px-3 py-1.5 text-right font-bold text-zinc-500 uppercase tracking-wider">Qty</th>
                               <th className="px-3 py-1.5 text-right font-bold text-zinc-500 uppercase tracking-wider">Price</th>
                               <th className="px-3 py-1.5 text-right font-bold text-zinc-500 uppercase tracking-wider">Total</th>
@@ -1483,6 +1515,72 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
           </div>
         );
       })()}
+
+      {/* QUICK ADD VENDOR MODAL */}
+      {isQuickAddVendorOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b pb-2 border-zinc-100">
+              <h4 className="text-sm font-extrabold text-zinc-950">Add New Vendor</h4>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddVendorOpen(false)}
+                className="text-zinc-400 hover:text-zinc-650 font-bold"
+              >
+                ×
+              </button>
+            </div>
+            
+            {quickVendorError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-600 rounded-lg p-2.5 text-xs">
+                {quickVendorError}
+              </div>
+            )}
+
+            <form onSubmit={handleQuickVendorSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Vendor Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Raj Steels"
+                  value={quickVendorName}
+                  onChange={(e) => setQuickVendorName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Trade/Type</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Steel Supplier"
+                  value={quickVendorTrade}
+                  onChange={(e) => setQuickVendorTrade(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Phone (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 9876543210"
+                  value={quickVendorPhone}
+                  onChange={(e) => setQuickVendorPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 text-xs focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSavingQuickVendor}
+                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSavingQuickVendor ? "Registering..." : "Register Vendor"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

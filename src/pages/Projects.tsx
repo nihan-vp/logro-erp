@@ -15,11 +15,11 @@ import { useConfirm } from '../context/ConfirmContext';
 import TaskAttendanceSection from '../components/TaskAttendanceSection';
 
 const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest['category'] => {
-  if (cat === 'Material' || cat === 'Tools') return 'Vendor';
+  if (cat === 'Material') return 'Purchase';
+  if (cat === 'Tools') return 'Vendor';
   if (cat === 'Labour') return 'Worker';
   if (cat === 'Transport') return 'Transportation';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
-  if (cat === 'Purchase') return 'Purchase';
   return 'Other';
 };
 
@@ -274,7 +274,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [taskEditId, setTaskEditId] = useState<string | null>(null);
   const [taskFormName, setTaskFormName] = useState('');
   const [taskFormDesc, setTaskFormDesc] = useState('');
-  const [taskFormBudget, setTaskFormBudget] = useState<number>(0);
+  const [taskFormBudget, setTaskFormBudget] = useState<number | ''>('');
   const [taskFormStartDate, setTaskFormStartDate] = useState('');
   const [taskFormEndDate, setTaskFormEndDate] = useState('');
   const [taskFormProgress, setTaskFormProgress] = useState<number>(0);
@@ -294,7 +294,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [isEditingPaidExpense, setIsEditingPaidExpense] = useState(false);
   const [expenseTaskId, setExpenseTaskId] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Material');
-  const [expenseAmount, setExpenseAmount] = useState<number>(0);
+  const [expenseAmount, setExpenseAmount] = useState<number | ''>('');
   const [expensePaidTo, setExpensePaidTo] = useState('');
   const [expensePaymentMethod, setExpensePaymentMethod] = useState('Bank Transfer');
   const [expenseDate, setExpenseDate] = useState('');
@@ -310,12 +310,22 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [expenseToLocation, setExpenseToLocation] = useState('');
   const [expenseTools, setExpenseTools] = useState<string[]>([]);
   const [expenseToolInput, setExpenseToolInput] = useState('');
-  const [expenseVendorTotalToPay, setExpenseVendorTotalToPay] = useState<number>(0);
+  const [expenseVendorTotalToPay, setExpenseVendorTotalToPay] = useState<number | ''>('');
   const [expenseVendorPaid, setExpenseVendorPaid] = useState<number>(0);
-  const [expensePurchaseItems, setExpensePurchaseItems] = useState<PurchaseLineItem[]>([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+  const [expensePurchaseItems, setExpensePurchaseItems] = useState<Array<Omit<PurchaseLineItem, 'pricePerCount'> & { pricePerCount: number | '' }>>([{ materialName: '', qty: '', pricePerCount: '', total: 0 }]);
   const [vendorsList, setVendorsList] = useState<any[]>([]);
+  const [isVendorDropdownOpen, setIsVendorDropdownOpen] = useState(false);
+  const [vendorSearchQuery, setVendorSearchQuery] = useState('');
   const [showExpenseVendorSuggestions, setShowExpenseVendorSuggestions] = useState(false);
   const [showExpenseCrewSuggestions, setShowExpenseCrewSuggestions] = useState(false);
+
+  // Quick Add Vendor states
+  const [isQuickAddVendorOpen, setIsQuickAddVendorOpen] = useState(false);
+  const [quickVendorName, setQuickVendorName] = useState('');
+  const [quickVendorTrade, setQuickVendorTrade] = useState('Supplier');
+  const [quickVendorPhone, setQuickVendorPhone] = useState('');
+  const [quickVendorError, setQuickVendorError] = useState<string | null>(null);
+  const [isSavingQuickVendor, setIsSavingQuickVendor] = useState(false);
 
   // Receipt Preview
   const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
@@ -542,7 +552,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setTaskEditId(null);
     setTaskFormName('');
     setTaskFormDesc('');
-    setTaskFormBudget(0);
+    setTaskFormBudget('');
     setTaskAssignedStaffList([]);
     setTaskMemberInput('');
     setShowTaskSuggestions(false);
@@ -559,7 +569,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setTaskEditId(task.id);
     setTaskFormName(task.taskName);
     setTaskFormDesc(task.description || '');
-    setTaskFormBudget(task.assignedBudget);
+    setTaskFormBudget(task.assignedBudget === 0 ? '' : task.assignedBudget);
 
     const parsedStaff = task.assignedStaff
       ? task.assignedStaff.split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -706,7 +716,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setIsEditingPaidExpense(false);
     setExpenseTaskId(initialTaskId || (projectTasks[0]?.id || ''));
     setExpenseCategory('Material');
-    setExpenseAmount(0);
+    setExpenseAmount('');
     setExpensePaidTo('');
     setExpensePaymentMethod('Bank Transfer');
     setExpenseDate(new Date().toISOString().split('T')[0]);
@@ -719,11 +729,13 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setExpenseToLocation('');
     setExpenseTools([]);
     setExpenseToolInput('');
-    setExpenseVendorTotalToPay(0);
+    setExpenseVendorTotalToPay('');
     setExpenseVendorPaid(0);
-    setExpensePurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+    setExpensePurchaseItems([{ materialName: '', qty: '', pricePerCount: '', total: 0 }]);
     setShowExpenseVendorSuggestions(false);
     setShowExpenseCrewSuggestions(false);
+    setIsVendorDropdownOpen(false);
+    setVendorSearchQuery('');
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
   };
@@ -750,24 +762,75 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setExpenseToLocation(exp.toLocation || '');
     setExpenseTools(exp.tools || []);
     setExpenseToolInput('');
-    setExpenseVendorTotalToPay(exp.vendorTotalToPay || 0);
+    setExpenseVendorTotalToPay(exp.vendorTotalToPay || '');
     setExpenseVendorPaid(exp.vendorPaid || 0);
     if (exp.purchaseItems && exp.purchaseItems.length > 0) {
       setExpensePurchaseItems(exp.purchaseItems);
-    } else if (exp.materialName && exp.category === 'Purchase') {
+    } else if (exp.materialName && exp.category === 'Material') {
       setExpensePurchaseItems([{
         materialName: exp.materialName || '',
         qty: exp.materialQty || '',
         pricePerCount: exp.purchasePricePerCount || 0,
         total: exp.purchaseTotalFull || 0,
       }]);
+    } else if (exp.tools && exp.tools.length > 0 && exp.category === 'Tools') {
+      setExpensePurchaseItems(exp.tools.map((t: string) => ({
+        materialName: t,
+        qty: '1',
+        pricePerCount: 0,
+        total: 0,
+      })));
     } else {
-      setExpensePurchaseItems([{ materialName: '', qty: '', pricePerCount: 0, total: 0 }]);
+      setExpensePurchaseItems([{ materialName: '', qty: '', pricePerCount: '', total: 0 }]);
     }
     setShowExpenseVendorSuggestions(false);
     setShowExpenseCrewSuggestions(false);
+    setIsVendorDropdownOpen(false);
+    setVendorSearchQuery('');
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
+  };
+
+  const handleOpenAddVendorQuick = (initialName: string) => {
+    setQuickVendorName(initialName);
+    setQuickVendorTrade('Supplier');
+    setQuickVendorPhone('');
+    setQuickVendorError(null);
+    setIsQuickAddVendorOpen(true);
+  };
+
+  const handleQuickVendorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickVendorName.trim()) {
+      setQuickVendorError('Vendor name is required.');
+      return;
+    }
+    setIsSavingQuickVendor(true);
+    setQuickVendorError(null);
+    try {
+      const payload = {
+        name: quickVendorName.trim(),
+        trade: quickVendorTrade.trim() || 'Supplier',
+        phone: quickVendorPhone.trim(),
+        status: 'active',
+        notes: 'Added quickly from record expense form'
+      };
+      await api.createVendor(payload);
+      notify.success(`Vendor "${payload.name}" registered.`);
+      
+      const vendorsRes = await api.getVendors('active').catch(() => ({ vendors: [] }));
+      const updatedList = vendorsRes.vendors || [];
+      setVendorsList(updatedList);
+      
+      setExpensePaidTo(payload.name);
+      setIsVendorDropdownOpen(false);
+      setVendorSearchQuery('');
+      setIsQuickAddVendorOpen(false);
+    } catch (err: any) {
+      setQuickVendorError(err?.message || 'Failed to register new vendor.');
+    } finally {
+      setIsSavingQuickVendor(false);
+    }
   };
 
   const handleExpenseSubmit = async (e: React.FormEvent) => {
@@ -776,12 +839,12 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       notify.warning('Task context, category, payee, and date are required.');
       return;
     }
-    if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') {
-      if (expenseVendorTotalToPay <= 0) {
+    if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Material' || expenseCategory === 'Tools') {
+      if (expenseVendorTotalToPay === '' || expenseVendorTotalToPay <= 0) {
         notify.warning('Total to pay must be greater than 0.');
         return;
       }
-    } else if (expenseAmount <= 0) {
+    } else if (expenseAmount === '' || expenseAmount <= 0) {
       notify.warning('Spent amount must be greater than 0.');
       return;
     }
@@ -793,10 +856,10 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
         : 'Submit expense request?';
 
     const messageText = isEditingPaidExpense
-      ? `Submit a request to edit the paid expense ${expenseEditId} to ${formatCur(expenseAmount)}? It will require review and approval by the accountant/admin.`
+      ? `Submit a request to edit the paid expense ${expenseEditId} to ${formatCur(Number(expenseAmount))}? It will require review and approval by the accountant/admin.`
       : expenseEditId
-        ? `Update this pending ${expenseCategory} request of ${formatCur(expenseAmount)} for ${expensePaidTo}?`
-        : `Submit a ${expenseCategory} expense of ${formatCur(expenseAmount)} for ${expensePaidTo}? It will appear in Finance Hub and be paid from office funds after accountant approval.`;
+        ? `Update this pending ${expenseCategory} request of ${formatCur(Number(expenseAmount))} for ${expensePaidTo}?`
+        : `Submit a ${expenseCategory} expense of ${formatCur(Number(expenseAmount))} for ${expensePaidTo}? It will appear in Finance Hub and be paid from office funds after accountant approval.`;
 
     const confirmLabelText = isEditingPaidExpense
       ? 'Submit Edit Request'
@@ -825,14 +888,14 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       priority: 'Medium' as const,
       paymentMethod: expensePaymentMethod,
       billImage: expenseBillImage,
-      materialName: (expenseCategory === 'Material') ? expenseMaterialName : (expenseCategory === 'Purchase' && expensePurchaseItems.length > 0) ? expensePurchaseItems[0].materialName : undefined,
-      materialQty: (expenseCategory === 'Material') ? expenseMaterialQty : (expenseCategory === 'Purchase' && expensePurchaseItems.length > 0) ? expensePurchaseItems[0].qty : undefined,
-      tools: expenseCategory === 'Tools' ? expenseTools : undefined,
-      vendorTotalToPay: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') ? Number(expenseVendorTotalToPay) : undefined,
-      purchasePricePerCount: expenseCategory === 'Purchase' && expensePurchaseItems.length > 0 ? expensePurchaseItems[0].pricePerCount : undefined,
-      purchaseTotalFull: expenseCategory === 'Purchase' ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
-      purchaseTotal: expenseCategory === 'Purchase' ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
-      purchaseItems: expenseCategory === 'Purchase' ? expensePurchaseItems : undefined,
+      materialName: (expenseCategory === 'Material' && expensePurchaseItems.length > 0) ? expensePurchaseItems[0].materialName : undefined,
+      materialQty: (expenseCategory === 'Material' && expensePurchaseItems.length > 0) ? expensePurchaseItems[0].qty : undefined,
+      tools: expenseCategory === 'Tools' ? expensePurchaseItems.map(it => it.materialName).filter(Boolean) : undefined,
+      vendorTotalToPay: (expenseCategory === 'Vendor Payment' || expenseCategory === 'Material' || expenseCategory === 'Tools') ? Number(expenseVendorTotalToPay) : undefined,
+      purchasePricePerCount: (expenseCategory === 'Material' || expenseCategory === 'Tools') && expensePurchaseItems.length > 0 ? (expensePurchaseItems[0].pricePerCount === '' ? 0 : Number(expensePurchaseItems[0].pricePerCount)) : undefined,
+      purchaseTotalFull: (expenseCategory === 'Material' || expenseCategory === 'Tools') ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
+      purchaseTotal: (expenseCategory === 'Material' || expenseCategory === 'Tools') ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
+      purchaseItems: (expenseCategory === 'Material' || expenseCategory === 'Tools') ? expensePurchaseItems.map(it => ({ ...it, pricePerCount: it.pricePerCount === '' ? 0 : Number(it.pricePerCount) })) : undefined,
     };
 
     try {
@@ -1555,7 +1618,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                           )}
                         </div>
                         <h3 className="text-xs sm:text-sm font-bold text-zinc-950">
-                          Paid to: <b className="text-zinc-900 font-extrabold">{e.paidTo}</b>
+                          Vendor: <b className="text-zinc-900 font-extrabold">{e.paidTo}</b>
                         </h3>
                         {e.notes && (
                           <p className="text-[11px] text-zinc-500 bg-zinc-50/70 p-1.5 rounded italic">
@@ -1980,7 +2043,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   min={0}
                   placeholder="e.g. 50000"
                   value={taskFormBudget}
-                  onChange={(e) => setTaskFormBudget(Number(e.target.value))}
+                  onChange={(e) => setTaskFormBudget(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900"
                 />
               </div>
@@ -2192,14 +2255,14 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               </div>
             )}
 
-            {userRole === 'admin' && expenseAmount > 0 && expenseAmount > officeBalance && (
+            {userRole === 'admin' && expenseAmount !== '' && expenseAmount > 0 && expenseAmount > officeBalance && (
               <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                 <div>
                   <p className="font-bold">Insufficient office funds</p>
                   <p className="mt-0.5 font-medium leading-relaxed">
                     Available office balance is <span className="font-bold">{formatCur(officeBalance)}</span>, but this
-                    request is for <span className="font-bold">{formatCur(expenseAmount)}</span>. You can still submit —
+                    request is for <span className="font-bold">{formatCur(Number(expenseAmount))}</span>. You can still submit —
                     the accountant may need to record a cash inflow before approval.
                   </p>
                 </div>
@@ -2231,44 +2294,12 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none"
                   >
                     <option value="Material">Material</option>
-                    <option value="Labour">Labour</option>
                     <option value="Transport">Transport</option>
                     <option value="Tools">Tools</option>
-                    <option value="Company Payment">Company Payment</option>
-                    <option value="Vendor Payment">Vendor Payment</option>
-                    <option value="Purchase">Purchase</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
               </div>
-
-              {/* Material fields */}
-              {expenseCategory === 'Material' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Material Name</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Cement, Steel Bars"
-                      value={expenseMaterialName}
-                      onChange={(e) => setExpenseMaterialName(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Quantity</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. 50 bags"
-                      value={expenseMaterialQty}
-                      onChange={(e) => setExpenseMaterialQty(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* Transport fields */}
               {expenseCategory === 'Transport' && (
@@ -2296,59 +2327,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 </div>
               )}
 
-              {/* Tools fields */}
-              {expenseCategory === 'Tools' && (
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Tools List</label>
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-zinc-50 border border-zinc-200 rounded-xl min-h-[38px] items-center">
-                    {expenseTools.map((t) => (
-                      <span key={t} className="inline-flex items-center gap-1 bg-zinc-900 text-white text-[10px] font-bold pl-2 pr-1 py-0.5 rounded-lg">
-                        <span>{t}</span>
-                        <button
-                          type="button"
-                          onClick={() => setExpenseTools(expenseTools.filter(x => x !== t))}
-                          className="hover:text-red-300 font-extrabold w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-white/10"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                    {expenseTools.length === 0 && (
-                      <span className="text-[10px] text-zinc-400 italic">No tools added yet. Type below and click Add.</span>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. Hammer, Drill, Mixer"
-                      value={expenseToolInput}
-                      onChange={(e) => setExpenseToolInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          if (expenseToolInput.trim() && !expenseTools.includes(expenseToolInput.trim())) {
-                            setExpenseTools([...expenseTools, expenseToolInput.trim()]);
-                            setExpenseToolInput('');
-                          }
-                        }
-                      }}
-                      className="flex-1 px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (expenseToolInput.trim() && !expenseTools.includes(expenseToolInput.trim())) {
-                          setExpenseTools([...expenseTools, expenseToolInput.trim()]);
-                          setExpenseToolInput('');
-                        }
-                      }}
-                      className="px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition"
-                    >
-                      Add Tool
-                    </button>
-                  </div>
-                </div>
-              )}
+
 
               {/* Vendor Payment fields */}
               {expenseCategory === 'Vendor Payment' && (
@@ -2361,11 +2340,11 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       min={0.01}
                       step="any"
                       placeholder="e.g. 50000"
-                      value={expenseVendorTotalToPay || ''}
+                      value={expenseVendorTotalToPay === 0 ? '0' : (expenseVendorTotalToPay || '')}
                       onChange={(e) => {
-                        const val = Number(e.target.value);
+                        const val = e.target.value === '' ? '' : Number(e.target.value);
                         setExpenseVendorTotalToPay(val);
-                        setExpenseAmount(val);
+                        setExpenseAmount(val === '' ? 0 : val);
                       }}
                       className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
                     />
@@ -2379,13 +2358,13 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               )}
 
               {/* Purchase fields — multi-line items table */}
-              {expenseCategory === 'Purchase' && (
+              {(expenseCategory === 'Material' || expenseCategory === 'Tools') && (
                 <div className="space-y-4">
                   <div className="border border-zinc-200 rounded-xl overflow-hidden">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
-                          <th className="text-left px-3 py-2.5 w-[30%]">Material</th>
+                          <th className="text-left px-3 py-2.5 w-[30%]">{expenseCategory === 'Tools' ? 'Tool' : 'Material'}</th>
                           <th className="text-left px-3 py-2.5 w-[18%]">Qty</th>
                           <th className="text-right px-3 py-2.5 w-[20%]">Price / Unit (₹)</th>
                           <th className="text-right px-3 py-2.5 w-[20%]">Total (₹)</th>
@@ -2399,7 +2378,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                               <input
                                 type="text"
                                 required
-                                placeholder="e.g. Cement"
+                                placeholder={expenseCategory === 'Tools' ? 'e.g. Hammer' : 'e.g. Cement'}
                                 value={item.materialName}
                                 onChange={(e) => {
                                   const items = [...expensePurchaseItems];
@@ -2418,7 +2397,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                 onChange={(e) => {
                                   const items = [...expensePurchaseItems];
                                   const numericQty = parseNumericQty(e.target.value);
-                                  const total = numericQty * items[idx].pricePerCount;
+                                  const total = numericQty * (items[idx].pricePerCount === '' ? 0 : items[idx].pricePerCount);
                                   items[idx] = { ...items[idx], qty: e.target.value, total };
                                   setExpensePurchaseItems(items);
                                   const grandTotal = items.reduce((s, it) => s + it.total, 0);
@@ -2434,12 +2413,12 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                 min={0}
                                 step="any"
                                 placeholder="400"
-                                value={item.pricePerCount || ''}
+                                value={item.pricePerCount}
                                 onChange={(e) => {
                                   const items = [...expensePurchaseItems];
-                                  const price = Number(e.target.value);
+                                  const price = e.target.value === '' ? '' : Number(e.target.value);
                                   const numericQty = parseNumericQty(items[idx].qty);
-                                  const total = numericQty * price;
+                                  const total = numericQty * (price === '' ? 0 : price);
                                   items[idx] = { ...items[idx], pricePerCount: price, total };
                                   setExpensePurchaseItems(items);
                                   const grandTotal = items.reduce((s, it) => s + it.total, 0);
@@ -2482,103 +2461,148 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   </div>
                   <button
                     type="button"
-                    onClick={() => setExpensePurchaseItems([...expensePurchaseItems, { materialName: '', qty: '', pricePerCount: 0, total: 0 }])}
+                    onClick={() => setExpensePurchaseItems([...expensePurchaseItems, { materialName: '', qty: '', pricePerCount: '', total: 0 }])}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-xs font-semibold transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Material</span>
+                    <span>{expenseCategory === 'Tools' ? 'Add Tool' : 'Add Material'}</span>
                   </button>
-                  <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
-                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Grand Total to Pay:</span>
-                    <span className="text-sm font-black text-zinc-900">{formatCur(expensePurchaseItems.reduce((s, it) => s + it.total, 0))}</span>
-                    <p className="text-[11px] text-zinc-400 ml-auto">Accountant will track installments.</p>
-                  </div>
                 </div>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Paid To</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Vendor</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Alliance Steel Builders"
                     value={expensePaidTo}
-                    onChange={(e) => {
-                      setExpensePaidTo(e.target.value);
-                      if (expenseCategory === 'Labour') setShowExpenseCrewSuggestions(true);
-                      else if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') setShowExpenseVendorSuggestions(true);
-                    }}
-                    onFocus={() => {
-                      if (expenseCategory === 'Labour') setShowExpenseCrewSuggestions(true);
-                      else if (expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') setShowExpenseVendorSuggestions(true);
-                    }}
-                    onBlur={() => {
-                      setTimeout(() => {
-                        setShowExpenseCrewSuggestions(false);
-                        setShowExpenseVendorSuggestions(false);
-                      }, 200);
-                    }}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    onChange={() => {}}
+                    className="absolute opacity-0 pointer-events-none w-0 h-0"
                   />
-                  {expenseCategory === 'Labour' && showExpenseCrewSuggestions && crewSuggestions.length > 0 && (
-                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
-                      {crewSuggestions
-                        .filter(worker => !expensePaidTo || worker.toLowerCase().includes(expensePaidTo.toLowerCase()))
-                        .map(worker => (
-                          <button
-                            key={worker}
-                            type="button"
-                            onClick={() => {
-                              setExpensePaidTo(worker);
-                              setShowExpenseCrewSuggestions(false);
+                  <div
+                    onClick={() => setIsVendorDropdownOpen(!isVendorDropdownOpen)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 flex items-center justify-between text-xs min-h-[38px] cursor-pointer"
+                  >
+                    <span className={expensePaidTo ? "text-zinc-950 font-medium" : "text-zinc-400"}>
+                      {expensePaidTo || "Select Vendor..."}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+                  </div>
+
+                  {isVendorDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40 cursor-default"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsVendorDropdownOpen(false);
+                        }}
+                      />
+                      <div className="absolute left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs flex flex-col max-h-60 overflow-hidden">
+                        <div className="p-2 border-b border-zinc-100 flex items-center gap-2 bg-zinc-50">
+                          <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <input
+                            type="text"
+                            placeholder="Search vendor..."
+                            value={vendorSearchQuery}
+                            onChange={(e) => setVendorSearchQuery(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const filtered = vendorsList.filter(v =>
+                                  v.name.toLowerCase().includes(vendorSearchQuery.toLowerCase()) ||
+                                  v.trade.toLowerCase().includes(vendorSearchQuery.toLowerCase())
+                                );
+                                if (filtered.length > 0) {
+                                  setExpensePaidTo(filtered[0].name);
+                                  setVendorSearchQuery('');
+                                  setIsVendorDropdownOpen(false);
+                                }
+                              }
                             }}
-                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
-                          >
-                            <span>{worker}</span>
-                            <span className="text-[9px] text-zinc-400 font-bold uppercase">Crew</span>
-                          </button>
-                        ))
-                      }
-                    </div>
-                  )}
-                  {(expenseCategory === 'Vendor Payment' || expenseCategory === 'Purchase') && showExpenseVendorSuggestions && vendorsList.length > 0 && (
-                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs divide-y divide-zinc-100">
-                      {vendorsList
-                        .filter(v => !expensePaidTo || v.name.toLowerCase().includes(expensePaidTo.toLowerCase()))
-                        .map(v => (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => {
-                              setExpensePaidTo(v.name);
-                              setShowExpenseVendorSuggestions(false);
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
-                          >
-                            <span>{v.name}</span>
-                            <span className="text-[9px] text-zinc-400 font-bold uppercase">{v.trade}</span>
-                          </button>
-                        ))
-                      }
-                    </div>
+                            className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 focus:outline-none text-zinc-900"
+                            autoFocus
+                          />
+                          {vendorSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVendorSearchQuery('');
+                              }}
+                              className="text-zinc-400 hover:text-zinc-600 font-bold px-1 text-sm"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        <div className="overflow-y-auto divide-y divide-zinc-100 max-h-48">
+                          {vendorsList
+                            .filter(v => v.name.toLowerCase().includes(vendorSearchQuery.toLowerCase()) || v.trade.toLowerCase().includes(vendorSearchQuery.toLowerCase()))
+                            .map(v => (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpensePaidTo(v.name);
+                                  setVendorSearchQuery('');
+                                  setIsVendorDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                              >
+                                <span>{v.name}</span>
+                                <span className="text-[9px] text-zinc-400 font-bold uppercase">{v.trade}</span>
+                              </button>
+                            ))
+                          }
+                          {vendorsList.filter(v => v.name.toLowerCase().includes(vendorSearchQuery.toLowerCase()) || v.trade.toLowerCase().includes(vendorSearchQuery.toLowerCase())).length === 0 && (
+                            <div className="p-3 text-zinc-400 text-center font-medium flex flex-col gap-2">
+                              <span>No vendors found</span>
+                              {vendorSearchQuery.trim() && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenAddVendorQuick(vendorSearchQuery);
+                                  }}
+                                  className="w-full py-1.5 bg-zinc-950 hover:bg-zinc-800 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                                >
+                                  + Add &quot;{vendorSearchQuery}&quot;
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
 
-                {expenseCategory !== 'Vendor Payment' && expenseCategory !== 'Purchase' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Spent Amount (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      min={0.01}
-                      step="any"
-                      placeholder="e.g. 1500"
-                      value={expenseAmount || ''}
-                      onChange={(e) => setExpenseAmount(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
-                    />
+                {(expenseCategory === 'Material' || expenseCategory === 'Tools') ? (
+                  <div className="flex flex-col justify-center bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 min-h-[58px]">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Grand Total to Pay</span>
+                    <span className="text-sm font-black text-zinc-900 mt-0.5">{formatCur(expensePurchaseItems.reduce((s, it) => s + it.total, 0))}</span>
                   </div>
+                ) : (
+                  expenseCategory !== 'Vendor Payment' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Amount (₹)</label>
+                      <input
+                        type="number"
+                        required
+                        min={0.01}
+                        step="any"
+                        placeholder="e.g. 1500"
+                        value={expenseAmount === 0 ? '0' : (expenseAmount || '')}
+                        onChange={(e) => setExpenseAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
+                      />
+                    </div>
+                  )
                 )}
               </div>
 
@@ -2685,6 +2709,72 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK ADD VENDOR MODAL */}
+      {isQuickAddVendorOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b pb-2 border-zinc-100">
+              <h4 className="text-sm font-extrabold text-zinc-950">Add New Vendor</h4>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddVendorOpen(false)}
+                className="text-zinc-400 hover:text-zinc-650 font-bold"
+              >
+                ×
+              </button>
+            </div>
+            
+            {quickVendorError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-600 rounded-lg p-2.5 text-xs">
+                {quickVendorError}
+              </div>
+            )}
+
+            <form onSubmit={handleQuickVendorSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Vendor Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Raj Steels"
+                  value={quickVendorName}
+                  onChange={(e) => setQuickVendorName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Trade/Type</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Steel Supplier"
+                  value={quickVendorTrade}
+                  onChange={(e) => setQuickVendorTrade(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Phone (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 9876543210"
+                  value={quickVendorPhone}
+                  onChange={(e) => setQuickVendorPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 text-xs focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSavingQuickVendor}
+                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSavingQuickVendor ? "Registering..." : "Register Vendor"}
+              </button>
+            </form>
           </div>
         </div>
       )}
