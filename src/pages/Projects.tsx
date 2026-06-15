@@ -880,7 +880,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       taskId: expenseTaskId,
       payeeName: expensePaidTo,
       category: expenseCategoryToPaymentCategory(expenseCategory),
-      amount: Number(expenseAmount),
+      amount: (expenseCategory === 'Material' || expenseCategory === 'Tools') ? expensePurchaseItems.reduce((s, it) => s + it.total, 0) : Number(expenseAmount),
       description: expenseNotes,
       fromLocation: expenseCategory === 'Transport' ? expenseFromLocation : undefined,
       toLocation: expenseCategory === 'Transport' ? expenseToLocation : undefined,
@@ -2290,7 +2290,17 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Expense Category</label>
                   <select
                     value={expenseCategory}
-                    onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory)}
+                    onChange={(e) => {
+                      const newCat = e.target.value as ExpenseCategory;
+                      setExpenseCategory(newCat);
+                      if (newCat === 'Material' || newCat === 'Tools') {
+                        const grandTotal = expensePurchaseItems.reduce((s, it) => s + it.total, 0);
+                        setExpenseVendorTotalToPay(grandTotal);
+                        setExpenseAmount(grandTotal);
+                      } else if (newCat === 'Vendor Payment') {
+                        setExpenseAmount(expenseVendorTotalToPay);
+                      }
+                    }}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none"
                   >
                     <option value="Material">Material</option>
@@ -2402,6 +2412,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                   setExpensePurchaseItems(items);
                                   const grandTotal = items.reduce((s, it) => s + it.total, 0);
                                   setExpenseVendorTotalToPay(grandTotal);
+                                  setExpenseAmount(grandTotal);
                                 }}
                                 className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 focus:outline-none focus:border-zinc-400 text-xs"
                               />
@@ -2423,6 +2434,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                   setExpensePurchaseItems(items);
                                   const grandTotal = items.reduce((s, it) => s + it.total, 0);
                                   setExpenseVendorTotalToPay(grandTotal);
+                                  setExpenseAmount(grandTotal);
                                 }}
                                 className="w-full px-2 py-1.5 bg-white border border-zinc-200 rounded-lg text-zinc-950 text-right focus:outline-none focus:border-zinc-400 text-xs"
                               />
@@ -2439,6 +2451,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                     setExpensePurchaseItems(items);
                                     const grandTotal = items.reduce((s, it) => s + it.total, 0);
                                     setExpenseVendorTotalToPay(grandTotal);
+                                    setExpenseAmount(grandTotal);
                                   }}
                                   className="p-1 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                                   title="Remove row"
