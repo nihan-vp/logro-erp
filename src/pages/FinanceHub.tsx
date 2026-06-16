@@ -653,11 +653,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
             <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5">Category</label>
             <select value={reqCategoryFilter} onChange={(e) => setReqCategoryFilter(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700">
               <option value="All">All Categories</option>
-              <option value="Vendor">Vendor</option>
-              <option value="Worker">Worker</option>
-              <option value="Transportation">Transportation</option>
-              <option value="Vendor Payment">Vendor Payment</option>
-              <option value="Other">Other</option>
+              {Array.from(new Set(requests.map(r => r.category))).filter(Boolean).sort().map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
           <div>
