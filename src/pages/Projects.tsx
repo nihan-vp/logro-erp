@@ -63,6 +63,7 @@ function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUp
   const [uploadProjectId, setUploadProjectId] = React.useState(projectId);
   const [uploadTaskId, setUploadTaskId] = React.useState('');
   const [uploadTasksList, setUploadTasksList] = React.useState<any[]>([]);
+  const [previewDoc, setPreviewDoc] = React.useState<any | null>(null);
 
   const inputRef = React.useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
@@ -214,19 +215,7 @@ function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUp
   };
 
   const handleView = (doc: any) => {
-    const fileUrl = doc.cloudinaryUrl || doc.megaUrl;
-    if (fileUrl) {
-      window.open(fileUrl, '_blank');
-      return;
-    }
-    if (doc.base64Data) {
-      const fileWindow = window.open();
-      if (fileWindow) {
-        fileWindow.document.write(
-          `<iframe src="data:${doc.type || 'application/octet-stream'};base64,${doc.base64Data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`
-        );
-      }
-    }
+    setPreviewDoc(doc);
   };
 
   return (
@@ -497,6 +486,90 @@ function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUp
           </div>
         </div>
       )}
+
+      {/* Preview Modal Popup */}
+      {previewDoc && (() => {
+        const fileUrl = previewDoc.cloudinaryUrl || previewDoc.megaUrl || (previewDoc.base64Data ? `data:${previewDoc.type || 'application/octet-stream'};base64,${previewDoc.base64Data}` : '');
+        const isImage = previewDoc.type && previewDoc.type.startsWith('image/');
+        const isPdf = previewDoc.type && previewDoc.type.includes('pdf');
+
+        return (
+          <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPreviewDoc(null)}>
+            <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl overflow-hidden max-w-4xl w-full max-h-[85vh] flex flex-col animate-fade-in relative font-sans" onClick={(e) => e.stopPropagation()}>
+              
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 bg-zinc-50 select-none">
+                <div>
+                  <h3 className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Document Preview</h3>
+                  <p className="text-sm font-extrabold text-zinc-950 mt-0.5 max-w-[250px] sm:max-w-md truncate" title={previewDoc.title || previewDoc.name}>
+                    {previewDoc.title || previewDoc.name}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(previewDoc)}
+                    className="p-1.5 text-zinc-500 hover:text-zinc-950 rounded-lg hover:bg-zinc-150 transition inline-flex items-center gap-1 text-xs font-bold"
+                    title="Download document"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="hidden sm:inline">Download</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(null)}
+                    className="p-1.5 text-zinc-400 hover:text-zinc-950 rounded-lg hover:bg-zinc-150 transition"
+                    title="Close preview"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body / Preview Content */}
+              <div className="flex-1 overflow-auto p-4 bg-zinc-50/50 flex items-center justify-center min-h-[300px]">
+                {isImage && fileUrl ? (
+                  <img
+                    src={fileUrl}
+                    alt={previewDoc.name}
+                    className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-sm border border-zinc-100"
+                  />
+                ) : isPdf && fileUrl ? (
+                  <iframe
+                    src={fileUrl}
+                    className="w-full h-[60vh] border border-zinc-200 rounded-2xl shadow-inner bg-white"
+                    title={previewDoc.name}
+                  />
+                ) : (
+                  /* Fallback card for unsupported types (Word, ZIP, Excel, etc.) */
+                  <div className="text-center p-8 max-w-sm bg-white border border-zinc-150 rounded-3xl shadow-sm space-y-4">
+                    <div className="w-16 h-16 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto text-zinc-500 shadow-inner">
+                      {getFileIcon(previewDoc.type)}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-zinc-900 truncate" title={previewDoc.name}>{previewDoc.name}</h4>
+                      <p className="text-xs text-zinc-400 mt-1 uppercase tracking-wider font-semibold">
+                        {formatBytes(previewDoc.size)} · {previewDoc.type || 'Unknown Type'}
+                      </p>
+                    </div>
+                    <p className="text-xs text-zinc-500 leading-relaxed">
+                      Inline preview is not supported for this file format. You can download the file to view it on your device.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(previewDoc)}
+                      className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition shadow-sm inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download File</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
