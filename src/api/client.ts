@@ -184,7 +184,7 @@ export const api = {
 
   // Documents
   getDocuments: (projectId: string) => request(`/projects/${projectId}/documents`),
-  uploadDocument: (projectId: string, doc: { name: string; type: string; size: number; base64Data: string }) =>
+  uploadDocument: (projectId: string, doc: { name: string; type: string; size: number; base64Data: string; title?: string; taskId?: string }) =>
     request(`/projects/${projectId}/documents`, { method: 'POST', body: JSON.stringify(doc) }),
   deleteDocument: (projectId: string, documentId: string) =>
     request(`/projects/${projectId}/documents/${documentId}`, { method: 'DELETE' }),

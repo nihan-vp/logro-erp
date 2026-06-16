@@ -4,6 +4,16 @@ import { requireAuth, requireAdmin, requireAdminOrAccountant } from '../middlewa
 import { notifyTenantRequestsUpdate } from '../socket';
 import { UserRole, ExpenseCategory, PaymentRequest } from '../../src/types';
 import { Storage } from 'megajs';
+import { v2 as cloudinary } from 'cloudinary';
+
+// Configure Cloudinary if credentials are provided in env
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
 
 const router = Router();
@@ -1705,7 +1715,7 @@ router.get('/projects/:projectId/documents', async (req: any, res) => {
 });
 
 router.post('/projects/:projectId/documents', async (req: any, res) => {
-  const { name, type, size, base64Data } = req.body;
+  const { name, type, size, base64Data, title, taskId } = req.body;
   if (!name || !type || size === undefined || !base64Data) {
     return res.status(400).json({ error: 'Name, type, size, and base64Data are required' });
   }
@@ -1715,50 +1725,89 @@ router.post('/projects/:projectId/documents', async (req: any, res) => {
     const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
 
     let url = '';
+    let isUploadedToCloudinary = false;
+    let cloudinaryPublicId = '';
+    let cloudinaryResourceType = '';
     let isUploadedToMega = false;
 
-    const megaEmail = process.env.MEGA_EMAIL;
-    const megaPassword = process.env.MEGA_PASSWORD;
+    const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY;
+    const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET;
 
-    if (megaEmail && megaPassword) {
+    if (cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret) {
       try {
-        console.log(`[MEGA] Logging in for file upload: ${name}`);
-        const storage = await new Storage({
-          email: megaEmail,
-          password: megaPassword
-        }).ready;
-
+        console.log(`[CLOUDINARY] Uploading file: ${name}`);
         const base64Clean = base64Data.replace(/^data:.*;base64,/, '');
-        const buffer = Buffer.from(base64Clean, 'base64');
+        const uploadStr = `data:${type};base64,${base64Clean}`;
+        
+        const result = await cloudinary.uploader.upload(uploadStr, {
+          folder: `logro/documents/${req.params.projectId}`,
+          resource_type: 'auto'
+        });
 
-        const file = await storage.upload({
-          name,
-          size: buffer.length
-        }, buffer).complete;
+        url = result.secure_url;
+        cloudinaryPublicId = result.public_id;
+        cloudinaryResourceType = result.resource_type;
+        isUploadedToCloudinary = true;
+        console.log(`[CLOUDINARY] Successfully uploaded ${name}. Link: ${url}`);
+      } catch (cloudErr: any) {
+        console.error('[CLOUDINARY] Upload failed:', cloudErr);
+      }
+    }
 
-        url = await file.link({});
-        isUploadedToMega = true;
-        console.log(`[MEGA] Successfully uploaded ${name}. Link: ${url}`);
-      } catch (megaErr: any) {
-        console.error('[MEGA] Upload failed, falling back to local database storage:', megaErr);
+    if (!isUploadedToCloudinary) {
+      const megaEmail = process.env.MEGA_EMAIL;
+      const megaPassword = process.env.MEGA_PASSWORD;
+
+      if (megaEmail && megaPassword) {
+        try {
+          console.log(`[MEGA] Logging in for file upload: ${name}`);
+          const storage = await new Storage({
+            email: megaEmail,
+            password: megaPassword
+          }).ready;
+
+          const base64Clean = base64Data.replace(/^data:.*;base64,/, '');
+          const buffer = Buffer.from(base64Clean, 'base64');
+
+          const file = await storage.upload({
+            name,
+            size: buffer.length
+          }, buffer).complete;
+
+          url = await file.link({});
+          isUploadedToMega = true;
+          console.log(`[MEGA] Successfully uploaded ${name}. Link: ${url}`);
+        } catch (megaErr: any) {
+          console.error('[MEGA] Upload failed, falling back to local database storage:', megaErr);
+        }
       }
     }
 
     const newDoc = {
       id: docId,
       projectId: req.params.projectId,
+      taskId: taskId || undefined,
+      title: title || undefined,
       name,
       type,
       size,
       uploadedBy: req.user.userId,
       uploadedByName: req.user.name || 'Unknown User',
       uploadedAt: new Date().toISOString(),
+      cloudinaryUrl: isUploadedToCloudinary ? url : undefined,
+      cloudinaryPublicId: isUploadedToCloudinary ? cloudinaryPublicId : undefined,
+      cloudinaryResourceType: isUploadedToCloudinary ? cloudinaryResourceType : undefined,
       megaUrl: isUploadedToMega ? url : undefined,
-      base64Data: isUploadedToMega ? undefined : base64Data
+      base64Data: (isUploadedToCloudinary || isUploadedToMega) ? undefined : base64Data
     };
 
     await tenantDb.collection('documents').insertOne(newDoc);
     
+    let storageType = 'Local DB';
+    if (isUploadedToCloudinary) storageType = 'Cloudinary';
+    else if (isUploadedToMega) storageType = 'MEGA';
+
     await tenantDb.collection('auditLogs').insertOne({
       id: 'audit_' + Date.now(),
       action: 'Upload',
@@ -1766,10 +1815,13 @@ router.post('/projects/:projectId/documents', async (req: any, res) => {
       entityId: docId,
       performedBy: req.user.userId,
       timestamp: new Date().toISOString(),
-      details: `Uploaded document "${name}" (${isUploadedToMega ? 'MEGA' : 'Local DB'})`
+      details: `Uploaded document "${name}" (${storageType})`
     });
 
-    const responseDoc = { ...newDoc, base64Data: undefined };
+    const responseDoc = {
+      ...newDoc,
+      base64Data: (isUploadedToCloudinary || isUploadedToMega) ? undefined : base64Data
+    };
     res.status(201).json({ document: responseDoc });
   } catch (err: any) {
     console.error('Document upload error:', err);
@@ -1784,7 +1836,25 @@ router.delete('/projects/:projectId/documents/:documentId', async (req: any, res
     const doc = await tenantDb.collection('documents').findOne({ id: req.params.documentId });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-    if (doc.url && doc.url.includes('mega.nz')) {
+    if (doc.cloudinaryPublicId) {
+      const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME;
+      const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY;
+      const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET;
+
+      if (cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret) {
+        try {
+          console.log(`[CLOUDINARY] Deleting file: ${doc.name} (Public ID: ${doc.cloudinaryPublicId})`);
+          await cloudinary.uploader.destroy(doc.cloudinaryPublicId, {
+            resource_type: doc.cloudinaryResourceType || 'auto'
+          });
+        } catch (cloudErr) {
+          console.error('[CLOUDINARY] Failed to delete file from Cloudinary:', cloudErr);
+        }
+      }
+    }
+
+    const megaUrlVal = doc.megaUrl || doc.url;
+    if (megaUrlVal && megaUrlVal.includes('mega.nz')) {
       const megaEmail = process.env.MEGA_EMAIL;
       const megaPassword = process.env.MEGA_PASSWORD;
       if (megaEmail && megaPassword) {

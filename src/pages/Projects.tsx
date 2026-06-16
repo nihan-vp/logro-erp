@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Plus, Search, Edit2, Trash2, Calendar, MapPin, Building,
-  ChevronRight, ArrowLeft, RefreshCw, AlertTriangle, Briefcase,
+  ChevronRight, ChevronLeft, ArrowLeft, RefreshCw, AlertTriangle, Briefcase,
   Receipt, TrendingUp, PlusCircle, DollarSign, Eye,
   UploadCloud, X, ChevronDown, CheckCircle2, FileText, Trash,
   Image as ImageIcon, FolderOpen, Download, File, FileImage,
@@ -49,52 +49,127 @@ const formatBytes = (bytes: number) => {
 interface DocumentsTabProps {
   projectId: string;
   documents: any[];
-  setDocuments: (docs: any[]) => void;
+  setDocuments: React.Dispatch<React.SetStateAction<any[]>>;
   isUploading: boolean;
   setIsUploading: (v: boolean) => void;
+  projects: any[];
 }
 
-function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUploading }: DocumentsTabProps) {
+function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUploading, projects }: DocumentsTabProps) {
   const [drag, setDrag] = React.useState(false);
   const [uploadError, setUploadError] = React.useState('');
+  const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
+  const [uploadTitle, setUploadTitle] = React.useState('');
+  const [uploadProjectId, setUploadProjectId] = React.useState(projectId);
+  const [uploadTaskId, setUploadTaskId] = React.useState('');
+  const [uploadTasksList, setUploadTasksList] = React.useState<any[]>([]);
+
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
 
   const MAX_FILE_MB = 20;
+
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [rowsPerPage, setRowsPerPage] = React.useState(10);
+  const ROWS_PER_PAGE_OPTIONS = [5, 10, 20, 50];
+
+  const totalPages = Math.ceil(documents.length / rowsPerPage);
+  const activePage = Math.min(currentPage, totalPages || 1);
+  const startIndex = (activePage - 1) * rowsPerPage;
+  const paginatedDocuments = documents.slice(startIndex, startIndex + rowsPerPage);
+
+  // Dynamically load tasks when project selection changes in upload modal
+  React.useEffect(() => {
+    if (uploadProjectId) {
+      api.getTasks(uploadProjectId).then((res: any) => {
+        setUploadTasksList(res.tasks || []);
+      }).catch(err => console.error('Error fetching tasks in document upload modal:', err));
+    } else {
+      setUploadTasksList([]);
+    }
+  }, [uploadProjectId]);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setUploadError('');
+    setIsUploading(true);
+
+    const validFiles: File[] = [];
+    const errors: string[] = [];
 
     for (const file of Array.from(files)) {
       if (file.size > MAX_FILE_MB * 1024 * 1024) {
-        setUploadError(`"${file.name}" exceeds the ${MAX_FILE_MB} MB limit.`);
-        continue;
+        errors.push(`"${file.name}" exceeds the ${MAX_FILE_MB} MB limit.`);
+      } else {
+        validFiles.push(file);
       }
+    }
 
-      setIsUploading(true);
-      try {
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve((reader.result as string).split(',')[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+    if (errors.length > 0) {
+      setUploadError(errors.join(' '));
+    }
 
-        const res = await api.uploadDocument(projectId, {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          base64Data,
-        });
+    if (validFiles.length === 0) {
+      setIsUploading(false);
+      return;
+    }
 
-        if (res.document) {
-          setDocuments([...documents, res.document]);
+    try {
+      const uploadPromises = validFiles.map(async (file) => {
+        try {
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          // Upload to the selected project ID from the popup
+          const res = await api.uploadDocument(uploadProjectId, {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            base64Data,
+            title: uploadTitle || undefined,
+            taskId: uploadTaskId || undefined
+          });
+
+          if (!res.document) {
+            throw new Error('Upload response empty');
+          }
+          return { status: 'success', doc: res.document, fileName: file.name };
+        } catch (fileErr: any) {
+          return { status: 'failed', name: file.name, error: fileErr.message || 'Upload failed' };
         }
-      } catch (err: any) {
-        setUploadError(err.message || 'Upload failed. Please try again.');
-      } finally {
-        setIsUploading(false);
+      });
+
+      const results = await Promise.all(uploadPromises);
+      const successfulDocs = results
+        .filter((r) => r.status === 'success')
+        .map((r: any) => r.doc);
+      
+      const failedDocs = results.filter((r) => r.status === 'failed');
+
+      // Only append to the current project documents list if the document was uploaded to the active project
+      if (successfulDocs.length > 0 && uploadProjectId === projectId) {
+        setDocuments(prev => [...prev, ...successfulDocs]);
       }
+
+      // Close modal and reset fields on successful uploads
+      if (failedDocs.length === 0) {
+        setIsUploadModalOpen(false);
+        setUploadTitle('');
+        setUploadProjectId(projectId);
+        setUploadTaskId('');
+        notify.success('Documents uploaded successfully.');
+      } else {
+        const failedNames = failedDocs.map((f: any) => `"${f.name}" (${f.error})`).join(', ');
+        setUploadError(`Failed to upload: ${failedNames}. ${errors.join(' ')}`);
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'Upload process encountered an error.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -105,17 +180,29 @@ function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUp
   };
 
   const handleDelete = async (docId: string) => {
+    const docToDelete = documents.find((d: any) => d.id === docId);
+    const ok = await confirm({
+      title: 'Delete document?',
+      message: docToDelete
+        ? `Are you sure you want to permanently delete "${docToDelete.title || docToDelete.name}"?`
+        : 'Are you sure you want to permanently delete this document?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await api.deleteDocument(projectId, docId);
-      setDocuments(documents.filter((d: any) => d.id !== docId));
+      setDocuments(prev => prev.filter((d: any) => d.id !== docId));
+      notify.success('Document deleted successfully.');
     } catch {
       setUploadError('Could not delete document.');
     }
   };
 
   const handleDownload = (doc: any) => {
-    if (doc.megaUrl) {
-      window.open(doc.megaUrl, '_blank');
+    if (doc.cloudinaryUrl || doc.megaUrl) {
+      window.open(doc.cloudinaryUrl || doc.megaUrl, '_blank');
       return;
     }
     if (doc.base64Data) {
@@ -126,88 +213,288 @@ function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUp
     }
   };
 
+  const handleView = (doc: any) => {
+    const fileUrl = doc.cloudinaryUrl || doc.megaUrl;
+    if (fileUrl) {
+      window.open(fileUrl, '_blank');
+      return;
+    }
+    if (doc.base64Data) {
+      const fileWindow = window.open();
+      if (fileWindow) {
+        fileWindow.document.write(
+          `<iframe src="data:${doc.type || 'application/octet-stream'};base64,${doc.base64Data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`
+        );
+      }
+    }
+  };
+
   return (
     <div className="space-y-4 py-2">
-      {/* Upload zone */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={handleDrop}
-        onClick={() => !isUploading && inputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer select-none
-          ${drag ? 'border-zinc-800 bg-zinc-100' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100 hover:border-zinc-400'}`}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
-        {isUploading ? (
-          <>
-            <RefreshCw className="w-7 h-7 text-zinc-400 animate-spin" />
-            <p className="text-sm font-semibold text-zinc-500">Uploading…</p>
-          </>
-        ) : (
-          <>
-            <UploadCloud className="w-8 h-8 text-zinc-400" />
-            <p className="text-sm font-semibold text-zinc-600">
-              {drag ? 'Drop files here' : 'Drag & drop files or click to browse'}
-            </p>
-            <p className="text-[11px] text-zinc-400">PDFs, images, spreadsheets — up to {MAX_FILE_MB} MB each</p>
-          </>
-        )}
+      {/* Upload Action Button Row */}
+      <div className="flex items-center justify-between border-b pb-3 border-zinc-150/60">
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900">Project Documents Ledger</h3>
+          <p className="text-[10px] text-zinc-400 font-medium mt-0.5">Attach invoices, maps, structural drawings, or spreadsheets</p>
+        </div>
+        <button
+          onClick={() => {
+            setUploadError('');
+            setIsUploadModalOpen(true);
+          }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>Upload Document</span>
+        </button>
       </div>
 
-      {uploadError && (
-        <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>{uploadError}</span>
+      {/* Table of Documents */}
+      {documents.length === 0 ? (
+        <div className="text-center py-10 text-zinc-400 bg-zinc-50 border border-zinc-200 border-dashed rounded-2xl">
+          <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm font-medium">No documents yet</p>
+          <p className="text-xs mt-0.5 text-zinc-400">Click the upload button above to attach files to this project.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto border border-zinc-200/60 rounded-2xl bg-white shadow-sm">
+          <table className="min-w-full divide-y divide-zinc-200/60 text-xs sm:text-sm font-sans">
+            <thead className="bg-zinc-50">
+              <tr className="text-left text-zinc-400 font-bold uppercase tracking-wider text-[10px]">
+                <th className="px-4 py-3 w-[60px]">Type</th>
+                <th className="px-4 py-3">Title / Name</th>
+                <th className="px-4 py-3">Project & Task Link</th>
+                <th className="px-4 py-3">Uploaded By</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Size</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+             <tbody className="divide-y divide-zinc-150/60 bg-white">
+              {paginatedDocuments.map((doc: any) => {
+                const docProj = projects.find(p => p.id === doc.projectId);
+                return (
+                  <tr key={doc.id} className="hover:bg-zinc-50/50 transition-colors group">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {getFileIcon(doc.type)}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-zinc-800">
+                      <div className="truncate max-w-[200px] sm:max-w-[300px]" title={doc.title || doc.name}>
+                        {doc.title ? (
+                          <>
+                            <span className="block font-bold text-zinc-900">{doc.title}</span>
+                            <span className="block text-[10px] text-zinc-400 font-normal mt-0.5 truncate">{doc.name}</span>
+                          </>
+                        ) : (
+                          <span className="block text-zinc-850 font-medium">{doc.name}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      <div className="truncate max-w-[150px]">
+                        <span className="font-semibold block text-zinc-800">{docProj ? docProj.projectName : 'Unknown Project'}</span>
+                        {doc.taskId && (
+                          <span className="text-[10px] text-zinc-400 block mt-0.5 truncate font-normal">
+                            Task ID: {doc.taskId}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600 font-medium">
+                      {doc.uploadedByName}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">
+                      {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span>{formatBytes(doc.size)}</span>
+                        {doc.cloudinaryUrl && <span className="text-[9px] bg-emerald-50 text-emerald-700 font-bold border border-emerald-100 rounded px-1 py-0.5">Cloud</span>}
+                        {doc.megaUrl && <span className="text-[9px] bg-sky-50 text-sky-700 font-bold border border-sky-100 rounded px-1 py-0.5">MEGA</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => handleView(doc)}
+                          className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500 hover:text-zinc-850 transition"
+                          title="View / Preview"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDownload(doc)}
+                          className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500 hover:text-zinc-850 transition"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(doc.id)}
+                          className="p-1.5 rounded-lg hover:bg-rose-50 text-zinc-400 hover:text-rose-600 transition"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-zinc-200/60 bg-zinc-50 select-none">
+            <div className="flex items-center gap-2 text-zinc-500 font-semibold text-xs">
+              <span>Rows:</span>
+              <select
+                value={rowsPerPage}
+                onChange={(e) => {
+                  setRowsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-zinc-700 outline-none focus:border-zinc-400 text-xs"
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={activePage <= 1}
+                className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-650 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-semibold text-zinc-650 min-w-[72px] text-center">
+                {activePage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={activePage >= totalPages}
+                className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-650 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                aria-label="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Document list */}
-      {documents.length === 0 ? (
-        <div className="text-center py-10 text-zinc-400">
-          <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm font-medium">No documents yet</p>
-          <p className="text-xs mt-0.5">Upload files above to attach them to this project.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {documents.map((doc: any) => (
-            <div
-              key={doc.id}
-              className="flex items-center gap-3 p-3 bg-white border border-zinc-100 rounded-xl hover:shadow-sm transition group"
+      {/* Upload Modal Popup */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border text-xs sm:text-sm border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-md w-full space-y-4 font-sans animate-fade-in relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsUploadModalOpen(false);
+                setUploadTitle('');
+                setUploadProjectId(projectId);
+                setUploadTaskId('');
+                setUploadError('');
+              }}
+              className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-650"
             >
-              <div className="flex-shrink-0">{getFileIcon(doc.type)}</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-zinc-800 truncate">{doc.name}</p>
-                <p className="text-[10px] text-zinc-400 mt-0.5">
-                  {formatBytes(doc.size)}
-                  {doc.uploadedAt && ` · ${new Date(doc.uploadedAt).toLocaleDateString()}`}
-                  {doc.megaUrl && <span className="ml-1.5 text-emerald-600 font-bold">· Cloud</span>}
-                </p>
+              <X className="w-5 h-5 pointer-events-none" />
+            </button>
+            
+            <div className="border-b pb-3 border-zinc-100">
+              <h2 className="text-base sm:text-lg font-bold text-zinc-900">Upload Project Document</h2>
+              <span className="text-[10px] text-zinc-400 block font-bold mt-0.5 uppercase tracking-wider">Configure metadata before dropping file</span>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Document Title (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Approved Structural Drawing"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none text-xs sm:text-sm"
+                />
               </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                <button
-                  onClick={() => handleDownload(doc)}
-                  className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500 hover:text-zinc-800 transition"
-                  title="Download"
+
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Project Link (Optional)</label>
+                <select
+                  value={uploadProjectId}
+                  onChange={(e) => setUploadProjectId(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-950 text-xs sm:text-sm"
                 >
-                  <Download className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(doc.id)}
-                  className="p-1.5 rounded-lg hover:bg-rose-50 text-zinc-400 hover:text-rose-600 transition"
-                  title="Delete"
+                  <option value="">Select Project...</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.projectName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Task Link (Optional)</label>
+                <select
+                  value={uploadTaskId}
+                  onChange={(e) => setUploadTaskId(e.target.value)}
+                  disabled={!uploadProjectId}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-950 text-xs sm:text-sm disabled:opacity-50"
                 >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                  <option value="">Select Task Scope...</option>
+                  {uploadTasksList.map(t => (
+                    <option key={t.id} value={t.id}>{t.taskName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">File Attachment</label>
+                {/* Upload zone inside modal */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+                  onDragLeave={() => setDrag(false)}
+                  onDrop={handleDrop}
+                  onClick={() => !isUploading && inputRef.current?.click()}
+                  className={`relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer select-none
+                    ${drag ? 'border-zinc-800 bg-zinc-100' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100 hover:border-zinc-400'}`}
+                >
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleFiles(e.target.files)}
+                  />
+                  {isUploading ? (
+                    <>
+                      <RefreshCw className="w-6 h-6 text-zinc-400 animate-spin" />
+                      <p className="text-xs font-semibold text-zinc-500">Uploading…</p>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-7 h-7 text-zinc-400" />
+                      <p className="text-xs font-semibold text-zinc-650 text-center">
+                        {drag ? 'Drop files here' : 'Drag & drop files or click to browse'}
+                      </p>
+                      <p className="text-[10px] text-zinc-400">Up to {MAX_FILE_MB} MB each</p>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          ))}
+
+            {uploadError && (
+              <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1683,6 +1970,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               setDocuments={setProjectDocuments}
               isUploading={isUploadingDoc}
               setIsUploading={setIsUploadingDoc}
+              projects={projects}
             />
           )}
 
