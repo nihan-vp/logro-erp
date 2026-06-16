@@ -17,6 +17,7 @@ export default function SuperadminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'trial' | 'suspended'>('all');
   const [activeTab, setActiveTab] = useState<'tenants' | 'backups'>('tenants');
+  const [storageMap, setStorageMap] = useState<Record<string, { totalBytes: number; dataBytes: number; objects: number }>>({});
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -50,6 +51,13 @@ export default function SuperadminDashboard() {
   const [newUserRole, setNewUserRole] = useState<'admin' | 'accountant' | 'manager'>('admin');
   const [newUserPhone, setNewUserPhone] = useState('');
 
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
   const fetchCompanies = async () => {
     try {
       setLoading(true);
@@ -62,9 +70,24 @@ export default function SuperadminDashboard() {
     }
   };
 
+  const fetchStorage = async () => {
+    try {
+      const res = await api.getTenantStorage();
+      const map: Record<string, { totalBytes: number; dataBytes: number; objects: number }> = {};
+      (res || []).forEach((s: any) => {
+        map[s.companyName] = { totalBytes: s.totalBytes, dataBytes: s.dataBytes, objects: s.objects };
+      });
+      setStorageMap(map);
+    } catch {
+      // Storage fetch is non-critical, silently ignore
+    }
+  };
+
   useEffect(() => {
     fetchCompanies();
+    fetchStorage();
   }, []);
+
 
   // Compute metrics for stats cards
   const stats = useMemo(() => {
@@ -718,6 +741,7 @@ export default function SuperadminDashboard() {
                   <th className="p-4 pl-6">Company & Infrastructure</th>
                   <th className="p-4 text-center">Status</th>
                   <th className="p-4">Subscription Lifeline</th>
+                  <th className="p-4 text-center">Storage Used</th>
                   <th className="p-4 text-right pr-6">Management Actions</th>
                 </tr>
               </thead>
@@ -780,6 +804,33 @@ export default function SuperadminDashboard() {
                               </button>
                             </div>
                           )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col items-center gap-0.5">
+                          {(() => {
+                            const s = storageMap[c.companyName];
+                            const total = s?.totalBytes ?? 0;
+                            const data = s?.dataBytes ?? 0;
+                            const objs = s?.objects ?? 0;
+                            return (
+                              <>
+                                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border ${
+                                  total === 0 ? 'bg-zinc-50 text-zinc-400 border-zinc-200' :
+                                  total > 50 * 1024 * 1024 ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                  total > 10 * 1024 * 1024 ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                  'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                }`}>
+                                  {formatBytes(total)}
+                                </span>
+                                {total > 0 && (
+                                  <span className="text-[9px] text-zinc-400 font-semibold">
+                                    {formatBytes(data)} data · {objs} docs
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="p-4 text-right pr-6">

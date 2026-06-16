@@ -201,5 +201,6 @@ export const api = {
   createTenantUser: (companyName: string, data: any) => request(`/superadmin/companies/${companyName}/users`, { method: 'POST', body: JSON.stringify(data) }),
   toggleTenantUserStatus: (companyName: string, userId: string, status: string) => request(`/superadmin/companies/${companyName}/users/${userId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   deleteTenantUser: (companyName: string, userId: string) => request(`/superadmin/companies/${companyName}/users/${userId}`, { method: 'DELETE' }),
+  getTenantStorage: () => request('/superadmin/companies/storage'),
   getBackupDatabases: () => request('/superadmin/backup/databases'),
 };

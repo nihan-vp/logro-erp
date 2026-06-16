@@ -184,6 +184,46 @@ router.delete('/companies/:companyName/users/:userId', async (req: any, res) => 
     }
 });
 
+router.get('/companies/storage', async (req: any, res) => {
+    try {
+        const registryDb = await getRegistryDb();
+        const companies = await registryDb.collection('companies').find({}).toArray();
+        
+        const storageData = await Promise.all(companies.map(async (company: any) => {
+            try {
+                const dbName = `logro_tenant_${company.companyName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+                const tenantDb = await getTenantDb(company.companyName);
+                const stats = await tenantDb.command({ dbStats: 1, scale: 1 });
+                return {
+                    companyName: company.companyName,
+                    dbName,
+                    storageBytes: stats.storageSize || 0,
+                    dataBytes: stats.dataSize || 0,
+                    totalBytes: (stats.storageSize || 0) + (stats.indexSize || 0),
+                    indexBytes: stats.indexSize || 0,
+                    collections: stats.collections || 0,
+                    objects: stats.objects || 0,
+                };
+            } catch {
+                return {
+                    companyName: company.companyName,
+                    dbName: `logro_tenant_${company.companyName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+                    storageBytes: 0,
+                    dataBytes: 0,
+                    totalBytes: 0,
+                    indexBytes: 0,
+                    collections: 0,
+                    objects: 0,
+                };
+            }
+        }));
+
+        res.json(storageData);
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to fetch storage stats: ' + err.message });
+    }
+});
+
 router.get('/backup/databases', async (req: any, res) => {
     try {
         const databases = await listUserDatabases();
