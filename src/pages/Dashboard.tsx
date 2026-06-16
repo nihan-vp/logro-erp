@@ -230,7 +230,7 @@ export default function Dashboard({ onNavigate, userRole }: DashboardProps) {
       {/* Task wise progress summary and lists */}
       <div className={`${sectionGridClass} grid-cols-1 lg:grid-cols-2`}>
         {/* Task progress cards */}
-        <div className={`${cardClass} gap-4 min-h-[320px]`}>
+        <div className={`${cardClass} gap-4 !h-[300px]`}>
           <div className="flex items-center justify-between shrink-0">
             <h2 className="text-sm font-semibold text-zinc-900 tracking-tight">Active Tasks</h2>
             <button 
@@ -287,7 +287,7 @@ export default function Dashboard({ onNavigate, userRole }: DashboardProps) {
         </div>
 
         {/* Recent Expenses List */}
-        <div className={`${cardClass} gap-4 min-h-[320px]`}>
+        <div className={`${cardClass} gap-4 !h-[300px]`}>
           <div className="flex items-center justify-between shrink-0">
             <h2 className="text-sm font-semibold text-zinc-900 tracking-tight flex items-center gap-1.5">
               <Receipt className="w-4 h-4 text-zinc-500" />
