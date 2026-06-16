@@ -850,7 +850,13 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                   <label className={labelClass}>Inflow Type</label>
                   <select
                     value={inflowType}
-                    onChange={e => setInflowType(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setInflowType(val);
+                      if (val === 'credit') {
+                        setInflowProject('');
+                      }
+                    }}
                     required
                     className={inputClass}
                   >
@@ -923,20 +929,22 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                 />
               </div>
 
-              <div>
-                <label className={labelClass}>Project</label>
-                <select
-                  value={inflowProject}
-                  onChange={e => setInflowProject(e.target.value)}
-                  required
-                  className={inputClass}
-                >
-                  <option value="">Select project...</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.projectName}</option>
-                  ))}
-                </select>
-              </div>
+              {inflowType !== 'credit' && (
+                <div>
+                  <label className={labelClass}>Project</label>
+                  <select
+                    value={inflowProject}
+                    onChange={e => setInflowProject(e.target.value)}
+                    required
+                    className={inputClass}
+                  >
+                    <option value="">Select project...</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.projectName}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <button
                 type="submit"
