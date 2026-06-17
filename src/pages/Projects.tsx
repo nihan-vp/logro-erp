@@ -1530,13 +1530,13 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       return (
                         <tr
                           key={p.id}
-                          className="hover:bg-zinc-50/50 transition-colors"
+                          className="hover:bg-zinc-50/75 active:opacity-70 cursor-pointer transition-all duration-150"
                           style={{ height: PROJ_TABLE_ROW_HEIGHT_PX }}
+                          onClick={() => loadProjectDetails(p)}
                         >
-                          <td className="px-4 align-middle">
+                          <td className="px-4 align-middle font-sans">
                             <span
-                              onClick={() => loadProjectDetails(p)}
-                              className="font-bold text-zinc-950 block hover:text-zinc-700 cursor-pointer truncate max-w-[180px]"
+                              className="font-bold text-zinc-950 block hover:text-zinc-700 truncate max-w-[180px]"
                             >
                               {p.projectName}
                             </span>
@@ -1580,7 +1580,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                             <div className="inline-flex items-center gap-1">
                               <button
                                 type="button"
-                                onClick={() => loadProjectDetails(p)}
+                                onClick={(e) => { e.stopPropagation(); loadProjectDetails(p); }}
                                 className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border text-[10px] font-semibold transition-all whitespace-nowrap"
                                 title="Manage Project"
                               >
@@ -1590,7 +1590,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                 <>
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenEditProject(p)}
+                                    onClick={(e) => { e.stopPropagation(); handleOpenEditProject(p); }}
                                     className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border text-[10px] font-semibold transition-all"
                                     title="Edit details"
                                   >
@@ -1598,7 +1598,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDeleteProject(p.id)}
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteProject(p.id); }}
                                     className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 text-[10px] font-semibold transition-all"
                                     title="Erase project"
                                   >

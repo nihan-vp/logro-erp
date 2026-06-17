@@ -173,6 +173,8 @@ export default function AttendancePage() {
   const [showSidebarCalendars, setShowSidebarCalendars] = useState(true);
   const [payWagesProjectId, setPayWagesProjectId] = useState<string>('');
   const [payWagesTaskId, setPayWagesTaskId] = useState<string>('');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+  const [selectedCalendarWorkerName, setSelectedCalendarWorkerName] = useState<string | null>(null);
   const [rosterPage, setRosterPage] = useState(1);
   const [rosterRowsPerPage, setRosterRowsPerPage] = useState<number>(() => {
     return Number(localStorage.getItem('roster_rows_per_page')) || 10;
@@ -272,8 +274,12 @@ export default function AttendancePage() {
             return (
               <div
                 key={i}
-                className={`w-2 h-2 rounded-full ${colorClass} ${isToday ? 'ring-1 ring-zinc-900 ring-offset-1' : ''}`}
+                className={`w-2 h-2 rounded-full ${colorClass} ${isToday ? 'ring-1 ring-zinc-900 ring-offset-1' : ''} cursor-pointer hover:scale-110 transition-all`}
                 title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}`}
+                onClick={() => {
+                  setSelectedCalendarDate(dateStr);
+                  setSelectedCalendarWorkerName(workerName);
+                }}
               />
             );
           }
@@ -281,8 +287,12 @@ export default function AttendancePage() {
           return (
             <div
               key={i}
-              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${colorClass} ${isToday ? 'ring-2 ring-zinc-900' : ''} transition-all hover:scale-110 cursor-help flex items-center justify-center`}
+              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${colorClass} ${isToday ? 'ring-2 ring-zinc-900' : ''} transition-all hover:scale-110 cursor-pointer flex items-center justify-center`}
               title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}`}
+              onClick={() => {
+                setSelectedCalendarDate(dateStr);
+                setSelectedCalendarWorkerName(workerName);
+              }}
             >
               <span className={`text-[9px] sm:text-[10px] font-black ${log ? 'text-white' : 'text-zinc-500'}`}>
                 {d.getDate()}
@@ -2434,6 +2444,101 @@ export default function AttendancePage() {
                   >
                     <span>{isSubmittingPayWages ? 'Submitting...' : `Submit Payment Request for ${formatCur(Number(payWagesAmount) || 0)}`}</span>
                   </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {selectedCalendarDate && selectedCalendarWorkerName && (() => {
+            const dateLogs = attendanceLogs.filter(
+              a => a.workerName === selectedCalendarWorkerName && a.date === selectedCalendarDate
+            );
+
+            return (
+              <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+                  <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+                    <h2 className="text-base font-extrabold text-zinc-950">
+                      Attendance Overview
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCalendarDate(null);
+                        setSelectedCalendarWorkerName(null);
+                      }}
+                      className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div className="text-xs text-zinc-600 space-y-3 font-sans">
+                    <div className="flex justify-between items-center bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                      <div>
+                        <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Worker</span>
+                        <span className="text-xs font-bold text-zinc-950">{selectedCalendarWorkerName}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Date</span>
+                        <span className="text-xs font-bold text-zinc-950">{selectedCalendarDate}</span>
+                      </div>
+                    </div>
+
+                    {dateLogs.length === 0 ? (
+                      <div className="p-4 bg-zinc-50 border border-dashed rounded-xl text-center text-zinc-500">
+                        <p className="font-semibold text-xs">No attendance recorded on this date.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <span className="block text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Attendance Logs ({dateLogs.length})</span>
+                        {dateLogs.map((log, index) => {
+                          const project = projects.find(p => p.id === log.projectId);
+                          const task = tasks.find(t => t.id === log.taskId);
+
+                          return (
+                            <div key={log.id || index} className="p-3 bg-zinc-50 border border-zinc-150 rounded-xl space-y-2">
+                              <div className="flex justify-between items-start">
+                                <div className="space-y-0.5">
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block">Site / Project</span>
+                                  <span className="font-bold text-zinc-900 text-xs">{project ? project.projectName : 'Unknown Project'}</span>
+                                  {task && (
+                                    <span className="text-[10px] text-zinc-500 block font-semibold">Task: {task.taskName}</span>
+                                  )}
+                                </div>
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                  log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                  log.status === 'Half Day' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                                  'bg-rose-50 text-rose-700 border border-rose-100'
+                                }`}>
+                                  {log.status}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-200/60 text-[9px] text-zinc-500 font-bold uppercase tracking-wider">
+                                <div>
+                                  <span className="text-[8px] text-zinc-400 block">Daily Wage</span>
+                                  <span className="text-zinc-950 font-extrabold normal-case">{formatCur(log.dailyWage || 0)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[8px] text-zinc-400 block">Overtime</span>
+                                  <span className="text-zinc-950 font-extrabold normal-case">{formatCur(log.overtimeAmount || 0)}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[8px] text-zinc-400 block">Payout Status</span>
+                                  <span className={`font-extrabold normal-case ${
+                                    log.paymentStatus === 'Paid' ? 'text-emerald-700' :
+                                    log.paymentStatus === 'Pending' ? 'text-amber-700' :
+                                    'text-zinc-500'
+                                  }`}>{log.paymentStatus || 'Unpaid'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
