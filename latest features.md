@@ -1,26 +1,28 @@
-# Latest Added Features (Last 18 Hours)
+# Latest Added Features
 
-The following core features, bug fixes, and responsive layout enhancements have been successfully added to LOGRO ERP:
+The following core features, bug fixes, and UI enhancements have been added to LOGRO ERP:
 
-## 1. Wages Payment Modal Overhaul
-- **Optional Project & Task Selectors**: Added Project and Task selection dropdowns inside the **Request Wages Payment** popup.
-- **Auto-Default Logic**: The selectors automatically identify the worker's first unpaid log in the selected period and pre-populate the defaults.
-- **Cascading Filter**: The Task selector filters options based on the chosen Project and is disabled if no project is selected.
-- **Responsive Layout**: Re-engineered the payout card structure on mobile to stack the amount and button vertically (`w-full`), while maintaining an inline layout (`sm:w-auto`) on larger screens.
+## 1. Document Preview Modal (Projects)
+- **Inline Preview Popup**: Replaced `window.open()` document viewing with a polished modal popup for previewing documents inside the Documents tab.
+- **Image & PDF Support**: Renders images inline with `max-h-[60vh]` scaling and PDFs via an embedded iframe.
+- **Fallback for Unsupported Types**: Displays a styled card with file icon, size, and type info for Word, ZIP, Excel, and other non-previewable formats, with a prominent download button.
+- **Header with Download & Close**: Modal header shows document name, a download button, and a close button.
 
-## 2. Professional PDF Statement Generation (jsPDF Integration)
-- **Direct PDF Export**: Integrated `jspdf` to compile and download high-quality, pixel-perfect A4 worker statements completely offline on the client side.
-- **Visual Dotted Calendar**: Designed and drew the **Attendance Dotted Calendar Visualizer** directly onto the PDF canvas using vector drawing methods. Dots are filled with corresponding status colors (Green for Present, Blue for Half Day, Red for Absent, Zinc for No Log) with the day numbers centered. Includes a matching top legend.
-- **Indian Rupee Formatting**: Formatted currency as `Rs.` to guarantee standard Helvetica font encoding compatibilities across all PDF viewers.
-- **Robust Multi-Page Layout**: Automatically monitors page vertical heights during table compilation to add pages, reset headers, and draw page numbers (`Page X of Y`) to prevent overflow truncation.
-- **Corporate Features**: Styled with the *Plus Jakarta Sans* font, highlight cards for total earnings/paid amounts, and formal signature authorization placeholders at the bottom.
+## 2. Tenant Storage Monitoring (Superadmin)
+- **Per-Company Storage Stats**: New `GET /api/superadmin/companies/storage` endpoint aggregates `dbStats` (storageSize, dataSize, indexSize, objects, collections) for every tenant database.
+- **Storage Column in Company Table**: Added a "Storage Used" column to the superadmin company registry table.
+- **Color-Coded Usage Badges**: Storage size badges are color-coded: emerald (≤10 MB), amber (≤50 MB), rose (>50 MB), or zinc (0 B / unavailable).
+- **Detail Subtext**: Shows data size and document count beneath the main badge when storage data is available.
 
-## 3. Financial Breakdown & Calculation Fixes
-- **Accurate Balance Calculation**: Resolved payment status tracking bugs. The `Remaining Due`, `Total Wage Earned`, and `Paid Amount` metrics now update instantly after payments, accounting for installment history items inside partially paid requests.
-- **Payment Request Table Translation**: Converted the **Attendance & Wage Log Breakdown** section into **Wage Payment Requests** to track and display requests in the ledger.
+## 3. Conditional Project Field in Cash Inflow (Accountant)
+- **Credit Inflow Type**: When "Inflow Type" is set to "Credit", the "Project" dropdown is now hidden (no project association needed for credit entries).
+- **Auto-Reset**: Selecting "Credit" clears any previously selected project to prevent stale data.
 
-## 4. UI/UX and Responsive Adjustments
-- **Finance Hub Modal Responsiveness**: Enabled `max-h-[90vh]` and `overflow-y-auto` scrollbars on the Payment Request Status view popup to prevent modal truncation on small screen viewports.
-- **Overview Calendar Centering**: Centered visualizer dots in the worker rosters list view.
-- **Date boundary math**: Fixed local timezone date boundary offsets. Selecting a month (e.g. June) now correctly limits log queries from the 1st to the 30th without timezone shifts.
-- **Clutter reduction**: Hid the unpaid days metrics block when count is 0 and added helpful status placeholder banners when no logs match the target query bounds.
+## 4. Dynamic Category Filter in Finance Hub
+- **Auto-Populated Categories**: The Payment Requests category filter dropdown now dynamically populates from the actual unique categories present in the requests list (`Array.from(new Set(requests.map(r => r.category)))`), instead of a hardcoded static list.
+
+## 5. Dashboard UI Tidy
+- **Fixed Card Heights**: Active Tasks and Recent Expenses cards on the Admin Dashboard now use `!h-[300px]` instead of `min-h-[320px]` for consistent, compact sizing.
+
+## 6. Projects Page Enhancements
+- **Document Inline Preview Modal**: Full modal-based document preview with image/PDF rendering and fallback for unsupported types (see #1).

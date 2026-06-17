@@ -573,8 +573,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
 
   const insufficientOfficeFunds = userRole === 'admin' && reqAmount !== '' && reqAmount > 0 && reqAmount > officeBalance;
 
-  const pendingRequests = requests.filter(r => r.status === 'Pending' && !r.adjustmentType);
-  const paidRequests = requests.filter(r => r.status === 'Paid' && !r.adjustmentType);
+  const pendingRequests = filteredRequests.filter(r => r.status === 'Pending' && !r.adjustmentType);
+  const paidRequests = filteredRequests.filter(r => r.status === 'Paid' && !r.adjustmentType);
   const totalPendingAmount = pendingRequests.reduce((sum, r) => sum + r.amount, 0);
   const totalPaidAmount = paidRequests.reduce((sum, r) => sum + r.amount, 0);
 

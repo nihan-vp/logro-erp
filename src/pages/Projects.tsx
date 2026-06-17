@@ -25,6 +25,17 @@ const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest[
 
 const parseNumericQty = (qty: string) => parseFloat(qty.replace(/[^0-9.]/g, '')) || 0;
 
+const PROJ_ROWS_PER_PAGE_OPTIONS = [5, 10, 25, 50];
+const PROJ_ROWS_PER_PAGE_STORAGE_KEY = 'erp_projects_rows_per_page';
+const PROJ_TABLE_ROW_HEIGHT_PX = 56;
+
+const getStoredProjRowsPerPage = (): number => {
+  const stored = localStorage.getItem(PROJ_ROWS_PER_PAGE_STORAGE_KEY);
+  if (!stored) return 10;
+  const parsed = Number(stored);
+  return PROJ_ROWS_PER_PAGE_OPTIONS.includes(parsed) ? parsed : 10;
+};
+
 
 // ─── Helper: Determine icon + colour for a given MIME / extension ───────────
 const getFileIcon = (type: string) => {
@@ -592,6 +603,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   // Dashboard overall filter/search
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [projRowsPerPage, setProjRowsPerPage] = useState(getStoredProjRowsPerPage);
+  const [projCurrentPage, setProjCurrentPage] = useState(1);
 
   // Expanded project panel details
   const [isViewOpen, setIsViewOpen] = useState(false);
@@ -698,6 +711,14 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  useEffect(() => {
+    setProjCurrentPage(1);
+  }, [searchQuery, statusFilter, projRowsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem(PROJ_ROWS_PER_PAGE_STORAGE_KEY, String(projRowsPerPage));
+  }, [projRowsPerPage]);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -1383,6 +1404,15 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     return matchesSearch && matchesStatus;
   });
 
+  const totalProjPages = Math.max(1, Math.ceil(filteredProjects.length / projRowsPerPage));
+  const activeProjPage = Math.min(projCurrentPage, totalProjPages);
+  const startProjIndex = (activeProjPage - 1) * projRowsPerPage;
+  const paginatedProjects = filteredProjects.slice(startProjIndex, startProjIndex + projRowsPerPage);
+  const emptyProjRowCount = Math.max(0, projRowsPerPage - paginatedProjects.length);
+  const projTableBodyHeight = projRowsPerPage * PROJ_TABLE_ROW_HEIGHT_PX;
+  const projRangeStart = filteredProjects.length === 0 ? 0 : startProjIndex + 1;
+  const projRangeEnd = Math.min(startProjIndex + projRowsPerPage, filteredProjects.length);
+
   const filteredTasksList = projectTasks.filter(t => {
     const matchesSearch = t.taskName.toLowerCase().includes(tasksSearch.toLowerCase()) ||
       (t.description || '').toLowerCase().includes(tasksSearch.toLowerCase()) ||
@@ -1470,109 +1500,171 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredProjects.map((p) => {
-                const profit = p.profitLoss || 0;
-                const isOver = profit < 0;
-                return (
-                  <div
-                    key={p.id}
-                    className="bg-white border border-zinc-200/80 rounded-2xl p-4 sm:p-5 shadow-sm hover:border-zinc-300 transition-all flex flex-col justify-between"
+            <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left text-zinc-600 border-collapse min-w-[720px]">
+                  <thead>
+                    <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
+                      <th className="py-3 px-4">Project</th>
+                      <th className="py-3 px-4">Location</th>
+                      <th className="py-3 px-4">Timeline</th>
+                      <th className="py-3 px-4 text-center">Tasks</th>
+                      {userRole !== 'manager' && (
+                        <>
+                          <th className="py-3 px-4 text-right">Budget</th>
+                          <th className="py-3 px-4 text-right">Expenses</th>
+                          <th className="py-3 px-4 text-right">Profit/Loss</th>
+                        </>
+                      )}
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody
+                    className="divide-y divide-zinc-100 text-zinc-900"
+                    style={{ height: projTableBodyHeight }}
                   >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight ${p.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/40' :
-                            p.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border border-zinc-200/40' :
-                              p.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border border-amber-200/40' : 'bg-zinc-50 text-zinc-500'
-                            }`}>
-                            {p.status}
-                          </span>
-                          <h2
-                            onClick={() => loadProjectDetails(p)}
-                            className="text-sm sm:text-base font-bold text-zinc-900 hover:text-zinc-700 cursor-pointer tracking-tight mt-1"
-                          >
-                            {p.projectName}
-                          </h2>
-                        </div>
-                        <span className="text-[10px] font-bold text-zinc-400 bg-zinc-100 px-2.5 py-1 rounded">
-                          {p.taskCount || 0} Task{p.taskCount !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1.5 text-xs text-zinc-500">
-                        <div className="flex items-center gap-1.5">
-                          <Building className="w-3.5 h-3.5" />
-                          <span>Client: <b className="text-zinc-850 font-semibold">{p.clientName}</b></span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5" />
-                          <span>Location: <b className="text-zinc-850 font-semibold">{p.location}</b></span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>Timeline: <b className="text-zinc-850 font-semibold">{p.startDate} to {p.expectedEndDate}</b></span>
-                        </div>
-                      </div>
-
-                      {userRole !== 'manager' && (
-                        <div className="grid grid-cols-2 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[11px] font-bold border border-zinc-100">
-                          <div>
-                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">
-                              {p.contractBudget > 0 ? 'Contract Budget' : 'Task Budgets'}
-                            </span>
-                            <span className="text-zinc-900">
-                              {formatCur(p.contractBudget > 0 ? p.contractBudget : (p.totalBudget || 0))}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Total Expenses</span>
-                            <span className="text-zinc-900">{formatCur(p.totalExpenses || 0)}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-100 text-xs">
-                      {userRole !== 'manager' && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-zinc-400 font-semibold">Net Profit/Loss: </span>
-                          <span className={`font-bold ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
-                            {formatCur(profit)}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => loadProjectDetails(p)}
-                          className="text-xs font-bold text-zinc-900 hover:underline flex items-center gap-0.5 cursor-pointer"
+                    {paginatedProjects.map((p) => {
+                      const profit = p.profitLoss || 0;
+                      const isOver = profit < 0;
+                      return (
+                        <tr
+                          key={p.id}
+                          className="hover:bg-zinc-50/50 transition-colors"
+                          style={{ height: PROJ_TABLE_ROW_HEIGHT_PX }}
                         >
-                          Manage Project <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                        {userRole === 'admin' && (
-                          <>
-                            <button
-                              onClick={() => handleOpenEditProject(p)}
-                              className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
-                              title="Edit Details"
+                          <td className="px-4 align-middle">
+                            <span
+                              onClick={() => loadProjectDetails(p)}
+                              className="font-bold text-zinc-950 block hover:text-zinc-700 cursor-pointer truncate max-w-[180px]"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteProject(p.id)}
-                              className="p-1 text-rose-500 hover:text-rose-700 rounded bg-zinc-50 border border-zinc-200/40"
-                              title="Erase project"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                              {p.projectName}
+                            </span>
+                            <span className="text-[10px] text-zinc-400 block mt-0.5 truncate max-w-[180px]">
+                              Client: {p.clientName}
+                            </span>
+                          </td>
+                          <td className="px-4 align-middle text-zinc-700 truncate max-w-[120px]">{p.location}</td>
+                          <td className="px-4 align-middle text-zinc-600 whitespace-nowrap">
+                            {p.startDate} to {p.expectedEndDate}
+                          </td>
+                          <td className="px-4 align-middle text-center">
+                            <span className="inline-block text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded">
+                              {p.taskCount || 0} Task{p.taskCount !== 1 ? 's' : ''}
+                            </span>
+                          </td>
+                          {userRole !== 'manager' && (
+                            <>
+                              <td className="px-4 align-middle text-right font-semibold text-zinc-950 whitespace-nowrap">
+                                {formatCur(p.contractBudget > 0 ? p.contractBudget : (p.totalBudget || 0))}
+                              </td>
+                              <td className="px-4 align-middle text-right text-zinc-700 whitespace-nowrap">
+                                {formatCur(p.totalExpenses || 0)}
+                              </td>
+                              <td className={`px-4 align-middle text-right font-extrabold whitespace-nowrap ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                {formatCur(profit)}
+                              </td>
+                            </>
+                          )}
+                          <td className="px-4 align-middle">
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${
+                              p.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              p.status === 'In Progress' ? 'bg-zinc-100 text-zinc-850 border-zinc-200' :
+                              p.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-zinc-50 text-zinc-500 border-zinc-200'
+                            }`}>
+                              {p.status}
+                            </span>
+                          </td>
+                          <td className="px-4 align-middle text-center">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => loadProjectDetails(p)}
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border text-[10px] font-semibold transition-all whitespace-nowrap"
+                                title="Manage Project"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                              {userRole === 'admin' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditProject(p)}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border text-[10px] font-semibold transition-all"
+                                    title="Edit details"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteProject(p.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 text-[10px] font-semibold transition-all"
+                                    title="Erase project"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {Array.from({ length: emptyProjRowCount }).map((_, i) => (
+                      <tr key={`empty-row-${i}`} style={{ height: PROJ_TABLE_ROW_HEIGHT_PX }} aria-hidden="true">
+                        <td colSpan={userRole === 'manager' ? 6 : 9} className="px-4 align-middle">&nbsp;</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-t border-zinc-100 bg-zinc-50/50">
+                <p className="text-[11px] text-zinc-500 font-medium">
+                  Showing <span className="font-semibold text-zinc-700">{projRangeStart}–{projRangeEnd}</span> of{' '}
+                  <span className="font-semibold text-zinc-700">{filteredProjects.length}</span>
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="proj-rows-per-page" className="text-[10px] font-bold text-zinc-400 uppercase whitespace-nowrap">
+                      Rows per page
+                    </label>
+                    <select
+                      id="proj-rows-per-page"
+                      value={projRowsPerPage}
+                      onChange={(e) => setProjRowsPerPage(Number(e.target.value))}
+                      className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
+                    >
+                      {PROJ_ROWS_PER_PAGE_OPTIONS.map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
                   </div>
-                );
-              })}
+                  <div className="flex items-center gap-1 select-none">
+                    <button
+                      type="button"
+                      onClick={() => setProjCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={activeProjPage <= 1}
+                      className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-650 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs font-semibold text-zinc-650 min-w-[72px] text-center">
+                      {activeProjPage} / {totalProjPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setProjCurrentPage((p) => Math.min(totalProjPages, p + 1))}
+                      disabled={activeProjPage >= totalProjPages}
+                      className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-650 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </>
