@@ -3161,13 +3161,13 @@ export default function AttendancePage() {
                 type="date"
                 value={ledgerStartDate}
                 onChange={(e) => { setLedgerStartDate(e.target.value); setLedgerPage(1); }}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+                className="w-27 bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
               />
               <input
                 type="date"
                 value={ledgerEndDate}
                 onChange={(e) => { setLedgerEndDate(e.target.value); setLedgerPage(1); }}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+                className="w-27 bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
               />
             </div>
           </div>
