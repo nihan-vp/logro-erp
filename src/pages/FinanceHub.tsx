@@ -46,14 +46,21 @@ const getStatusIcon = (status: PaymentRequest['status']) => {
 
 const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest['category'] => {
   if (cat === 'Material') return 'Purchase';
+  if (cat === 'Tools') return 'Vendor';
   if (cat === 'Labour') return 'Worker';
   if (cat === 'Transport') return 'Transportation';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
   return 'Other';
 };
 
-const paymentCategoryToExpenseCategory = (cat: PaymentRequest['category']): ExpenseCategory => {
-  if (cat === 'Vendor') return 'Material';
+const paymentCategoryToExpenseCategory = (cat: PaymentRequest['category'], item?: { tools?: any[], purchaseItems?: any[] }): ExpenseCategory => {
+  if (cat === 'Vendor') {
+    // If the request explicitly lists tools, map back to 'Tools', otherwise map back to 'Other' or 'Tools' based on context
+    if ((item?.tools && item.tools.length > 0) || (item?.purchaseItems && item.purchaseItems.length > 0)) {
+      return 'Tools';
+    }
+    return 'Tools'; // Since the request is 'Tools' category, map Vendor to Tools
+  }
   if (cat === 'Worker') return 'Labour';
   if (cat === 'Transportation') return 'Transport';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
@@ -654,7 +661,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
             <select value={reqCategoryFilter} onChange={(e) => setReqCategoryFilter(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700">
               <option value="All">All Categories</option>
               {Array.from(new Set(requests.map(r => r.category))).filter(Boolean).sort().map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
+                <option key={cat} value={cat}>{paymentCategoryToExpenseCategory(cat)}</option>
               ))}
             </select>
           </div>
@@ -722,7 +729,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       <td className="px-4 align-middle font-medium text-zinc-700 truncate max-w-[120px]">{r.projectName}</td>
                       <td className="px-4 align-middle text-zinc-600 truncate max-w-[120px]">{r.taskName}</td>
                       <td className="px-4 align-middle">
-                        <span className="text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded">{r.category}</span>
+                        <span className="text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded">{paymentCategoryToExpenseCategory(r.category, r)}</span>
                       </td>
                       <td className="px-4 align-middle text-right font-extrabold text-zinc-950 whitespace-nowrap">{formatCur(r.amount)}</td>
                       <td className="px-4 align-middle text-zinc-600 whitespace-nowrap">{r.dueDate}</td>
@@ -1379,7 +1386,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                   </div>
                   <div className="bg-zinc-50 rounded-xl p-3">
                     <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Category</p>
-                    <p className="font-semibold text-zinc-900">{selectedPaymentRequest.category}</p>
+                    <p className="font-semibold text-zinc-900">{paymentCategoryToExpenseCategory(selectedPaymentRequest.category, selectedPaymentRequest)}</p>
                   </div>
                   <div className="bg-zinc-50 rounded-xl p-3">
                     <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Due Date</p>

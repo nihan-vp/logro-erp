@@ -1278,54 +1278,60 @@ export default function AttendancePage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5">
-              {filteredVendors.map((vend) => (
-                <div
-                  key={vend.id}
-                  className="bg-white border rounded-xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${vend.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
-                        }`}>
-                        {vend.status}
-                      </span>
-                      <h4 className="text-sm font-extrabold text-zinc-950">{vend.name}</h4>
-                    </div>
-                    <p className="text-[10px] text-zinc-400 font-semibold mt-1 flex items-center gap-2">
-                      <Store className="w-3 h-3" />
-                      <span>{vend.trade}</span>
-                      {vend.phone && (
-                        <>
-                          <span>•</span>
-                          <Phone className="w-3 h-3" />
-                          <span>{vend.phone}</span>
-                        </>
-                      )}
-                    </p>
-                    {vend.notes && (
-                      <p className="text-[11px] text-zinc-400 mt-1 italic">&quot;{vend.notes}&quot;</p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-1.5 justify-end">
-                    <button
-                      onClick={() => handleOpenEditVendor(vend)}
-                      className="p-1.5 bg-zinc-50 border text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
-                      title="Edit vendor"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleVendorDelete(vend.id)}
-                      className="p-1.5 bg-zinc-50 border text-rose-500 hover:text-rose-900 rounded-lg hover:bg-rose-50 transition-colors"
-                      title="Remove vendor"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+            <div className="space-y-4">
+              <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-zinc-600 border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[10px] tracking-wider border-b border-zinc-200">
+                        <th className="py-3 px-4">Name</th>
+                        <th className="py-3 px-4">Supply / Trade</th>
+                        <th className="py-3 px-4">Phone</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4">Notes</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 text-zinc-900">
+                      {filteredVendors.map((vend) => (
+                        <tr key={vend.id} className="hover:bg-zinc-50/50 transition-colors" style={{ height: ROSTER_ROW_HEIGHT_PX }}>
+                          <td className="py-3 px-4 font-bold text-zinc-950 text-sm align-middle">
+                            {vend.name}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-zinc-700 align-middle">{vend.trade}</td>
+                          <td className="py-3 px-4 font-medium text-zinc-600 align-middle">{vend.phone || '—'}</td>
+                          <td className="py-3 px-4 text-center align-middle">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-tight uppercase ${vend.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-zinc-100 text-zinc-500 border border-zinc-200'}`}>
+                              {vend.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-zinc-400 italic max-w-[200px] truncate align-middle" title={vend.notes || ''}>
+                            {vend.notes ? `"${vend.notes}"` : '—'}
+                          </td>
+                          <td className="py-3 px-4 text-right align-middle">
+                            <div className="flex gap-1.5 justify-end">
+                              <button
+                                onClick={() => handleOpenEditVendor(vend)}
+                                className="p-1.5 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
+                                title="Edit vendor"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleVendorDelete(vend.id)}
+                                className="p-1.5 bg-zinc-50 border border-zinc-200 text-rose-500 hover:text-rose-900 rounded-lg hover:bg-rose-50 transition-colors"
+                                title="Remove vendor"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </>
