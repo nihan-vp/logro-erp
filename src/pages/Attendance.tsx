@@ -154,9 +154,10 @@ export default function AttendancePage() {
   const [isVendorImporting, setIsVendorImporting] = useState(false);
   const [vendorImportError, setVendorImportError] = useState<string | null>(null);
 
-  // Crew Overview specific states
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
   const [overviewFilterType, setOverviewFilterType] = useState<'weekly' | 'monthly'>('monthly');
+  const [wageProjectFilter, setWageProjectFilter] = useState<string>('All');
+  const [wageTaskFilter, setWageTaskFilter] = useState<string>('All');
   const [selectedYearVal, setSelectedYearVal] = useState<number>(new Date().getFullYear());
   const [selectedMonthVal, setSelectedMonthVal] = useState<number>(new Date().getMonth()); // 0-11
   const [selectedWeekOffset, setSelectedWeekOffset] = useState<number>(0); // 0 means current week, negative for past weeks
@@ -222,15 +223,20 @@ export default function AttendancePage() {
         );
 
         const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
-        const firstLog = unpaidLogs[0] || workerAtt[0];
-        setPayWagesProjectId(firstLog?.projectId || '');
-        setPayWagesTaskId(firstLog?.taskId || '');
+        const filteredUnpaid = unpaidLogs.filter(a => {
+          const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+          const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+          return matchesProj && matchesTsk;
+        });
+        const firstLog = filteredUnpaid[0] || unpaidLogs[0] || workerAtt[0];
+        setPayWagesProjectId(wageProjectFilter !== 'All' ? wageProjectFilter : (firstLog?.projectId || ''));
+        setPayWagesTaskId(wageTaskFilter !== 'All' ? wageTaskFilter : (firstLog?.taskId || ''));
       }
     } else {
       setPayWagesProjectId('');
       setPayWagesTaskId('');
     }
-  }, [isPayWagesOpen, selectedWorkerId, overviewFilterType, selectedYearVal, selectedMonthVal, selectedWeekOffset, attendanceLogs, crew]);
+  }, [isPayWagesOpen, selectedWorkerId, overviewFilterType, selectedYearVal, selectedMonthVal, selectedWeekOffset, attendanceLogs, crew, wageProjectFilter, wageTaskFilter]);
 
   useEffect(() => {
     fetchCrew();
@@ -1640,15 +1646,21 @@ export default function AttendancePage() {
                   const endStr = formatLocalDate(endDate);
 
                   // Filter attendance logs matching this worker & date range
-                  const workerAtt = attendanceLogs.filter(a =>
-                    a.workerName === worker.name &&
-                    a.date >= startStr &&
-                    a.date <= endStr
-                  );
+                  const workerAtt = attendanceLogs.filter(a => {
+                    const matchesWorker = a.workerName === worker.name;
+                    const matchesDate = a.date >= startStr && a.date <= endStr;
+                    const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+                    const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+                    return matchesWorker && matchesDate && matchesProj && matchesTsk;
+                  });
 
                   const workerPayments = paymentRequestsLogs.filter(pr => {
                     const isWorkerMatch = pr.payeeName.trim().toLowerCase() === worker.name.trim().toLowerCase();
                     if (!isWorkerMatch) return false;
+
+                    const matchesProj = wageProjectFilter === 'All' || pr.projectId === wageProjectFilter;
+                    const matchesTsk = wageTaskFilter === 'All' || pr.taskId === wageTaskFilter;
+                    if (!matchesProj || !matchesTsk) return false;
 
                     if (pr.attendanceIds && pr.attendanceIds.length > 0) {
                       const matchesAttendance = pr.attendanceIds.some((id: string) => workerAtt.some(a => a.id === id));
@@ -1819,6 +1831,34 @@ export default function AttendancePage() {
                               </button>
                             </div>
                           )}
+
+                          <select
+                            value={wageProjectFilter}
+                            onChange={e => {
+                              setWageProjectFilter(e.target.value);
+                              setWageTaskFilter('All');
+                            }}
+                            className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none min-w-[120px]"
+                          >
+                            <option value="All">All Projects</option>
+                            {projects.map(p => (
+                              <option key={p.id} value={p.id}>{p.projectName}</option>
+                            ))}
+                          </select>
+
+                          <select
+                            value={wageTaskFilter}
+                            onChange={e => setWageTaskFilter(e.target.value)}
+                            disabled={wageProjectFilter === 'All'}
+                            className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none min-w-[120px] disabled:opacity-50"
+                          >
+                            <option value="All">All Tasks</option>
+                            {tasks
+                              .filter(t => t.projectId === wageProjectFilter)
+                              .map(t => (
+                                <option key={t.id} value={t.id}>{t.taskName}</option>
+                              ))}
+                          </select>
 
                           <button
                             onClick={handleDownloadCsv}
