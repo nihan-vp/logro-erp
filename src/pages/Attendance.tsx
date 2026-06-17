@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Plus, Search, Trash2, Edit2, Users, X, Phone, Briefcase, Upload, Download, BookmarkCheck, Store,
   Calendar, FileSpreadsheet, Activity, DollarSign, Wallet, ClipboardCheck, FileText,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Undo2
 } from 'lucide-react';
 import { api } from '../api/client';
 import { generateAllWorkersAttendancePdf, generateSingleWorkerAttendancePdf } from '../utils/pdfGenerator';
@@ -110,7 +110,7 @@ function parseVendorCsv(text: string): CsvVendorRow[] {
 
 export default function AttendancePage() {
   const confirm = useConfirm();
-  const [activeTab, setActiveTab] = useState<'crew' | 'vendors' | 'overview'>('crew');
+  const [activeTab, setActiveTab] = useState<'crew' | 'vendors' | 'overview' | 'payouts'>('crew');
 
   const [crew, setCrew] = useState<CrewMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,7 +154,8 @@ export default function AttendancePage() {
   const [isVendorImporting, setIsVendorImporting] = useState(false);
   const [vendorImportError, setVendorImportError] = useState<string | null>(null);
 
-  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('all');
+  const [selectedWorkersForPayment, setSelectedWorkersForPayment] = useState<string[]>([]);
   const [overviewFilterType, setOverviewFilterType] = useState<'weekly' | 'monthly'>('monthly');
   const [wageProjectFilter, setWageProjectFilter] = useState<string>('All');
   const [wageTaskFilter, setWageTaskFilter] = useState<string>('All');
@@ -170,12 +171,50 @@ export default function AttendancePage() {
   const [isMobileWorkerListOpen, setIsMobileWorkerListOpen] = useState(false);
   const [isPayWagesOpen, setIsPayWagesOpen] = useState(false);
   const [payWagesAmount, setPayWagesAmount] = useState<string>('');
+  const [payDays, setPayDays] = useState<number>(0);
   const [isSubmittingPayWages, setIsSubmittingPayWages] = useState(false);
   const [showSidebarCalendars, setShowSidebarCalendars] = useState(true);
   const [payWagesProjectId, setPayWagesProjectId] = useState<string>('');
   const [payWagesTaskId, setPayWagesTaskId] = useState<string>('');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [selectedCalendarWorkerName, setSelectedCalendarWorkerName] = useState<string | null>(null);
+  const [selectedDayPayments, setSelectedDayPayments] = useState<Record<string, boolean>>({});
+  const [ledgerSearch, setLedgerSearch] = useState('');
+  const [ledgerProject, setLedgerProject] = useState('All');
+  const [ledgerStatus, setLedgerStatus] = useState<'All' | 'Unpaid' | 'Pending' | 'Paid'>('Unpaid');
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [selectedLedgerLogs, setSelectedLedgerLogs] = useState<string[]>([]);
+  const [ledgerStartDate, setLedgerStartDate] = useState(() => formatLocalDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [ledgerEndDate, setLedgerEndDate] = useState(() => formatLocalDate(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)));
+
+  useEffect(() => {
+    if (isPayWagesOpen) {
+      const initialSelection: Record<string, boolean> = {};
+      const { startStr, endStr } = getDateRange();
+      
+      const workersToProcess = selectedWorkerId === 'all'
+        ? crew.filter(w => selectedWorkersForPayment.includes(w.id))
+        : [crew.find(c => c.id === selectedWorkerId) || crew[0]].filter(Boolean);
+
+      workersToProcess.forEach(w => {
+        const workerAtt = attendanceLogs.filter(a => {
+          const matchesWorker = a.workerName === w.name;
+          const matchesDate = a.date >= startStr && a.date <= endStr;
+          const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+          const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+          return matchesWorker && matchesDate && matchesProj && matchesTsk;
+        });
+
+        const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+        unpaidLogs.forEach(log => {
+          if (log.id) {
+            initialSelection[log.id] = true;
+          }
+        });
+      });
+      setSelectedDayPayments(initialSelection);
+    }
+  }, [isPayWagesOpen, selectedWorkerId, selectedWorkersForPayment, crew, attendanceLogs, selectedYearVal, selectedMonthVal, selectedWeekOffset, overviewFilterType, wageProjectFilter, wageTaskFilter]);
   const [isAllWorkersPdfModalOpen, setIsAllWorkersPdfModalOpen] = useState(false);
   const [pdfStartDate, setPdfStartDate] = useState('');
   const [pdfEndDate, setPdfEndDate] = useState('');
@@ -361,41 +400,55 @@ export default function AttendancePage() {
   };
 
   const handleRequestWagesPayment = async (worker: any, unpaidLogs: any[], remainingAmount: number) => {
-    const amt = Number(payWagesAmount);
+    const selectedLogs = unpaidLogs.filter(log => {
+      return !!selectedDayPayments[log.id];
+    });
+
+    if (selectedLogs.length === 0) {
+      notify.warning('No days selected for payment.');
+      return;
+    }
+
+    const totalSelectedAmount = selectedLogs.reduce((sum, log) => {
+      let rate = 0;
+      if (log.status === 'Present') rate = log.dailyWage || worker.dailyWage;
+      else if (log.status === 'Half Day') rate = (log.dailyWage || worker.dailyWage) * 0.5;
+      return sum + rate + (log.overtimeAmount || 0);
+    }, 0);
+
+    const amt = Number(payWagesAmount) || totalSelectedAmount;
     if (isNaN(amt) || amt <= 0) {
       notify.warning('Please enter a valid amount.');
       return;
     }
-    if (amt > remainingAmount) {
-      notify.warning(`Amount cannot exceed the remaining due of ${formatCur(remainingAmount)}.`);
+    if (amt > totalSelectedAmount) {
+      notify.warning(`Amount cannot exceed the selected total of ${formatCur(totalSelectedAmount)}.`);
       return;
     }
 
     try {
       setIsSubmittingPayWages(true);
 
-      // Update all unpaid logs to "Pending"
-      if (unpaidLogs.length > 0) {
-        await Promise.all(
-          unpaidLogs.map(log =>
-            api.updateAttendance(log.id, {
-              workerName: log.workerName,
-              status: log.status,
-              dailyWage: log.dailyWage,
-              overtimeAmount: log.overtimeAmount,
-              paymentStatus: 'Pending'
-            })
-          )
-        );
-      }
+      // Update all selected unpaid logs to "Pending"
+      await Promise.all(
+        selectedLogs.map(log =>
+          api.updateAttendance(log.id, {
+            workerName: log.workerName,
+            status: log.status,
+            dailyWage: log.dailyWage,
+            overtimeAmount: log.overtimeAmount,
+            paymentStatus: 'Pending'
+          })
+        )
+      );
 
-      // Create a single consolidated payment request for the selected worker and period
-      const firstLog = unpaidLogs[0] || attendanceLogs.find(l => l.workerName === worker.name);
-      const attendanceIds = unpaidLogs.map(log => log.id);
+      // Create a consolidated payment request for the selected worker and period
+      const firstLog = selectedLogs[0] || attendanceLogs.find(l => l.workerName === worker.name);
+      const attendanceIds = selectedLogs.map(log => log.id);
 
       await api.createPaymentRequest({
-        projectId: payWagesProjectId || '',
-        taskId: payWagesTaskId || '',
+        projectId: payWagesProjectId || firstLog?.projectId || '',
+        taskId: payWagesTaskId || firstLog?.taskId || '',
         payeeName: worker.name,
         category: 'Worker',
         amount: amt,
@@ -420,7 +473,7 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    if (activeTab === 'overview') {
+    if (activeTab === 'overview' || activeTab === 'payouts') {
       fetchOverviewLogs();
     }
   }, [activeTab]);
@@ -748,6 +801,310 @@ export default function AttendancePage() {
   const formatCur = (num: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
 
+  const getDateRange = () => {
+    let startDate: Date;
+    let endDate: Date;
+    if (overviewFilterType === 'weekly') {
+      const curr = new Date();
+      const dayOffset = curr.getDay();
+      const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
+      startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      startDate = new Date(selectedYearVal, selectedMonthVal, 1, 0, 0, 0, 0);
+      endDate = new Date(selectedYearVal, selectedMonthVal + 1, 0, 23, 59, 59, 999);
+    }
+    return { startStr: formatLocalDate(startDate), endStr: formatLocalDate(endDate) };
+  };
+
+  const handleBulkPayWages = async () => {
+    if (selectedWorkersForPayment.length === 0) return;
+
+    try {
+      setIsSubmittingPayWages(true);
+      const { startStr, endStr } = getDateRange();
+      let requestsCreated = 0;
+
+      for (const workerId of selectedWorkersForPayment) {
+        const worker = crew.find(c => c.id === workerId);
+        if (!worker) continue;
+
+        // Get unpaid logs
+        const workerAtt = attendanceLogs.filter(a => {
+          const matchesWorker = a.workerName === worker.name;
+          const matchesDate = a.date >= startStr && a.date <= endStr;
+          const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+          const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+          return matchesWorker && matchesDate && matchesProj && matchesTsk;
+        });
+
+        const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+        
+        // Filter based on selectedDayPayments
+        const selectedLogs = unpaidLogs.filter(log => {
+          return !!selectedDayPayments[log.id];
+        });
+
+        if (selectedLogs.length === 0) continue;
+
+        const totalAmount = selectedLogs.reduce((sum, log) => {
+          let rate = 0;
+          if (log.status === 'Present') rate = log.dailyWage || worker.dailyWage;
+          else if (log.status === 'Half Day') rate = (log.dailyWage || worker.dailyWage) * 0.5;
+          return sum + rate + (log.overtimeAmount || 0);
+        }, 0);
+
+        // Update logs
+        await Promise.all(
+          selectedLogs.map(log =>
+            api.updateAttendance(log.id, {
+              workerName: log.workerName,
+              status: log.status,
+              dailyWage: log.dailyWage,
+              overtimeAmount: log.overtimeAmount,
+              paymentStatus: 'Pending'
+            })
+          )
+        );
+
+        // Create Payment Request
+        const firstLog = selectedLogs[0];
+        await api.createPaymentRequest({
+          projectId: wageProjectFilter !== 'All' ? wageProjectFilter : (firstLog.projectId || ''),
+          taskId: wageTaskFilter !== 'All' ? wageTaskFilter : (firstLog.taskId || ''),
+          payeeName: worker.name,
+          category: 'Worker',
+          amount: totalAmount,
+          description: `Bulk wages payment for ${worker.name} (${overviewFilterType} period)`,
+          dueDate: selectedLogs[selectedLogs.length - 1].date,
+          priority: 'Medium',
+          paymentMethod: 'Bank Transfer',
+          status: 'Pending',
+          createdAt: new Date().toISOString(),
+          attendanceIds: selectedLogs.map(log => log.id)
+        });
+        requestsCreated++;
+      }
+
+      notify.success(`Bulk payment requests initiated for ${requestsCreated} workers.`);
+      setSelectedWorkersForPayment([]);
+      fetchOverviewLogs();
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to process bulk payment');
+    } finally {
+      setIsSubmittingPayWages(false);
+    }
+  };
+
+  const handlePayLedgerDays = async (logIds: string[]) => {
+    if (logIds.length === 0) {
+      notify.warning('No days selected.');
+      return;
+    }
+
+    const ok = await confirm({
+      title: 'Initiate Payouts?',
+      message: `Create consolidated wage payment requests for ${logIds.length} day(s)?`,
+      confirmLabel: 'Proceed',
+      variant: 'default',
+    });
+    if (!ok) return;
+
+    try {
+      setIsSubmittingPayWages(true);
+      
+      const selectedLogs = attendanceLogs.filter(a => logIds.includes(a.id));
+      
+      const groups: Record<string, any[]> = {};
+      selectedLogs.forEach(log => {
+        const key = log.workerName;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(log);
+      });
+
+      let requestsCreated = 0;
+      for (const [workerName, logs] of Object.entries(groups)) {
+        const worker = crew.find(c => c.name === workerName);
+        const dailyWage = worker?.dailyWage || 200;
+
+        const totalAmount = logs.reduce((sum, log) => {
+          let rate = 0;
+          if (log.status === 'Present') rate = log.dailyWage || dailyWage;
+          else if (log.status === 'Half Day') rate = (log.dailyWage || dailyWage) * 0.5;
+          return sum + rate + (log.overtimeAmount || 0);
+        }, 0);
+
+        await Promise.all(
+          logs.map(log =>
+            api.updateAttendance(log.id, {
+              workerName: log.workerName,
+              status: log.status,
+              dailyWage: log.dailyWage,
+              overtimeAmount: log.overtimeAmount,
+              paymentStatus: 'Pending'
+            })
+          )
+        );
+
+        const firstLog = logs[0];
+        await api.createPaymentRequest({
+          projectId: firstLog.projectId || '',
+          taskId: firstLog.taskId || '',
+          payeeName: workerName,
+          category: 'Worker',
+          amount: totalAmount,
+          description: `Consolidated wages payout request for ${workerName} (Ledger view: ${logs.length} day(s))`,
+          dueDate: logs[logs.length - 1].date,
+          priority: 'Medium',
+          paymentMethod: 'Bank Transfer',
+          status: 'Pending',
+          createdAt: new Date().toISOString(),
+          attendanceIds: logs.map(log => log.id)
+        });
+        requestsCreated++;
+      }
+
+      notify.success(`Consolidated payment requests created for ${requestsCreated} workers.`);
+      setSelectedLedgerLogs([]);
+      fetchOverviewLogs();
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to process payments');
+    } finally {
+      setIsSubmittingPayWages(false);
+    }
+  };
+
+  const handleUndoPaymentRequest = async (logId: string) => {
+    const log = attendanceLogs.find(a => a.id === logId);
+    if (!log) return;
+
+    const ok = await confirm({
+      title: 'Undo Payment Request?',
+      message: `Revert payment status for ${log.workerName} on ${log.date} back to Unpaid? This will update or remove the corresponding finance payment request.`,
+      confirmLabel: 'Undo Payout',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      setIsSubmittingPayWages(true);
+
+      const correspondingPr = paymentRequestsLogs.find(pr => 
+        pr.attendanceIds && pr.attendanceIds.includes(logId)
+      );
+
+      if (correspondingPr) {
+        const remainingIds = correspondingPr.attendanceIds.filter((id: string) => id !== logId);
+        
+        if (remainingIds.length === 0) {
+          await api.deletePaymentRequest(correspondingPr.id);
+        } else {
+          const worker = crew.find(c => c.name === log.workerName);
+          const dailyWageVal = log.dailyWage || worker?.dailyWage || 200;
+          let baseWage = 0;
+          if (log.status === 'Present') baseWage = dailyWageVal;
+          else if (log.status === 'Half Day') baseWage = dailyWageVal * 0.5;
+          const totalOwed = baseWage + (log.overtimeAmount || 0);
+
+          const newAmount = Math.max(0, correspondingPr.amount - totalOwed);
+
+          await api.updatePaymentRequest(correspondingPr.id, {
+            ...correspondingPr,
+            amount: newAmount,
+            attendanceIds: remainingIds,
+            description: `${correspondingPr.description} (Day ${log.date} removed)`
+          });
+        }
+      }
+
+      await api.updateAttendance(logId, {
+        workerName: log.workerName,
+        status: log.status,
+        dailyWage: log.dailyWage,
+        overtimeAmount: log.overtimeAmount,
+        paymentStatus: 'Unpaid'
+      });
+
+      notify.success('Payment request reverted successfully.');
+      fetchOverviewLogs();
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to revert payment request');
+    } finally {
+      setIsSubmittingPayWages(false);
+    }
+  };
+
+  const handleBulkUndoPaymentRequests = async (logIds: string[]) => {
+    if (logIds.length === 0) {
+      notify.warning('No days selected.');
+      return;
+    }
+
+    const ok = await confirm({
+      title: 'Undo Multiple Requests?',
+      message: `Revert payment status for ${logIds.length} selected day(s) back to Unpaid?`,
+      confirmLabel: 'Undo Payouts',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      setIsSubmittingPayWages(true);
+
+      for (const logId of logIds) {
+        const log = attendanceLogs.find(a => a.id === logId);
+        if (!log) continue;
+
+        const correspondingPr = paymentRequestsLogs.find(pr => 
+          pr.attendanceIds && pr.attendanceIds.includes(logId)
+        );
+
+        if (correspondingPr) {
+          const remainingIds = correspondingPr.attendanceIds.filter((id: string) => id !== logId);
+          
+          if (remainingIds.length === 0) {
+            await api.deletePaymentRequest(correspondingPr.id);
+          } else {
+            const worker = crew.find(c => c.name === log.workerName);
+            const dailyWageVal = log.dailyWage || worker?.dailyWage || 200;
+            let baseWage = 0;
+            if (log.status === 'Present') baseWage = dailyWageVal;
+            else if (log.status === 'Half Day') baseWage = dailyWageVal * 0.5;
+            const totalOwed = baseWage + (log.overtimeAmount || 0);
+
+            const newAmount = Math.max(0, correspondingPr.amount - totalOwed);
+
+            await api.updatePaymentRequest(correspondingPr.id, {
+              ...correspondingPr,
+              amount: newAmount,
+              attendanceIds: remainingIds,
+              description: `${correspondingPr.description} (Day ${log.date} removed)`
+            });
+          }
+        }
+
+        await api.updateAttendance(logId, {
+          workerName: log.workerName,
+          status: log.status,
+          dailyWage: log.dailyWage,
+          overtimeAmount: log.overtimeAmount,
+          paymentStatus: 'Unpaid'
+        });
+      }
+
+      notify.success(`Reverted payment requests for ${logIds.length} days.`);
+      setSelectedLedgerLogs([]);
+      fetchOverviewLogs();
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to revert payments');
+    } finally {
+      setIsSubmittingPayWages(false);
+    }
+  };
+
   const filteredCrew = crew.filter(m => {
     const matchesSearch =
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -807,6 +1164,19 @@ export default function AttendancePage() {
         >
           <BookmarkCheck className="w-4 h-4" />
           <span>Crew Overview</span>
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('payouts');
+            fetchOverviewLogs();
+          }}
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'payouts'
+            ? 'bg-white text-zinc-950 shadow-sm'
+            : 'text-zinc-500 hover:text-zinc-700'
+            }`}
+        >
+          <Wallet className="w-4 h-4" />
+          <span>Daily Payouts Ledger</span>
         </button>
       </div>
 
@@ -1529,6 +1899,15 @@ export default function AttendancePage() {
               {/* Workers sidebar - hidden on mobile, shown on lg */}
               <div className="hidden lg:flex lg:col-span-1 bg-white border border-zinc-200/80 rounded-2xl p-4 space-y-4 shadow-sm flex-col lg:self-start">
                 <h3 className="font-bold text-zinc-950 text-xs uppercase tracking-wider">Select Crew Worker</h3>
+                <button
+                  onClick={() => setSelectedWorkerId('all')}
+                  className={`w-full text-left p-3 rounded-xl transition-all border text-xs ${selectedWorkerId === 'all'
+                    ? 'bg-zinc-950 text-white border-zinc-950 shadow-md font-bold'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-100 hover:border-emerald-200'
+                    }`}
+                >
+                  <span className="block font-bold truncate">Overview of All Workers</span>
+                </button>
                 <div className="space-y-1 overflow-y-auto pr-1 max-h-[740px]">
                   {crew.map(m => {
                     const isSelected = selectedWorkerId === m.id || (!selectedWorkerId && crew[0]?.id === m.id);
@@ -1645,9 +2024,21 @@ export default function AttendancePage() {
                   const startStr = formatLocalDate(startDate);
                   const endStr = formatLocalDate(endDate);
 
+                  // Compute unpaid workers list for All Workers view
+                  const unpaidWorkers = crew.filter(w => {
+                    const workerAtt = attendanceLogs.filter(a => {
+                      const matchesWorker = a.workerName === w.name;
+                      const matchesDate = a.date >= startStr && a.date <= endStr;
+                      const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+                      const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+                      return matchesWorker && matchesDate && matchesProj && matchesTsk;
+                    });
+                    return workerAtt.some(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+                  });
+
                   // Filter attendance logs matching this worker & date range
                   const workerAtt = attendanceLogs.filter(a => {
-                    const matchesWorker = a.workerName === worker.name;
+                    const matchesWorker = selectedWorkerId === 'all' ? true : a.workerName === worker.name;
                     const matchesDate = a.date >= startStr && a.date <= endStr;
                     const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
                     const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
@@ -1655,7 +2046,9 @@ export default function AttendancePage() {
                   });
 
                   const workerPayments = paymentRequestsLogs.filter(pr => {
-                    const isWorkerMatch = pr.payeeName.trim().toLowerCase() === worker.name.trim().toLowerCase();
+                    const isWorkerMatch = selectedWorkerId === 'all' 
+                      ? pr.category === 'Worker'
+                      : pr.payeeName.trim().toLowerCase() === worker.name.trim().toLowerCase();
                     if (!isWorkerMatch) return false;
 
                     const matchesProj = wageProjectFilter === 'All' || pr.projectId === wageProjectFilter;
@@ -1872,13 +2265,15 @@ export default function AttendancePage() {
                               <FileSpreadsheet className="w-3.5 h-3.5" />
                               <span>CSV</span>
                             </button>
-                            <button
-                              onClick={handleDownloadPdf}
-                              className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>PDF</span>
-                            </button>
+                              <button
+                                onClick={handleDownloadPdf}
+                                disabled={selectedWorkerId === 'all'}
+                                className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>PDF</span>
+                              </button>
+
                             <button
                               onClick={() => {
                                 setPdfStartDate(startStr);
@@ -1934,21 +2329,101 @@ export default function AttendancePage() {
                         </div>
                       </div>
 
+                      {/* Unpaid Workers List for All Workers view */}
+                      {selectedWorkerId === 'all' && (
+                        <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+                          <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Workers with Unpaid Balances</h3>
+                          {unpaidWorkers.length === 0 ? (
+                            <p className="text-xs text-zinc-500">No workers with unpaid wages in this period.</p>
+                          ) : (
+                            <div className="border border-zinc-200/80 rounded-xl overflow-hidden">
+                              <table className="w-full text-xs text-left text-zinc-600 border-collapse">
+                                <thead>
+                                  <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200 h-[36px]">
+                                    <th className="py-2.5 px-3">
+                                      <input type="checkbox" onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setSelectedWorkersForPayment(unpaidWorkers.map(w => w.id));
+                                          } else {
+                                            setSelectedWorkersForPayment([]);
+                                          }
+                                      }} />
+                                    </th>
+                                <th className="py-2.5 px-3">Worker</th>
+                                <th className="py-2.5 px-3">Trade</th>
+                                <th className="py-2.5 px-3">P/A/H</th>
+                                <th className="py-2.5 px-3 text-right">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-100 text-zinc-900 bg-white">
+                              {unpaidWorkers.map(w => {
+                                const workerAtt = attendanceLogs.filter(a => {
+                                  const matchesWorker = a.workerName === w.name;
+                                  const matchesDate = a.date >= startStr && a.date <= endStr;
+                                  const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+                                  const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+                                  return matchesWorker && matchesDate && matchesProj && matchesTsk;
+                                });
+                                const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+                                const present = unpaidLogs.filter(a => a.status === 'Present').length;
+                                const absent = unpaidLogs.filter(a => a.status === 'Absent').length;
+                                const half = unpaidLogs.filter(a => a.status === 'Half Day').length;
+                                const amount = unpaidLogs.reduce((sum, log) => {
+                                  let rate = 0;
+                                  if (log.status === 'Present') rate = log.dailyWage || w.dailyWage;
+                                  else if (log.status === 'Half Day') rate = (log.dailyWage || w.dailyWage) * 0.5;
+                                  return sum + rate + (log.overtimeAmount || 0);
+                                }, 0);
+                                return (
+                                  <tr key={w.id}>
+                                    <td className="py-2.5 px-3">
+                                      <input type="checkbox" checked={selectedWorkersForPayment.includes(w.id)} onChange={() => {
+                                        setSelectedWorkersForPayment(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id]);
+                                      }} />
+                                    </td>
+                                    <td className="py-2.5 px-3 font-semibold">{w.name}</td>
+                                    <td className="py-2.5 px-3">{w.trade}</td>
+                                    <td className="py-2.5 px-3 font-medium text-zinc-600">
+                                      {present}P / {absent}A / {half}H
+                                    </td>
+                                    <td className="py-2.5 px-3 font-bold text-right text-zinc-950">{formatCur(amount)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+
+                              </table>
+                              <div className="p-3 bg-zinc-50 border-t border-zinc-100">
+                                <button className="px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50"
+                                       disabled={selectedWorkersForPayment.length === 0 || isSubmittingPayWages}
+                                       onClick={() => setIsPayWagesOpen(true)}>
+                                 {isSubmittingPayWages ? 'Processing...' : `Pay ${selectedWorkersForPayment.length} Selected Workers`}
+                               </button>
+
+
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Attendance Calendar Visualizer */}
-                      <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Attendance Calendar Visualizer</h3>
-                          <div className="flex flex-wrap items-center gap-3 text-[10px] font-semibold text-zinc-500">
-                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block shadow-sm" /> Present</span>
-                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 block shadow-sm" /> Half Day</span>
-                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 block shadow-sm" /> Absent</span>
-                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-zinc-100 block border border-zinc-200" /> No Log</span>
+                      {selectedWorkerId !== 'all' && (
+                        <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Attendance Calendar Visualizer</h3>
+                            <div className="flex flex-wrap items-center gap-3 text-[10px] font-semibold text-zinc-500">
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block shadow-sm" /> Present</span>
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 block shadow-sm" /> Half Day</span>
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 block shadow-sm" /> Absent</span>
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-zinc-100 block border border-zinc-200" /> No Log</span>
+                            </div>
+                          </div>
+                          <div className="border border-zinc-100 rounded-xl p-4 flex justify-center bg-zinc-50/20">
+                            {renderDottedCalendar(worker.name, false)}
                           </div>
                         </div>
-                        <div className="border border-zinc-100 rounded-xl p-4 flex justify-center bg-zinc-50/20">
-                          {renderDottedCalendar(worker.name, false)}
-                        </div>
-                      </div>
+                      )}
 
                       {/* Wage Payment Requests Table */}
                       <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
@@ -2071,7 +2546,9 @@ export default function AttendancePage() {
           )}
 
           {isPayWagesOpen && (() => {
-            const worker = crew.find(c => c.id === selectedWorkerId) || crew[0];
+            const worker = selectedWorkerId === 'all' 
+              ? { id: 'all', name: 'All Workers', trade: 'Other' as CrewTrade, dailyWage: 0, status: 'active' as CrewMemberStatus, createdAt: '' } 
+              : (crew.find(c => c.id === selectedWorkerId) || crew[0]);
             if (!worker) return null;
 
             // Date range math
@@ -2095,131 +2572,311 @@ export default function AttendancePage() {
             const startStr = formatLocalDate(startDate);
             const endStr = formatLocalDate(endDate);
 
-            const workerAtt = attendanceLogs.filter(a =>
-              a.workerName === worker.name &&
-              a.date >= startStr &&
-              a.date <= endStr
-            );
+            const workersToProcess = selectedWorkerId === 'all'
+              ? crew.filter(w => selectedWorkersForPayment.includes(w.id))
+              : [crew.find(c => c.id === selectedWorkerId) || crew[0]].filter(Boolean);
 
-            const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+            const getWorkerSiteBreakdown = (w: CrewMember) => {
+              const workerAtt = attendanceLogs.filter(a => {
+                const matchesWorker = a.workerName === w.name;
+                const matchesDate = a.date >= startStr && a.date <= endStr;
+                const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+                const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+                return matchesWorker && matchesDate && matchesProj && matchesTsk;
+              });
 
-            const totalEarned = workerAtt.reduce((sum, a) => {
-              let rate = 0;
-              if (a.status === 'Present') rate = a.dailyWage || worker.dailyWage;
-              else if (a.status === 'Half Day') rate = (a.dailyWage || worker.dailyWage) * 0.5;
-              return sum + rate + (a.overtimeAmount || 0);
-            }, 0);
+              const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+              
+              const groups: Record<string, any[]> = {};
+              unpaidLogs.forEach(log => {
+                const pid = log.projectId || 'no_project';
+                if (!groups[pid]) groups[pid] = [];
+                groups[pid].push(log);
+              });
 
-            const workerPayments = paymentRequestsLogs.filter(pr => {
-              const isWorkerMatch = pr.payeeName.trim().toLowerCase() === worker.name.trim().toLowerCase();
-              if (!isWorkerMatch) return false;
+              return Object.entries(groups).map(([pid, pLogs]) => {
+                const project = projects.find(p => p.id === pid);
+                const projectName = project ? project.projectName : (pid === 'no_project' ? 'Unassigned Site' : 'Unknown Site');
+                const amt = pLogs.reduce((sum, log) => {
+                  let rate = 0;
+                  if (log.status === 'Present') rate = log.dailyWage || w.dailyWage;
+                  else if (log.status === 'Half Day') rate = (log.dailyWage || w.dailyWage) * 0.5;
+                  return sum + rate + (log.overtimeAmount || 0);
+                }, 0);
 
-              if (pr.attendanceIds && pr.attendanceIds.length > 0) {
-                const matchesAttendance = pr.attendanceIds.some((id: string) => workerAtt.some(a => a.id === id));
-                if (matchesAttendance) return true;
+                const present = pLogs.filter(l => l.status === 'Present').length;
+                const halfDay = pLogs.filter(l => l.status === 'Half Day').length;
+                const absent = pLogs.filter(l => l.status === 'Absent').length;
+
+                return {
+                  projectId: pid,
+                  projectName,
+                  logs: pLogs,
+                  amount: amt,
+                  present,
+                  halfDay,
+                  absent
+                };
+              });
+            };
+
+            const processedWorkersData = workersToProcess.map(w => {
+              const breakdown = getWorkerSiteBreakdown(w);
+              return {
+                worker: w,
+                breakdown,
+                unpaidLogs: breakdown.flatMap(b => b.logs)
+              };
+            }).filter(item => item.breakdown.length > 0);
+
+            // Compute overall total based on selected checkbox states
+            let totalSelectedAmount = 0;
+            const finalPaymentsToSubmit: { worker: CrewMember; logs: any[]; amount: number }[] = [];
+
+            processedWorkersData.forEach(({ worker: w, breakdown }) => {
+              const workerSelectedLogs: any[] = [];
+              let workerSelectedAmount = 0;
+
+              breakdown.forEach(b => {
+                const siteSelectedLogs = b.logs.filter(log => !!selectedDayPayments[log.id]);
+                if (siteSelectedLogs.length > 0) {
+                  const amt = siteSelectedLogs.reduce((sum, log) => {
+                    let rate = 0;
+                    if (log.status === 'Present') rate = log.dailyWage || w.dailyWage;
+                    else if (log.status === 'Half Day') rate = (log.dailyWage || w.dailyWage) * 0.5;
+                    return sum + rate + (log.overtimeAmount || 0);
+                  }, 0);
+                  
+                  workerSelectedLogs.push(...siteSelectedLogs);
+                  workerSelectedAmount += amt;
+                }
+              });
+
+              if (workerSelectedLogs.length > 0) {
+                totalSelectedAmount += workerSelectedAmount;
+                finalPaymentsToSubmit.push({
+                  worker: w,
+                  logs: workerSelectedLogs,
+                  amount: workerSelectedAmount
+                });
               }
-
-              return pr.dueDate >= startStr && pr.dueDate <= endStr;
             });
-
-            const paidWages = workerPayments
-              .filter(pr => pr.status === 'Paid')
-              .reduce((sum, pr) => sum + pr.amount, 0);
-
-            const partialPaidSum = workerPayments
-              .filter(pr => pr.status === 'Partially Paid')
-              .reduce((sum, pr) => {
-                const history = pr.paymentHistory || [];
-                return sum + history.reduce((s: number, item: any) => s + item.amount, 0);
-              }, 0);
-
-            const totalPaid = paidWages + partialPaidSum;
-            const remainingToPay = Math.max(0, totalEarned - totalPaid);
 
             return (
               <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
-                  <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
-                    <h2 className="text-base font-extrabold text-zinc-950">
-                      Request Wages Payment
-                    </h2>
+                <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-2xl max-w-lg w-full space-y-5 max-h-[90vh] overflow-y-auto animate-fade-in">
+                  <div className="flex items-center justify-between border-b pb-3.5 border-zinc-150">
+                    <div>
+                      <h2 className="text-base font-black text-zinc-950 flex items-center gap-2">
+                        <Wallet className="w-5 h-5 text-emerald-600" />
+                        <span>Structured Wages Payout</span>
+                      </h2>
+                      <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider mt-0.5">
+                        Select Sites & Verify Balances
+                      </p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
                         setIsPayWagesOpen(false);
                         setPayWagesAmount('');
                       }}
-                      className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+                      className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold rounded-xl text-xs transition-colors"
                     >
                       Cancel
                     </button>
                   </div>
 
-                  <div className="text-xs text-zinc-655 space-y-2">
-                    <p><strong>Worker:</strong> {worker.name} ({worker.trade})</p>
-                    <p><strong>Outstanding Balance:</strong> {formatCur(remainingToPay)}</p>
-                    {unpaidLogs.length > 0 && (
-                      <p><strong>Unpaid Days:</strong> {unpaidLogs.length} day(s)</p>
-                    )}
-                  </div>
+                  {processedWorkersData.length === 0 ? (
+                    <div className="text-center py-6 text-zinc-500 text-xs">
+                      No unpaid wages found in this period.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {processedWorkersData.map(({ worker: w, breakdown }) => (
+                        <div key={w.id} className="bg-zinc-50/50 border border-zinc-200/80 rounded-2xl p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="font-extrabold text-zinc-900 text-xs">{w.name}</span>
+                              <span className="text-[10px] text-zinc-400 block font-semibold">{w.trade}</span>
+                            </div>
+                            <span className="text-[10px] font-bold text-zinc-500 bg-white border px-2 py-0.5 rounded-full">
+                              ₹{w.dailyWage}/day
+                            </span>
+                          </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Project (Optional)</label>
-                    <select
-                      value={payWagesProjectId}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setPayWagesProjectId(val);
-                        setPayWagesTaskId('');
-                      }}
-                      className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none"
-                    >
-                      <option value="">-- Select Project (Optional) --</option>
-                      {projects.map(p => (
-                        <option key={p.id} value={p.id}>{p.projectName}</option>
+                          <div className="space-y-3">
+                            {breakdown.map(b => {
+                              const allDaysChecked = b.logs.every(log => !!selectedDayPayments[log.id]);
+                              const handleToggleAllDays = () => {
+                                const newSelection = { ...selectedDayPayments };
+                                b.logs.forEach(log => {
+                                  newSelection[log.id] = !allDaysChecked;
+                                });
+                                setSelectedDayPayments(newSelection);
+                              };
+
+                              return (
+                                <div key={b.projectId} className="bg-white border border-zinc-150 rounded-xl overflow-hidden shadow-sm">
+                                  {/* Site Header */}
+                                  <div className="flex items-center justify-between p-3 bg-zinc-50 border-b border-zinc-150">
+                                    <label className="flex items-center gap-2.5 cursor-pointer select-none flex-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={allDaysChecked}
+                                        onChange={handleToggleAllDays}
+                                        className="rounded text-zinc-950 focus:ring-zinc-950"
+                                      />
+                                      <div>
+                                        <span className="text-xs font-black text-zinc-900 block">{b.projectName}</span>
+                                        <span className="text-[9px] text-zinc-400 font-semibold block uppercase tracking-wider">
+                                          {b.present} P • {b.halfDay} H • {b.absent} A Unpaid
+                                        </span>
+                                      </div>
+                                    </label>
+                                    <span className="text-xs font-black text-zinc-950 shrink-0">
+                                      {formatCur(b.amount)}
+                                    </span>
+                                  </div>
+
+                                  {/* Indented Days List */}
+                                  <div className="divide-y divide-zinc-100 bg-white px-3">
+                                    {b.logs.map(log => {
+                                      const isDayChecked = !!selectedDayPayments[log.id];
+                                      
+                                      let dayRate = 0;
+                                      if (log.status === 'Present') dayRate = log.dailyWage || w.dailyWage;
+                                      else if (log.status === 'Half Day') dayRate = (log.dailyWage || w.dailyWage) * 0.5;
+                                      const dayTotal = dayRate + (log.overtimeAmount || 0);
+
+                                      let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                                      if (log.status === 'Half Day') badgeColor = 'bg-blue-50 text-blue-700 border-blue-100';
+                                      else if (log.status === 'Absent') badgeColor = 'bg-rose-50 text-rose-700 border-rose-100';
+
+                                      return (
+                                        <div key={log.id} className="flex items-center justify-between py-2 hover:bg-zinc-50/50 transition-colors">
+                                          <label className="flex items-center gap-2.5 cursor-pointer select-none flex-1">
+                                            <input
+                                              type="checkbox"
+                                              checked={isDayChecked}
+                                              onChange={() => {
+                                                setSelectedDayPayments(prev => ({
+                                                  ...prev,
+                                                  [log.id]: !prev[log.id]
+                                                }));
+                                              }}
+                                              className="rounded text-zinc-950 focus:ring-zinc-950 w-3.5 h-3.5"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs font-semibold text-zinc-700">{log.date}</span>
+                                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase border ${badgeColor}`}>
+                                                {log.status === 'Present' ? 'Full' : log.status === 'Half Day' ? 'Half' : 'Absent'}
+                                              </span>
+                                            </div>
+                                          </label>
+                                          <div className="text-right shrink-0">
+                                            <span className="text-xs font-extrabold text-zinc-900 block">{formatCur(dayTotal)}</span>
+                                            {(log.overtimeAmount || 0) > 0 && (
+                                              <span className="text-[8px] text-zinc-400 font-bold block">
+                                                OT: +{formatCur(log.overtimeAmount)}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       ))}
-                    </select>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Task (Optional)</label>
-                    <select
-                      value={payWagesTaskId}
-                      onChange={(e) => setPayWagesTaskId(e.target.value)}
-                      disabled={!payWagesProjectId}
-                      className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
-                    >
-                      <option value="">-- Select Task (Optional) --</option>
-                      {tasks
-                        .filter(t => t.projectId === payWagesProjectId)
-                        .map(t => (
-                          <option key={t.id} value={t.id}>{t.taskName}</option>
-                        ))}
-                    </select>
-                  </div>
+                      {selectedWorkerId !== 'all' && (
+                        <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 space-y-3">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Project Scope</label>
+                              <select
+                                value={payWagesProjectId}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setPayWagesProjectId(val);
+                                  setPayWagesTaskId('');
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none"
+                              >
+                                <option value="">-- Consolidate to Site --</option>
+                                {projects.map(p => (
+                                  <option key={p.id} value={p.id}>{p.projectName}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Task Scope</label>
+                              <select
+                                value={payWagesTaskId}
+                                onChange={(e) => setPayWagesTaskId(e.target.value)}
+                                disabled={!payWagesProjectId}
+                                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
+                              >
+                                <option value="">-- Consolidate to Task --</option>
+                                {tasks
+                                  .filter(t => t.projectId === payWagesProjectId)
+                                  .map(t => (
+                                    <option key={t.id} value={t.id}>{t.taskName}</option>
+                                  ))}
+                              </select>
+                            </div>
+                          </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Request Amount (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      min={1}
-                      max={remainingToPay}
-                      placeholder="Enter amount to request"
-                      value={payWagesAmount}
-                      onChange={(e) => setPayWagesAmount(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 font-bold text-sm"
-                    />
-                  </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                              Payment Request Amount (₹)
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={totalSelectedAmount}
+                              placeholder={`Default: ₹${totalSelectedAmount}`}
+                              value={payWagesAmount}
+                              onChange={(e) => setPayWagesAmount(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 font-black text-sm"
+                            />
+                            <span className="text-[9px] text-zinc-400 font-semibold block mt-1">
+                              Leave blank to request the selected total of {formatCur(totalSelectedAmount)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
 
-                  <button
-                    type="button"
-                    onClick={() => handleRequestWagesPayment(worker, unpaidLogs, remainingToPay)}
-                    disabled={isSubmittingPayWages || !payWagesAmount || Number(payWagesAmount) <= 0 || Number(payWagesAmount) > remainingToPay}
-                    className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <span>{isSubmittingPayWages ? 'Submitting...' : `Submit Payment Request for ${formatCur(Number(payWagesAmount) || 0)}`}</span>
-                  </button>
+                      <div className="bg-zinc-50 border p-4 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Total Selected Wages</span>
+                          <span className="text-base font-black text-emerald-600 block mt-0.5">{formatCur(totalSelectedAmount)}</span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isSubmittingPayWages || totalSelectedAmount <= 0}
+                          onClick={() => {
+                            if (selectedWorkerId === 'all') {
+                              handleBulkPayWages();
+                            } else {
+                              const singleData = processedWorkersData[0];
+                              if (singleData) {
+                                handleRequestWagesPayment(singleData.worker, singleData.unpaidLogs, totalSelectedAmount);
+                              }
+                            }
+                          }}
+                          className="px-5 py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center gap-1.5"
+                        >
+                          <BookmarkCheck className="w-4 h-4" />
+                          <span>{isSubmittingPayWages ? 'Processing...' : 'Confirm Payout'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -2320,6 +2977,305 @@ export default function AttendancePage() {
         </div>
       )}
 
+      {/* ══════════════════════════════════ DAILY PAYOUTS LEDGER TAB ══════════════════════════════════ */}
+      {activeTab === 'payouts' && (
+        <div className="space-y-6 animate-fade-in">
+          {(() => {
+            const selectedUnpaidLogs = selectedLedgerLogs.filter(id => {
+              const log = attendanceLogs.find(a => a.id === id);
+              return log && (log.paymentStatus || 'Unpaid') === 'Unpaid';
+            });
+            const selectedPendingLogs = selectedLedgerLogs.filter(id => {
+              const log = attendanceLogs.find(a => a.id === id);
+              return log && log.paymentStatus === 'Pending';
+            });
+
+            return (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Daily Payouts Ledger</h1>
+                  <p className="text-xs sm:text-sm text-zinc-500">Track and pay individual daily attendance logs across all projects</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedUnpaidLogs.length > 0 && (
+                    <button
+                      onClick={() => handlePayLedgerDays(selectedUnpaidLogs)}
+                      disabled={isSubmittingPayWages}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-600 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-amber-700 transition-colors shadow-md"
+                    >
+                      <Wallet className="w-4 h-4" />
+                      <span>Pay Selected ({selectedUnpaidLogs.length} Days)</span>
+                    </button>
+                  )}
+                  {selectedPendingLogs.length > 0 && (
+                    <button
+                      onClick={() => handleBulkUndoPaymentRequests(selectedPendingLogs)}
+                      disabled={isSubmittingPayWages}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-rose-600 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-rose-700 transition-colors shadow-md"
+                    >
+                      <Undo2 className="w-4 h-4" />
+                      <span>Undo Selected ({selectedPendingLogs.length} Days)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Filter Bar */}
+          <div className="bg-white border rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-5 gap-3">
+            <div className="sm:col-span-2 relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400">
+                <Search className="w-4 h-4" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search by worker name..."
+                value={ledgerSearch}
+                onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }}
+                className="w-full text-xs pl-9 pr-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl outline-none"
+              />
+            </div>
+            <div>
+              <select
+                value={ledgerProject}
+                onChange={(e) => { setLedgerProject(e.target.value); setLedgerPage(1); }}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
+              >
+                <option value="All">All Projects</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.projectName}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <select
+                value={ledgerStatus}
+                onChange={(e) => { setLedgerStatus(e.target.value as any); setLedgerPage(1); }}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
+              >
+                <option value="All">All Statuses</option>
+                <option value="Unpaid">Unpaid Only</option>
+                <option value="Pending">Pending Only</option>
+                <option value="Paid">Paid Only</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={ledgerStartDate}
+                onChange={(e) => { setLedgerStartDate(e.target.value); setLedgerPage(1); }}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+              />
+              <input
+                type="date"
+                value={ledgerEndDate}
+                onChange={(e) => { setLedgerEndDate(e.target.value); setLedgerPage(1); }}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Table */}
+          {(() => {
+            const filteredLogs = attendanceLogs.filter(log => {
+              const matchesSearch = log.workerName.toLowerCase().includes(ledgerSearch.toLowerCase());
+              const matchesProject = ledgerProject === 'All' || log.projectId === ledgerProject;
+              
+              let matchesStatus = true;
+              if (ledgerStatus !== 'All') {
+                const status = log.paymentStatus || 'Unpaid';
+                matchesStatus = status.toLowerCase() === ledgerStatus.toLowerCase();
+              }
+
+              const matchesDate = (!ledgerStartDate || log.date >= ledgerStartDate) &&
+                                  (!ledgerEndDate || log.date <= ledgerEndDate);
+
+              return matchesSearch && matchesProject && matchesStatus && matchesDate;
+            });
+
+            const limit = 15;
+            const totalLedgerPages = Math.max(1, Math.ceil(filteredLogs.length / limit));
+            const activeLedgerPage = Math.min(ledgerPage, totalLedgerPages);
+            const paginatedLogs = filteredLogs.slice((activeLedgerPage - 1) * limit, activeLedgerPage * limit);
+            const emptyLedgerRows = Math.max(0, limit - paginatedLogs.length);
+
+            const allLogsChecked = paginatedLogs.length > 0 && paginatedLogs.every(log => selectedLedgerLogs.includes(log.id));
+
+            const handleToggleAllLedger = () => {
+              if (allLogsChecked) {
+                setSelectedLedgerLogs(prev => prev.filter(id => !paginatedLogs.some(log => log.id === id)));
+              } else {
+                const idsToAdd = paginatedLogs.map(log => log.id).filter(id => !selectedLedgerLogs.includes(id));
+                setSelectedLedgerLogs(prev => [...prev, ...idsToAdd]);
+              }
+            };
+
+            return (
+              <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-zinc-650 border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[10px] tracking-wider border-b border-zinc-200 h-[44px]">
+                        <th className="py-3 px-4 w-12 text-center">
+                          <input
+                            type="checkbox"
+                            checked={allLogsChecked}
+                            onChange={handleToggleAllLedger}
+                            className="rounded text-zinc-950 focus:ring-zinc-950"
+                          />
+                        </th>
+                        <th className="py-3 px-4">Date</th>
+                        <th className="py-3 px-4">Worker</th>
+                        <th className="py-3 px-4">Project / Task</th>
+                        <th className="py-3 px-4 text-center">Attendance</th>
+                        <th className="py-3 px-4 text-right">Daily Wage</th>
+                        <th className="py-3 px-4 text-right">Overtime</th>
+                        <th className="py-3 px-4 text-right">Total Owed</th>
+                        <th className="py-3 px-4 text-center">Payment Status</th>
+                        <th className="py-3 px-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 text-zinc-900 bg-white">
+                      {filteredLogs.length === 0 ? (
+                        <tr className="h-[280px]">
+                          <td colSpan={10} className="text-center py-12">
+                            <div className="flex flex-col items-center justify-center">
+                              <ClipboardCheck className="w-8 h-8 text-zinc-400 mb-2" />
+                              <p className="text-xs text-zinc-500 font-medium">No ledger entries match the filters.</p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {paginatedLogs.map(log => {
+                            const isChecked = selectedLedgerLogs.includes(log.id);
+                            
+                            const worker = crew.find(c => c.name === log.workerName);
+                            const dailyWageVal = log.dailyWage || worker?.dailyWage || 200;
+                            
+                            let baseWage = 0;
+                            if (log.status === 'Present') baseWage = dailyWageVal;
+                            else if (log.status === 'Half Day') baseWage = dailyWageVal * 0.5;
+                            const totalOwed = baseWage + (log.overtimeAmount || 0);
+
+                            const project = projects.find(p => p.id === log.projectId);
+                            const task = tasks.find(t => t.id === log.taskId);
+
+                            let statusBadgeClass = 'bg-amber-50 text-amber-700 border-amber-250';
+                            if (log.paymentStatus === 'Paid') statusBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-250';
+                            else if (log.paymentStatus === 'Pending') statusBadgeClass = 'bg-blue-50 text-blue-700 border-blue-250';
+
+                            return (
+                              <tr key={log.id} className="hover:bg-zinc-50/50 transition-colors h-[52px]">
+                                <td className="py-3 px-4 text-center align-middle">
+                                  {((log.paymentStatus || 'Unpaid') === 'Unpaid' || log.paymentStatus === 'Pending') && (
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        setSelectedLedgerLogs(prev =>
+                                          isChecked ? prev.filter(id => id !== log.id) : [...prev, log.id]
+                                        );
+                                      }}
+                                      className="rounded text-zinc-950 focus:ring-zinc-950"
+                                    />
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 font-semibold text-zinc-900 align-middle">{log.date}</td>
+                                <td className="py-3 px-4 align-middle">
+                                  <span className="font-bold text-zinc-950 block">{log.workerName}</span>
+                                  <span className="text-[10px] text-zinc-400 font-semibold block">{worker?.trade || 'Helper'}</span>
+                                </td>
+                                <td className="py-3 px-4 align-middle">
+                                  <span className="font-semibold text-zinc-800 block truncate max-w-[150px]">{project?.projectName || 'Unassigned Site'}</span>
+                                  <span className="text-[10px] text-zinc-400 block truncate max-w-[150px]">{task?.taskName || 'General Task'}</span>
+                                </td>
+                                <td className="py-3 px-4 text-center align-middle">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
+                                    log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                    log.status === 'Half Day' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                    'bg-rose-50 text-rose-700 border-rose-100'
+                                  }`}>
+                                    {log.status === 'Present' ? 'Full Day' : log.status === 'Half Day' ? 'Half Day' : 'Absent'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-right font-semibold text-zinc-700 align-middle">{formatCur(dailyWageVal)}</td>
+                                <td className="py-3 px-4 text-right font-medium text-zinc-500 align-middle">{log.overtimeAmount ? formatCur(log.overtimeAmount) : '—'}</td>
+                                <td className="py-3 px-4 text-right font-black text-zinc-950 align-middle">{formatCur(totalOwed)}</td>
+                                <td className="py-3 px-4 text-center align-middle">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${statusBadgeClass}`}>
+                                    {log.paymentStatus || 'Unpaid'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-right align-middle space-x-2">
+                                  {(log.paymentStatus || 'Unpaid') === 'Unpaid' && (
+                                    <button
+                                      onClick={() => handlePayLedgerDays([log.id])}
+                                      disabled={isSubmittingPayWages}
+                                      className="px-2.5 py-1 bg-zinc-950 hover:bg-zinc-900 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm"
+                                    >
+                                      Pay Now
+                                    </button>
+                                  )}
+                                  {log.paymentStatus === 'Pending' && (
+                                    <button
+                                      onClick={() => handleUndoPaymentRequest(log.id)}
+                                      disabled={isSubmittingPayWages}
+                                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm"
+                                    >
+                                      Undo
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {Array.from({ length: emptyLedgerRows }).map((_, i) => (
+                            <tr key={`empty-ledger-${i}`} className="h-[52px] opacity-0 select-none">
+                              <td colSpan={10} className="py-3 px-4">&nbsp;</td>
+                            </tr>
+                          ))}
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer Pagination */}
+                <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-100 bg-zinc-50/50">
+                  <span className="text-xs text-zinc-500 font-medium">
+                    Showing <span className="font-semibold text-zinc-700">{filteredLogs.length === 0 ? 0 : (activeLedgerPage - 1) * limit + 1}–{Math.min(activeLedgerPage * limit, filteredLogs.length)}</span> of{' '}
+                    <span className="font-semibold text-zinc-700">{filteredLogs.length}</span> entries
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={activeLedgerPage <= 1}
+                      onClick={() => setLedgerPage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-650 disabled:opacity-40"
+                    >
+                      Prev
+                    </button>
+                    <span className="text-xs font-semibold text-zinc-600 min-w-[64px] text-center">
+                      {activeLedgerPage} / {totalLedgerPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={activeLedgerPage >= totalLedgerPages}
+                      onClick={() => setLedgerPage(p => Math.min(totalLedgerPages, p + 1))}
+                      className="px-3 py-1.5 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-650 disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {isAllWorkersPdfModalOpen && (
         <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-zinc-200/80 rounded-2xl p-5 sm:p-6 shadow-xl max-w-sm w-full space-y-5 animate-fade-in">
@@ -2359,7 +3315,7 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            <div className="flex gap-3 pt-2 font-sans">
+            <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setIsAllWorkersPdfModalOpen(false)}
