@@ -1768,32 +1768,32 @@ export default function AttendancePage() {
                   return (
                     <div className="space-y-6">
                       {/* Filter panel */}
-                      <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setOverviewFilterType('weekly')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${overviewFilterType === 'weekly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
-                              }`}
-                          >
-                            Weekly
-                          </button>
-                          <button
-                            onClick={() => setOverviewFilterType('monthly')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${overviewFilterType === 'monthly' ? 'bg-zinc-950 text-white shadow-sm' : 'bg-zinc-50 text-zinc-500 hover:text-zinc-700'
-                              }`}
-                          >
-                            Monthly
-                          </button>
-                        </div>
+                      <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+                        {/* Row 1: Period toggle + time selectors */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <div className="flex items-center gap-1.5 bg-zinc-100 rounded-lg p-0.5 shrink-0">
+                            <button
+                              onClick={() => setOverviewFilterType('weekly')}
+                              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${overviewFilterType === 'weekly' ? 'bg-zinc-950 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                            >
+                              Weekly
+                            </button>
+                            <button
+                              onClick={() => setOverviewFilterType('monthly')}
+                              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${overviewFilterType === 'monthly' ? 'bg-zinc-950 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                            >
+                              Monthly
+                            </button>
+                          </div>
 
-                        {/* Dropdown controls */}
-                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="h-5 w-px bg-zinc-200 hidden sm:block" />
+
                           {overviewFilterType === 'monthly' ? (
-                            <>
+                            <div className="flex items-center gap-2">
                               <select
                                 value={selectedMonthVal}
                                 onChange={e => setSelectedMonthVal(Number(e.target.value))}
-                                className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+                                className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none"
                               >
                                 {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => (
                                   <option key={idx} value={idx}>{m}</option>
@@ -1802,92 +1802,96 @@ export default function AttendancePage() {
                               <select
                                 value={selectedYearVal}
                                 onChange={e => setSelectedYearVal(Number(e.target.value))}
-                                className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none"
+                                className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none"
                               >
                                 {[2024, 2025, 2026, 2027, 2028].map(y => (
                                   <option key={y} value={y}>{y}</option>
                                 ))}
                               </select>
-                            </>
+                            </div>
                           ) : (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5">
                               <button
                                 onClick={() => setSelectedWeekOffset(prev => prev - 1)}
-                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100"
+                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition-colors"
                               >
-                                Prev Week
+                                ← Prev
                               </button>
                               <button
                                 onClick={() => setSelectedWeekOffset(0)}
-                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100"
+                                className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition-colors"
                               >
                                 Current
                               </button>
                               <button
                                 onClick={() => setSelectedWeekOffset(prev => prev + 1)}
-                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100"
+                                className="px-2.5 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition-colors"
                               >
-                                Next Week
+                                Next →
                               </button>
                             </div>
                           )}
+                        </div>
 
-                          <select
-                            value={wageProjectFilter}
-                            onChange={e => {
-                              setWageProjectFilter(e.target.value);
-                              setWageTaskFilter('All');
-                            }}
-                            className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none min-w-[120px]"
-                          >
-                            <option value="All">All Projects</option>
-                            {projects.map(p => (
-                              <option key={p.id} value={p.id}>{p.projectName}</option>
-                            ))}
-                          </select>
-
-                          <select
-                            value={wageTaskFilter}
-                            onChange={e => setWageTaskFilter(e.target.value)}
-                            disabled={wageProjectFilter === 'All'}
-                            className="bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none min-w-[120px] disabled:opacity-50"
-                          >
-                            <option value="All">All Tasks</option>
-                            {tasks
-                              .filter(t => t.projectId === wageProjectFilter)
-                              .map(t => (
-                                <option key={t.id} value={t.id}>{t.taskName}</option>
+                        {/* Row 2: Project & Task scope + Export actions */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-zinc-100">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={wageProjectFilter}
+                              onChange={e => {
+                                setWageProjectFilter(e.target.value);
+                                setWageTaskFilter('All');
+                              }}
+                              className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none min-w-[140px]"
+                            >
+                              <option value="All">All Projects</option>
+                              {projects.map(p => (
+                                <option key={p.id} value={p.id}>{p.projectName}</option>
                               ))}
-                          </select>
+                            </select>
+                            <select
+                              value={wageTaskFilter}
+                              onChange={e => setWageTaskFilter(e.target.value)}
+                              disabled={wageProjectFilter === 'All'}
+                              className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none min-w-[140px] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <option value="All">All Tasks</option>
+                              {tasks
+                                .filter(t => t.projectId === wageProjectFilter)
+                                .map(t => (
+                                  <option key={t.id} value={t.id}>{t.taskName}</option>
+                                ))}
+                            </select>
+                          </div>
 
-                          <button
-                            onClick={handleDownloadCsv}
-                            className="inline-flex items-center gap-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5" />
-                            <span>CSV</span>
-                          </button>
-
-                          <button
-                            onClick={handleDownloadPdf}
-                            className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            <span>PDF</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setPdfStartDate(startStr);
-                              setPdfEndDate(endStr);
-                              setIsAllWorkersPdfModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                            title="Download attendance of all workers"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            <span>All Workers PDF</span>
-                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={handleDownloadCsv}
+                              className="inline-flex items-center gap-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                            >
+                              <FileSpreadsheet className="w-3.5 h-3.5" />
+                              <span>CSV</span>
+                            </button>
+                            <button
+                              onClick={handleDownloadPdf}
+                              className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPdfStartDate(startStr);
+                                setPdfEndDate(endStr);
+                                setIsAllWorkersPdfModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                              title="Download attendance of all workers"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>Full PDF</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -2278,11 +2282,10 @@ export default function AttendancePage() {
                                     <span className="text-[10px] text-zinc-500 block font-semibold">Task: {task.taskName}</span>
                                   )}
                                 </div>
-                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                                  log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
                                   log.status === 'Half Day' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                                  'bg-rose-50 text-rose-700 border border-rose-100'
-                                }`}>
+                                    'bg-rose-50 text-rose-700 border border-rose-100'
+                                  }`}>
                                   {log.status}
                                 </span>
                               </div>
@@ -2298,11 +2301,10 @@ export default function AttendancePage() {
                                 </div>
                                 <div className="text-right">
                                   <span className="text-[8px] text-zinc-400 block">Payout Status</span>
-                                  <span className={`font-extrabold normal-case ${
-                                    log.paymentStatus === 'Paid' ? 'text-emerald-700' :
+                                  <span className={`font-extrabold normal-case ${log.paymentStatus === 'Paid' ? 'text-emerald-700' :
                                     log.paymentStatus === 'Pending' ? 'text-amber-700' :
-                                    'text-zinc-500'
-                                  }`}>{log.paymentStatus || 'Unpaid'}</span>
+                                      'text-zinc-500'
+                                    }`}>{log.paymentStatus || 'Unpaid'}</span>
                                 </div>
                               </div>
                             </div>
