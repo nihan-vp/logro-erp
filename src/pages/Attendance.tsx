@@ -4,8 +4,8 @@ import {
   Calendar, FileSpreadsheet, Activity, DollarSign, Wallet, ClipboardCheck, FileText,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
 import { api } from '../api/client';
+import { generateAllWorkersAttendancePdf, generateSingleWorkerAttendancePdf } from '../utils/pdfGenerator';
 import { CrewMember, CrewTrade, CrewMemberStatus } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
@@ -175,6 +175,9 @@ export default function AttendancePage() {
   const [payWagesTaskId, setPayWagesTaskId] = useState<string>('');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [selectedCalendarWorkerName, setSelectedCalendarWorkerName] = useState<string | null>(null);
+  const [isAllWorkersPdfModalOpen, setIsAllWorkersPdfModalOpen] = useState(false);
+  const [pdfStartDate, setPdfStartDate] = useState('');
+  const [pdfEndDate, setPdfEndDate] = useState('');
   const [rosterPage, setRosterPage] = useState(1);
   const [rosterRowsPerPage, setRosterRowsPerPage] = useState<number>(() => {
     return Number(localStorage.getItem('roster_rows_per_page')) || 10;
@@ -270,12 +273,26 @@ export default function AttendancePage() {
 
           const isToday = formatLocalDate(new Date()) === dateStr;
 
+          const getLocalProjectAbbr = (name: string): string => {
+            if (!name) return '';
+            return name
+              .split(/[\s-_]+/)
+              .map(word => word[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 3);
+          };
+
+          const project = log?.projectId ? projects.find(p => p.id === log.projectId) : null;
+          const projectAbbr = project ? getLocalProjectAbbr(project.projectName) : '';
+          const showProjectAbbr = (log?.status === 'Present' || log?.status === 'Half Day') && projectAbbr;
+
           if (compact) {
             return (
               <div
                 key={i}
                 className={`w-2 h-2 rounded-full ${colorClass} ${isToday ? 'ring-1 ring-zinc-900 ring-offset-1' : ''} cursor-pointer hover:scale-110 transition-all`}
-                title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}`}
+                title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}${project ? ` at ${project.projectName}` : ''}`}
                 onClick={() => {
                   setSelectedCalendarDate(dateStr);
                   setSelectedCalendarWorkerName(workerName);
@@ -288,13 +305,13 @@ export default function AttendancePage() {
             <div
               key={i}
               className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${colorClass} ${isToday ? 'ring-2 ring-zinc-900' : ''} transition-all hover:scale-110 cursor-pointer flex items-center justify-center`}
-              title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}`}
+              title={`${dateStr} (${dayName}): ${log?.status || 'No Log'}${project ? ` at ${project.projectName}` : ''}`}
               onClick={() => {
                 setSelectedCalendarDate(dateStr);
                 setSelectedCalendarWorkerName(workerName);
               }}
             >
-              <span className={`text-[9px] sm:text-[10px] font-black ${log ? 'text-white' : 'text-zinc-500'}`}>
+              <span className={`text-[8px] sm:text-[9px] font-black ${log ? 'text-white' : 'text-zinc-500'} truncate max-w-full px-0.5`}>
                 {d.getDate()}
               </span>
             </div>
@@ -322,6 +339,19 @@ export default function AttendancePage() {
     } finally {
       setOverviewLoading(false);
     }
+  };
+
+  const handleDownloadAllWorkersPdf = (customStartStr: string, customEndStr: string) => {
+    generateAllWorkersAttendancePdf({
+      customStartStr,
+      customEndStr,
+      attendanceLogs,
+      projects,
+      overviewFilterType,
+      selectedMonthVal,
+      selectedYearVal,
+      crew,
+    });
   };
 
   const handleRequestWagesPayment = async (worker: any, unpaidLogs: any[], remainingAmount: number) => {
@@ -1643,10 +1673,7 @@ export default function AttendancePage() {
                   // Partially paid requests details
                   const partialPaidSum = workerPayments
                     .filter(pr => pr.status === 'Partially Paid')
-                    .reduce((sum, pr) => {
-                      const history = pr.paymentHistory || [];
-                      return sum + history.reduce((s: number, item: any) => s + item.amount, 0);
-                    }, 0);
+                    .reduce((sum, pr) => sum + (pr.paymentHistory || []).reduce((s: number, item: any) => s + item.amount, 0), 0);
 
                   const totalPaid = paidWages + partialPaidSum;
                   const remainingToPay = Math.max(0, totalEarned - totalPaid);
@@ -1698,340 +1725,26 @@ export default function AttendancePage() {
                   };
 
                   const handleDownloadPdf = () => {
-                    try {
-                      const doc = new jsPDF({
-                        orientation: 'portrait',
-                        unit: 'mm',
-                        format: 'a4'
-                      });
-
-                      const generatedDate = new Date().toLocaleDateString('en-IN', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      });
-
-                      const cZinc950 = [9, 9, 11];
-                      const cZinc700 = [113, 113, 122];
-                      const cZinc500 = [161, 161, 170];
-                      const cEmerald = [5, 150, 105];
-                      const cAmber = [217, 119, 6];
-                      const cRed = [185, 28, 28];
-
-                      doc.setTextColor(cZinc950[0], cZinc950[1], cZinc950[2]);
-                      doc.setFont('Helvetica', 'bold');
-                      doc.setFontSize(22);
-                      doc.text('LOGRO', 15, 20);
-
-                      doc.setFont('Helvetica', 'normal');
-                      doc.setFontSize(8);
-                      doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                      doc.text('CONSTRUCTION ERP', 15, 24);
-
-                      doc.setFont('Helvetica', 'bold');
-                      doc.setFontSize(13);
-                      doc.setTextColor(cZinc950[0], cZinc950[1], cZinc950[2]);
-                      doc.text('WORKER STATEMENT', 195, 20, { align: 'right' });
-
-                      doc.setFont('Helvetica', 'normal');
-                      doc.setFontSize(8);
-                      doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                      doc.text(`Generated: ${generatedDate}`, 195, 24, { align: 'right' });
-
-                      doc.setDrawColor(228, 228, 231);
-                      doc.setLineWidth(0.5);
-                      doc.line(15, 28, 195, 28);
-
-                      doc.setFillColor(250, 250, 250);
-                      doc.setDrawColor(244, 244, 245);
-                      doc.roundedRect(15, 33, 85, 28, 2, 2, 'FD');
-
-                      doc.setFont('Helvetica', 'bold');
-                      doc.setFontSize(9);
-                      doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                      doc.text('WORKER INFORMATION', 19, 38);
-
-                      doc.setFont('Helvetica', 'normal');
-                      doc.setFontSize(10);
-                      doc.text('Name:', 19, 44);
-                      doc.text('Trade:', 19, 49);
-                      doc.text('Wage Rate:', 19, 54);
-
-                      doc.setFont('Helvetica', 'bold');
-                      doc.setTextColor(cZinc950[0], cZinc950[1], cZinc950[2]);
-                      doc.text(worker.name, 42, 44);
-                      doc.text(worker.trade, 42, 49);
-                      doc.text(`Rs. ${worker.dailyWage.toLocaleString('en-IN')}/day`, 42, 54);
-
-                      doc.setFillColor(250, 250, 250);
-                      doc.setDrawColor(244, 244, 245);
-                      doc.roundedRect(110, 33, 85, 28, 2, 2, 'FD');
-
-                      doc.setFont('Helvetica', 'bold');
-                      doc.setFontSize(9);
-                      doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                      doc.text('REPORT DETAILS', 114, 38);
-
-                      doc.setFont('Helvetica', 'normal');
-                      doc.setFontSize(10);
-                      doc.text('Period:', 114, 44);
-                      doc.text('Date Range:', 114, 49);
-
-                      doc.setFont('Helvetica', 'bold');
-                      doc.setTextColor(cZinc950[0], cZinc950[1], cZinc950[2]);
-                      doc.text(overviewFilterType === 'weekly' ? 'Weekly' : 'Monthly', 137, 44);
-                      doc.text(`${startStr} to ${endStr}`, 137, 49);
-
-                      const cardW = 41;
-                      const cardH = 15;
-                      const gap = 5;
-                      const startY = 67;
-
-                      const metrics = [
-                        { label: 'ATTENDANCE', val: `${daysPresent}P / ${daysHalf}H / ${daysAbsent}A`, highlight: false, color: cZinc950 },
-                        { label: 'TOTAL EARNED', val: `Rs. ${totalEarned.toLocaleString('en-IN')}`, highlight: false, color: cZinc950 },
-                        { label: 'TOTAL PAID', val: `Rs. ${totalPaid.toLocaleString('en-IN')}`, highlight: true, color: cEmerald },
-                        { label: 'REMAINING DUE', val: `Rs. ${remainingToPay.toLocaleString('en-IN')}`, highlight: true, color: cAmber }
-                      ];
-
-                      metrics.forEach((m, idx) => {
-                        const x = 15 + idx * (cardW + gap);
-                        if (m.highlight) {
-                          doc.setFillColor(250, 250, 250);
-                          doc.setDrawColor(212, 212, 216);
-                        } else {
-                          doc.setFillColor(255, 255, 255);
-                          doc.setDrawColor(228, 228, 231);
-                        }
-                        doc.roundedRect(x, startY, cardW, cardH, 2, 2, 'FD');
-
-                        doc.setFont('Helvetica', 'bold');
-                        doc.setFontSize(8);
-                        doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                        doc.text(m.label, x + cardW / 2, startY + 5, { align: 'center' });
-
-                        doc.setFontSize(11);
-                        doc.setTextColor(m.color[0], m.color[1], m.color[2]);
-                        doc.text(m.val, x + cardW / 2, startY + 11, { align: 'center' });
-                      });
-
-                      // 3.5 Attendance Calendar Visualizer Card
-                      const calStartY = 85;
-                      doc.setFillColor(255, 255, 255);
-                      doc.setDrawColor(228, 228, 231);
-                      doc.roundedRect(15, calStartY, 180, 26, 2, 2, 'FD');
-
-                      doc.setFont('Helvetica', 'bold');
-                      doc.setFontSize(8);
-                      doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                      doc.text('ATTENDANCE CALENDAR', 19, calStartY + 5);
-
-                      // Draw Legend
-                      doc.setFont('Helvetica', 'normal');
-                      doc.setFontSize(7);
-
-                      // Present
-                      doc.setFillColor(16, 185, 129);
-                      doc.circle(95, calStartY + 4.5, 1.2, 'F');
-                      doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                      doc.text('Present', 98, calStartY + 5.5);
-
-                      // Half Day
-                      doc.setFillColor(59, 130, 246);
-                      doc.circle(120, calStartY + 4.5, 1.2, 'F');
-                      doc.text('Half Day', 123, calStartY + 5.5);
-
-                      // Absent
-                      doc.setFillColor(239, 68, 68);
-                      doc.circle(145, calStartY + 4.5, 1.2, 'F');
-                      doc.text('Absent', 148, calStartY + 5.5);
-
-                      // No Log
-                      doc.setFillColor(244, 244, 245);
-                      doc.circle(170, calStartY + 4.5, 1.2, 'F');
-                      doc.text('No Log', 173, calStartY + 5.5);
-
-                      // Calculate and draw dots
-                      let days: Date[] = [];
-                      if (overviewFilterType === 'weekly') {
-                        const curr = new Date();
-                        const dayOffset = curr.getDay();
-                        const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
-                        const start = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
-                        for (let i = 0; i < 7; i++) {
-                          const d = new Date(start);
-                          d.setDate(start.getDate() + i);
-                          days.push(d);
-                        }
-                      } else {
-                        const daysInMonth = new Date(selectedYearVal, selectedMonthVal + 1, 0).getDate();
-                        for (let i = 1; i <= daysInMonth; i++) {
-                          days.push(new Date(selectedYearVal, selectedMonthVal, i));
-                        }
-                      }
-
-                      const dotRadius = 2.2;
-                      const dotGap = 6.5;
-                      const dotStartY = calStartY + 14;
-
-                      days.forEach((d, i) => {
-                        const dateStr = formatLocalDate(d);
-                        const log = attendanceLogs.find(a => a.workerName === worker.name && a.date === dateStr);
-
-                        let dotColor = [244, 244, 245];
-                        let dotBorder = [228, 228, 231];
-                        let textColor = [113, 113, 122];
-
-                        if (log) {
-                          textColor = [255, 255, 255];
-                          if (log.status === 'Present') {
-                            dotColor = [16, 185, 129];
-                            dotBorder = [16, 185, 129];
-                          } else if (log.status === 'Half Day') {
-                            dotColor = [59, 130, 246];
-                            dotBorder = [59, 130, 246];
-                          } else if (log.status === 'Absent') {
-                            dotColor = [239, 68, 68];
-                            dotBorder = [239, 68, 68];
-                          }
-                        }
-
-                        const maxDotsPerRow = overviewFilterType === 'weekly' ? 7 : 16;
-                        const colIdx = i % maxDotsPerRow;
-                        const rowIdx = Math.floor(i / maxDotsPerRow);
-
-                        const dotsInThisRow = Math.min(maxDotsPerRow, days.length - rowIdx * maxDotsPerRow);
-                        const rowWidth = (dotsInThisRow - 1) * dotGap;
-                        const startX = 15 + (180 - rowWidth) / 2;
-
-                        const x = startX + colIdx * dotGap;
-                        const y = dotStartY + rowIdx * 6.5;
-
-                        doc.setFillColor(dotColor[0], dotColor[1], dotColor[2]);
-                        doc.setDrawColor(dotBorder[0], dotBorder[1], dotBorder[2]);
-                        doc.setLineWidth(0.2);
-                        doc.circle(x, y, dotRadius, 'FD');
-
-                        doc.setFont('Helvetica', 'bold');
-                        doc.setFontSize(6.5);
-                        doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-                        doc.text(d.getDate().toString(), x, y + 0.8, { align: 'center' });
-                      });
-
-                      let currentY = 116;
-
-                      const drawTableHeader = (y: number) => {
-                        doc.setFillColor(244, 244, 245);
-                        doc.rect(15, y, 180, 7, 'F');
-                        doc.setFont('Helvetica', 'bold');
-                        doc.setFontSize(8);
-                        doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-
-                        doc.text('Date', 18, y + 5);
-                        doc.text('Project', 38, y + 5);
-                        doc.text('Task Scope', 72, y + 5);
-                        doc.text('Status', 115, y + 5);
-                        doc.text('Wage (Rs)', 142, y + 5, { align: 'right' });
-                        doc.text('OT (Rs)', 158, y + 5, { align: 'right' });
-                        doc.text('Total (Rs)', 175, y + 5, { align: 'right' });
-                        doc.text('Payment', 186, y + 5);
-                      };
-
-                      drawTableHeader(currentY);
-                      currentY += 7;
-
-                      doc.setFont('Helvetica', 'normal');
-                      doc.setFontSize(8);
-
-                      workerAtt.forEach((a) => {
-                        if (currentY > 255) {
-                          doc.addPage();
-                          currentY = 20;
-                          drawTableHeader(currentY);
-                          currentY += 7;
-                        }
-
-                        let wages = 0;
-                        if (a.status === 'Present') wages = a.dailyWage || worker.dailyWage;
-                        else if (a.status === 'Half Day') wages = (a.dailyWage || worker.dailyWage) * 0.5;
-                        const totalRowEarned = wages + (a.overtimeAmount || 0);
-
-                        doc.setTextColor(cZinc950[0], cZinc950[1], cZinc950[2]);
-                        doc.setFont('Helvetica', 'normal');
-                        doc.text(a.date, 18, currentY + 5);
-                        doc.text(a.projectName || '—', 38, currentY + 5);
-                        doc.text(a.taskName || '—', 72, currentY + 5);
-
-                        if (a.status === 'Present') {
-                          doc.setTextColor(cEmerald[0], cEmerald[1], cEmerald[2]);
-                        } else if (a.status === 'Half Day') {
-                          doc.setTextColor(30, 64, 175);
-                        } else {
-                          doc.setTextColor(cRed[0], cRed[1], cRed[2]);
-                        }
-                        doc.setFont('Helvetica', 'bold');
-                        doc.text(a.status, 115, currentY + 5);
-
-                        doc.setTextColor(cZinc950[0], cZinc950[1], cZinc950[2]);
-                        doc.setFont('Helvetica', 'normal');
-                        doc.text(wages.toLocaleString('en-IN'), 142, currentY + 5, { align: 'right' });
-                        doc.text((a.overtimeAmount || 0).toLocaleString('en-IN'), 158, currentY + 5, { align: 'right' });
-
-                        doc.setFont('Helvetica', 'bold');
-                        doc.text(totalRowEarned.toLocaleString('en-IN'), 175, currentY + 5, { align: 'right' });
-
-                        const statusVal = a.paymentStatus || 'Unpaid';
-                        if (statusVal === 'Paid') {
-                          doc.setTextColor(cEmerald[0], cEmerald[1], cEmerald[2]);
-                        } else if (statusVal === 'Pending') {
-                          doc.setTextColor(cAmber[0], cAmber[1], cAmber[2]);
-                        } else {
-                          doc.setTextColor(cZinc500[0], cZinc500[1], cZinc500[2]);
-                        }
-                        doc.text(statusVal, 186, currentY + 5);
-
-                        doc.setDrawColor(244, 244, 245);
-                        doc.setLineWidth(0.3);
-                        doc.line(15, currentY + 7, 195, currentY + 7);
-
-                        currentY += 7;
-                      });
-
-                      if (currentY > 230) {
-                        doc.addPage();
-                        currentY = 20;
-                      }
-
-                      currentY += 20;
-                      doc.setDrawColor(161, 161, 170);
-                      doc.setLineWidth(0.3);
-                      doc.line(20, currentY, 75, currentY);
-                      doc.line(135, currentY, 190, currentY);
-
-                      doc.setFont('Helvetica', 'normal');
-                      doc.setFontSize(8);
-                      doc.setTextColor(cZinc700[0], cZinc700[1], cZinc700[2]);
-                      doc.text('Worker Signature', 47, currentY + 5, { align: 'center' });
-                      doc.text('Authorized Signature', 162, currentY + 5, { align: 'center' });
-
-                      const pageCount = doc.getNumberOfPages();
-                      for (let i = 1; i <= pageCount; i++) {
-                        doc.setPage(i);
-                        doc.setFont('Helvetica', 'normal');
-                        doc.setFontSize(8);
-                        doc.setTextColor(cZinc500[0], cZinc500[1], cZinc500[2]);
-                        doc.text('Pro26 Software Solutions', 15, 287);
-                        doc.text(`Page ${i} of ${pageCount}`, 195, 287, { align: 'right' });
-                      }
-
-                      doc.save(`report_${worker.name.toLowerCase().replace(/\s+/g, '_')}_${startStr}_to_${endStr}.pdf`);
-                      notify.success('PDF report downloaded successfully.');
-                    } catch (pdfErr) {
-                      console.error('PDF Generation Error:', pdfErr);
-                      notify.error('Failed to generate PDF report.');
-                    }
+                    generateSingleWorkerAttendancePdf({
+                      worker,
+                      workerAtt,
+                      workerPayments,
+                      daysPresent,
+                      daysHalf,
+                      daysAbsent,
+                      totalEarned,
+                      totalPaid,
+                      remainingToPay,
+                      startStr,
+                      endStr,
+                      projects,
+                      tasks,
+                      overviewFilterType,
+                      selectedMonthVal,
+                      selectedYearVal,
+                      selectedWeekOffset,
+                      attendanceLogs,
+                    });
                   };
 
                   return (
@@ -2115,6 +1828,19 @@ export default function AttendancePage() {
                           >
                             <FileText className="w-3.5 h-3.5" />
                             <span>PDF</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setPdfStartDate(startStr);
+                              setPdfEndDate(endStr);
+                              setIsAllWorkersPdfModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                            title="Download attendance of all workers"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>All Workers PDF</span>
                           </button>
                         </div>
                       </div>
@@ -2543,6 +2269,73 @@ export default function AttendancePage() {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {isAllWorkersPdfModalOpen && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200/80 rounded-2xl p-5 sm:p-6 shadow-xl max-w-sm w-full space-y-5 animate-fade-in">
+            <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+              <h2 className="text-base font-extrabold text-zinc-950 flex items-center gap-1.5 font-sans">
+                <FileText className="w-5 h-5 text-zinc-700" />
+                <span>Select Date Range</span>
+              </h2>
+              <button
+                onClick={() => setIsAllWorkersPdfModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-400 hover:text-zinc-600"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 font-sans">
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Start Date</label>
+                <input
+                  type="date"
+                  value={pdfStartDate}
+                  onChange={(e) => setPdfStartDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 font-bold text-sm outline-none focus:ring-1 focus:ring-zinc-950"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">End Date</label>
+                <input
+                  type="date"
+                  value={pdfEndDate}
+                  onChange={(e) => setPdfEndDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 font-bold text-sm outline-none focus:ring-1 focus:ring-zinc-950"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2 font-sans">
+              <button
+                type="button"
+                onClick={() => setIsAllWorkersPdfModalOpen(false)}
+                className="flex-1 py-2.5 border border-zinc-200 bg-white hover:bg-zinc-50 font-bold text-zinc-700 rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!pdfStartDate || !pdfEndDate) {
+                    notify.warning('Please select both start and end dates.');
+                    return;
+                  }
+                  handleDownloadAllWorkersPdf(pdfStartDate, pdfEndDate);
+                  setIsAllWorkersPdfModalOpen(false);
+                }}
+                className="flex-1 py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download PDF</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
