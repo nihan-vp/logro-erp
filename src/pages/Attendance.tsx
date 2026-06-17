@@ -191,7 +191,7 @@ export default function AttendancePage() {
     if (isPayWagesOpen) {
       const initialSelection: Record<string, boolean> = {};
       const { startStr, endStr } = getDateRange();
-      
+
       const workersToProcess = selectedWorkerId === 'all'
         ? crew.filter(w => selectedWorkersForPayment.includes(w.id))
         : [crew.find(c => c.id === selectedWorkerId) || crew[0]].filter(Boolean);
@@ -222,10 +222,32 @@ export default function AttendancePage() {
   const [rosterRowsPerPage, setRosterRowsPerPage] = useState<number>(() => {
     return Number(localStorage.getItem('roster_rows_per_page')) || 10;
   });
+  const [overviewRowsPerPage, setOverviewRowsPerPage] = useState<number>(() => {
+    return Number(localStorage.getItem('overview_rows_per_page')) || 5;
+  });
+  const [ledgerRowsPerPage, setLedgerRowsPerPage] = useState<number>(() => {
+    return Number(localStorage.getItem('ledger_rows_per_page')) || 15;
+  });
+  const [unpaidWorkersPage, setUnpaidWorkersPage] = useState(1);
+  const [unpaidWorkersRowsPerPage, setUnpaidWorkersRowsPerPage] = useState<number>(() => {
+    return Number(localStorage.getItem('unpaid_workers_rows_per_page')) || 5;
+  });
 
   useEffect(() => {
     localStorage.setItem('roster_rows_per_page', String(rosterRowsPerPage));
   }, [rosterRowsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem('overview_rows_per_page', String(overviewRowsPerPage));
+  }, [overviewRowsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem('ledger_rows_per_page', String(ledgerRowsPerPage));
+  }, [ledgerRowsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem('unpaid_workers_rows_per_page', String(unpaidWorkersRowsPerPage));
+  }, [unpaidWorkersRowsPerPage]);
 
   useEffect(() => {
     setRosterPage(1);
@@ -480,7 +502,8 @@ export default function AttendancePage() {
 
   useEffect(() => {
     setOverviewPage(1);
-  }, [selectedWorkerId, overviewFilterType, selectedYearVal, selectedMonthVal, selectedWeekOffset]);
+    setUnpaidWorkersPage(1);
+  }, [selectedWorkerId, overviewFilterType, selectedYearVal, selectedMonthVal, selectedWeekOffset, wageProjectFilter, wageTaskFilter]);
 
   const fetchVendors = async () => {
     try {
@@ -842,7 +865,7 @@ export default function AttendancePage() {
         });
 
         const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
-        
+
         // Filter based on selectedDayPayments
         const selectedLogs = unpaidLogs.filter(log => {
           return !!selectedDayPayments[log.id];
@@ -915,9 +938,9 @@ export default function AttendancePage() {
 
     try {
       setIsSubmittingPayWages(true);
-      
+
       const selectedLogs = attendanceLogs.filter(a => logIds.includes(a.id));
-      
+
       const groups: Record<string, any[]> = {};
       selectedLogs.forEach(log => {
         const key = log.workerName;
@@ -992,13 +1015,13 @@ export default function AttendancePage() {
     try {
       setIsSubmittingPayWages(true);
 
-      const correspondingPr = paymentRequestsLogs.find(pr => 
+      const correspondingPr = paymentRequestsLogs.find(pr =>
         pr.attendanceIds && pr.attendanceIds.includes(logId)
       );
 
       if (correspondingPr) {
         const remainingIds = correspondingPr.attendanceIds.filter((id: string) => id !== logId);
-        
+
         if (remainingIds.length === 0) {
           await api.deletePaymentRequest(correspondingPr.id);
         } else {
@@ -1058,13 +1081,13 @@ export default function AttendancePage() {
         const log = attendanceLogs.find(a => a.id === logId);
         if (!log) continue;
 
-        const correspondingPr = paymentRequestsLogs.find(pr => 
+        const correspondingPr = paymentRequestsLogs.find(pr =>
           pr.attendanceIds && pr.attendanceIds.includes(logId)
         );
 
         if (correspondingPr) {
           const remainingIds = correspondingPr.attendanceIds.filter((id: string) => id !== logId);
-          
+
           if (remainingIds.length === 0) {
             await api.deletePaymentRequest(correspondingPr.id);
           } else {
@@ -1889,7 +1912,11 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {crew.length === 0 ? (
+          {overviewLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin" />
+            </div>
+          ) : crew.length === 0 ? (
             <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
               <Users className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
               <p className="text-xs text-zinc-500">No crew roster matches found. Register workers in Roster first.</p>
@@ -2046,7 +2073,7 @@ export default function AttendancePage() {
                   });
 
                   const workerPayments = paymentRequestsLogs.filter(pr => {
-                    const isWorkerMatch = selectedWorkerId === 'all' 
+                    const isWorkerMatch = selectedWorkerId === 'all'
                       ? pr.category === 'Worker'
                       : pr.payeeName.trim().toLowerCase() === worker.name.trim().toLowerCase();
                     if (!isWorkerMatch) return false;
@@ -2265,14 +2292,14 @@ export default function AttendancePage() {
                               <FileSpreadsheet className="w-3.5 h-3.5" />
                               <span>CSV</span>
                             </button>
-                              <button
-                                onClick={handleDownloadPdf}
-                                disabled={selectedWorkerId === 'all'}
-                                className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                                <span>PDF</span>
-                              </button>
+                            <button
+                              onClick={handleDownloadPdf}
+                              disabled={selectedWorkerId === 'all'}
+                              className="inline-flex items-center gap-1 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
 
                             <button
                               onClick={() => {
@@ -2342,65 +2369,118 @@ export default function AttendancePage() {
                                   <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200 h-[36px]">
                                     <th className="py-2.5 px-3">
                                       <input type="checkbox" onChange={(e) => {
-                                          if (e.target.checked) {
-                                            setSelectedWorkersForPayment(unpaidWorkers.map(w => w.id));
-                                          } else {
-                                            setSelectedWorkersForPayment([]);
-                                          }
+                                        if (e.target.checked) {
+                                          setSelectedWorkersForPayment(unpaidWorkers.map(w => w.id));
+                                        } else {
+                                          setSelectedWorkersForPayment([]);
+                                        }
                                       }} />
                                     </th>
-                                <th className="py-2.5 px-3">Worker</th>
-                                <th className="py-2.5 px-3">Trade</th>
-                                <th className="py-2.5 px-3">P/A/H</th>
-                                <th className="py-2.5 px-3 text-right">Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-100 text-zinc-900 bg-white">
-                              {unpaidWorkers.map(w => {
-                                const workerAtt = attendanceLogs.filter(a => {
-                                  const matchesWorker = a.workerName === w.name;
-                                  const matchesDate = a.date >= startStr && a.date <= endStr;
-                                  const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
-                                  const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
-                                  return matchesWorker && matchesDate && matchesProj && matchesTsk;
-                                });
-                                const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
-                                const present = unpaidLogs.filter(a => a.status === 'Present').length;
-                                const absent = unpaidLogs.filter(a => a.status === 'Absent').length;
-                                const half = unpaidLogs.filter(a => a.status === 'Half Day').length;
-                                const amount = unpaidLogs.reduce((sum, log) => {
-                                  let rate = 0;
-                                  if (log.status === 'Present') rate = log.dailyWage || w.dailyWage;
-                                  else if (log.status === 'Half Day') rate = (log.dailyWage || w.dailyWage) * 0.5;
-                                  return sum + rate + (log.overtimeAmount || 0);
-                                }, 0);
-                                return (
-                                  <tr key={w.id}>
-                                    <td className="py-2.5 px-3">
-                                      <input type="checkbox" checked={selectedWorkersForPayment.includes(w.id)} onChange={() => {
-                                        setSelectedWorkersForPayment(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id]);
-                                      }} />
-                                    </td>
-                                    <td className="py-2.5 px-3 font-semibold">{w.name}</td>
-                                    <td className="py-2.5 px-3">{w.trade}</td>
-                                    <td className="py-2.5 px-3 font-medium text-zinc-600">
-                                      {present}P / {absent}A / {half}H
-                                    </td>
-                                    <td className="py-2.5 px-3 font-bold text-right text-zinc-950">{formatCur(amount)}</td>
+                                    <th className="py-2.5 px-3">Worker</th>
+                                    <th className="py-2.5 px-3">Trade</th>
+                                    <th className="py-2.5 px-3">P/A/H</th>
+                                    <th className="py-2.5 px-3 text-right">Amount</th>
                                   </tr>
-                                );
-                              })}
-                            </tbody>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-100 text-zinc-900 bg-white">
+                                  {(() => {
+                                    const limit = unpaidWorkersRowsPerPage;
+                                    const totalUnpaidPages = Math.max(1, Math.ceil(unpaidWorkers.length / limit));
+                                    const currUnpaidPage = Math.min(unpaidWorkersPage, totalUnpaidPages);
+                                    const paginatedUnpaid = unpaidWorkers.slice((currUnpaidPage - 1) * limit, currUnpaidPage * limit);
+
+                                    return paginatedUnpaid.map(w => {
+                                      const workerAtt = attendanceLogs.filter(a => {
+                                        const matchesWorker = a.workerName === w.name;
+                                        const matchesDate = a.date >= startStr && a.date <= endStr;
+                                        const matchesProj = wageProjectFilter === 'All' || a.projectId === wageProjectFilter;
+                                        const matchesTsk = wageTaskFilter === 'All' || a.taskId === wageTaskFilter;
+                                        return matchesWorker && matchesDate && matchesProj && matchesTsk;
+                                      });
+                                      const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
+                                      const present = unpaidLogs.filter(a => a.status === 'Present').length;
+                                      const absent = unpaidLogs.filter(a => a.status === 'Absent').length;
+                                      const half = unpaidLogs.filter(a => a.status === 'Half Day').length;
+                                      const amount = unpaidLogs.reduce((sum, log) => {
+                                        let rate = 0;
+                                        if (log.status === 'Present') rate = log.dailyWage || w.dailyWage;
+                                        else if (log.status === 'Half Day') rate = (log.dailyWage || w.dailyWage) * 0.5;
+                                        return sum + rate + (log.overtimeAmount || 0);
+                                      }, 0);
+                                      return (
+                                        <tr key={w.id}>
+                                          <td className="py-2.5 px-3">
+                                            <input type="checkbox" checked={selectedWorkersForPayment.includes(w.id)} onChange={() => {
+                                              setSelectedWorkersForPayment(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id]);
+                                            }} />
+                                          </td>
+                                          <td className="py-2.5 px-3 font-semibold">{w.name}</td>
+                                          <td className="py-2.5 px-3">{w.trade}</td>
+                                          <td className="py-2.5 px-3 font-medium text-zinc-600">
+                                            {present}P / {absent}A / {half}H
+                                          </td>
+                                          <td className="py-2.5 px-3 font-bold text-right text-zinc-950">{formatCur(amount)}</td>
+                                        </tr>
+                                      );
+                                    });
+                                  })()}
+                                </tbody>
 
                               </table>
-                              <div className="p-3 bg-zinc-50 border-t border-zinc-100">
+                              <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex flex-col sm:flex-row items-center justify-between gap-3">
                                 <button className="px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50"
-                                       disabled={selectedWorkersForPayment.length === 0 || isSubmittingPayWages}
-                                       onClick={() => setIsPayWagesOpen(true)}>
-                                 {isSubmittingPayWages ? 'Processing...' : `Pay ${selectedWorkersForPayment.length} Selected Workers`}
-                               </button>
+                                  disabled={selectedWorkersForPayment.length === 0 || isSubmittingPayWages}
+                                  onClick={() => setIsPayWagesOpen(true)}>
+                                  {isSubmittingPayWages ? 'Processing...' : `Pay ${selectedWorkersForPayment.length} Selected Workers`}
+                                </button>
 
+                                {(() => {
+                                  const limit = unpaidWorkersRowsPerPage;
+                                  const totalUnpaidPages = Math.max(1, Math.ceil(unpaidWorkers.length / limit));
+                                  const currUnpaidPage = Math.min(unpaidWorkersPage, totalUnpaidPages);
 
+                                  return (
+                                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto sm:justify-end">
+                                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-semibold">
+                                        <span>Rows:</span>
+                                        <select
+                                          value={unpaidWorkersRowsPerPage}
+                                          onChange={(e) => {
+                                            setUnpaidWorkersRowsPerPage(Number(e.target.value));
+                                            setUnpaidWorkersPage(1);
+                                          }}
+                                          className="bg-white border rounded px-1.5 py-0.5 outline-none font-bold text-zinc-700"
+                                        >
+                                          {[5, 10, 25, 50].map(val => (
+                                            <option key={val} value={val}>{val}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          disabled={currUnpaidPage <= 1}
+                                          onClick={() => setUnpaidWorkersPage(p => Math.max(1, p - 1))}
+                                          className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-650 disabled:opacity-40"
+                                        >
+                                          Prev
+                                        </button>
+                                        <span className="text-[10px] font-semibold text-zinc-600 min-w-[48px] text-center">
+                                          {currUnpaidPage} / {totalUnpaidPages}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          disabled={currUnpaidPage >= totalUnpaidPages}
+                                          onClick={() => setUnpaidWorkersPage(p => Math.min(totalUnpaidPages, p + 1))}
+                                          className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-650 disabled:opacity-40"
+                                        >
+                                          Next
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           )}
@@ -2429,8 +2509,7 @@ export default function AttendancePage() {
                       <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
                         <h3 className="text-xs font-bold text-zinc-900 tracking-wider uppercase">Wage Payment Requests</h3>
                         {(() => {
-                          // Row limiter (5 rows per page) using parent state
-                          const limit = 5;
+                          const limit = overviewRowsPerPage;
                           const totalPages = Math.max(1, Math.ceil(workerPayments.length / limit));
                           const currPage = Math.min(overviewPage, totalPages);
                           const paginated = workerPayments.slice((currPage - 1) * limit, currPage * limit);
@@ -2511,16 +2590,33 @@ export default function AttendancePage() {
                               </div>
 
                               {/* Pagination controls */}
-                              <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-100 bg-zinc-50/50">
-                                <span className="text-[10px] text-zinc-400 font-bold">
-                                  Page {currPage} of {totalPages} ({workerPayments.length} items)
-                                </span>
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-3 py-2 border-t border-zinc-100 bg-zinc-50/50">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[10px] text-zinc-400 font-bold">
+                                    Page {currPage} of {totalPages} ({workerPayments.length} items)
+                                  </span>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-semibold">
+                                    <span>Rows:</span>
+                                    <select
+                                      value={overviewRowsPerPage}
+                                      onChange={(e) => {
+                                        setOverviewRowsPerPage(Number(e.target.value));
+                                        setOverviewPage(1);
+                                      }}
+                                      className="bg-white border rounded px-1.5 py-0.5 outline-none font-bold text-zinc-700"
+                                    >
+                                      {[5, 10, 25, 50].map(val => (
+                                        <option key={val} value={val}>{val}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     type="button"
                                     disabled={currPage <= 1}
                                     onClick={() => setOverviewPage(p => Math.max(1, p - 1))}
-                                    className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
+                                    className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-650 disabled:opacity-40"
                                   >
                                     Prev
                                   </button>
@@ -2528,7 +2624,7 @@ export default function AttendancePage() {
                                     type="button"
                                     disabled={currPage >= totalPages}
                                     onClick={() => setOverviewPage(p => Math.min(totalPages, p + 1))}
-                                    className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-600 disabled:opacity-40"
+                                    className="px-2 py-1 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-[10px] font-semibold text-zinc-650 disabled:opacity-40"
                                   >
                                     Next
                                   </button>
@@ -2546,8 +2642,8 @@ export default function AttendancePage() {
           )}
 
           {isPayWagesOpen && (() => {
-            const worker = selectedWorkerId === 'all' 
-              ? { id: 'all', name: 'All Workers', trade: 'Other' as CrewTrade, dailyWage: 0, status: 'active' as CrewMemberStatus, createdAt: '' } 
+            const worker = selectedWorkerId === 'all'
+              ? { id: 'all', name: 'All Workers', trade: 'Other' as CrewTrade, dailyWage: 0, status: 'active' as CrewMemberStatus, createdAt: '' }
               : (crew.find(c => c.id === selectedWorkerId) || crew[0]);
             if (!worker) return null;
 
@@ -2586,7 +2682,7 @@ export default function AttendancePage() {
               });
 
               const unpaidLogs = workerAtt.filter(a => !a.paymentStatus || a.paymentStatus === 'Unpaid');
-              
+
               const groups: Record<string, any[]> = {};
               unpaidLogs.forEach(log => {
                 const pid = log.projectId || 'no_project';
@@ -2646,7 +2742,7 @@ export default function AttendancePage() {
                     else if (log.status === 'Half Day') rate = (log.dailyWage || w.dailyWage) * 0.5;
                     return sum + rate + (log.overtimeAmount || 0);
                   }, 0);
-                  
+
                   workerSelectedLogs.push(...siteSelectedLogs);
                   workerSelectedAmount += amt;
                 }
@@ -2743,7 +2839,7 @@ export default function AttendancePage() {
                                   <div className="divide-y divide-zinc-100 bg-white px-3">
                                     {b.logs.map(log => {
                                       const isDayChecked = !!selectedDayPayments[log.id];
-                                      
+
                                       let dayRate = 0;
                                       if (log.status === 'Present') dayRate = log.dailyWage || w.dailyWage;
                                       else if (log.status === 'Half Day') dayRate = (log.dailyWage || w.dailyWage) * 0.5;
@@ -3078,10 +3174,18 @@ export default function AttendancePage() {
 
           {/* Table */}
           {(() => {
+            if (overviewLoading) {
+              return (
+                <div className="flex justify-center py-12 bg-white border border-zinc-200/80 rounded-2xl shadow-sm">
+                  <div className="w-8 h-8 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin" />
+                </div>
+              );
+            }
+
             const filteredLogs = attendanceLogs.filter(log => {
               const matchesSearch = log.workerName.toLowerCase().includes(ledgerSearch.toLowerCase());
               const matchesProject = ledgerProject === 'All' || log.projectId === ledgerProject;
-              
+
               let matchesStatus = true;
               if (ledgerStatus !== 'All') {
                 const status = log.paymentStatus || 'Unpaid';
@@ -3089,12 +3193,12 @@ export default function AttendancePage() {
               }
 
               const matchesDate = (!ledgerStartDate || log.date >= ledgerStartDate) &&
-                                  (!ledgerEndDate || log.date <= ledgerEndDate);
+                (!ledgerEndDate || log.date <= ledgerEndDate);
 
               return matchesSearch && matchesProject && matchesStatus && matchesDate;
             });
 
-            const limit = 15;
+            const limit = ledgerRowsPerPage;
             const totalLedgerPages = Math.max(1, Math.ceil(filteredLogs.length / limit));
             const activeLedgerPage = Math.min(ledgerPage, totalLedgerPages);
             const paginatedLogs = filteredLogs.slice((activeLedgerPage - 1) * limit, activeLedgerPage * limit);
@@ -3150,10 +3254,10 @@ export default function AttendancePage() {
                         <>
                           {paginatedLogs.map(log => {
                             const isChecked = selectedLedgerLogs.includes(log.id);
-                            
+
                             const worker = crew.find(c => c.name === log.workerName);
                             const dailyWageVal = log.dailyWage || worker?.dailyWage || 200;
-                            
+
                             let baseWage = 0;
                             if (log.status === 'Present') baseWage = dailyWageVal;
                             else if (log.status === 'Half Day') baseWage = dailyWageVal * 0.5;
@@ -3192,11 +3296,10 @@ export default function AttendancePage() {
                                   <span className="text-[10px] text-zinc-400 block truncate max-w-[150px]">{task?.taskName || 'General Task'}</span>
                                 </td>
                                 <td className="py-3 px-4 text-center align-middle">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
-                                    log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                    log.status === 'Half Day' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                    'bg-rose-50 text-rose-700 border-rose-100'
-                                  }`}>
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                      log.status === 'Half Day' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                        'bg-rose-50 text-rose-700 border-rose-100'
+                                    }`}>
                                     {log.status === 'Present' ? 'Full Day' : log.status === 'Half Day' ? 'Half Day' : 'Absent'}
                                   </span>
                                 </td>
@@ -3243,11 +3346,28 @@ export default function AttendancePage() {
                 </div>
 
                 {/* Footer Pagination */}
-                <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-100 bg-zinc-50/50">
-                  <span className="text-xs text-zinc-500 font-medium">
-                    Showing <span className="font-semibold text-zinc-700">{filteredLogs.length === 0 ? 0 : (activeLedgerPage - 1) * limit + 1}–{Math.min(activeLedgerPage * limit, filteredLogs.length)}</span> of{' '}
-                    <span className="font-semibold text-zinc-700">{filteredLogs.length}</span> entries
-                  </span>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-zinc-100 bg-zinc-50/50">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <span className="text-xs text-zinc-500 font-medium">
+                      Showing <span className="font-semibold text-zinc-700">{filteredLogs.length === 0 ? 0 : (activeLedgerPage - 1) * limit + 1}–{Math.min(activeLedgerPage * limit, filteredLogs.length)}</span> of{' '}
+                      <span className="font-semibold text-zinc-700">{filteredLogs.length}</span> entries
+                    </span>
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold">
+                      <span>Rows per page:</span>
+                      <select
+                        value={ledgerRowsPerPage}
+                        onChange={(e) => {
+                          setLedgerRowsPerPage(Number(e.target.value));
+                          setLedgerPage(1);
+                        }}
+                        className="bg-white border rounded px-2 py-1 outline-none font-bold text-zinc-700"
+                      >
+                        {[5, 15, 25, 50, 100].map(val => (
+                          <option key={val} value={val}>{val}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
