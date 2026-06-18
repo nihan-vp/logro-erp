@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Calendar, BarChart3, Filter, FileText, Download, 
+import {
+  Plus, Calendar, BarChart3, Filter, FileText, Download,
   Search, ArrowDownRight, ArrowUpRight, AlertTriangle, RefreshCw,
   Building2, ClipboardList, Users, Coins, TrendingUp
 } from 'lucide-react';
@@ -8,7 +8,7 @@ import { api } from '../api/client';
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<'project' | 'task_expense' | 'labour' | 'payouts' | 'profit_loss' | 'pending' | 'monthly' | 'vendor_worker'>('project');
-  
+
   // Data layers
   const [projects, setProjects] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -104,14 +104,14 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 font-sans">
-      
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Reports & Analytics</h1>
           <p className="text-xs sm:text-sm text-zinc-500">Generate statements, margin summaries, tax reports and payroll checks</p>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <button
             onClick={fetchReportData}
@@ -135,76 +135,68 @@ export default function ReportsPage() {
         <div className="flex gap-1">
           <button
             onClick={() => setReportType('project')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              reportType === 'project' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'project' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
           >
             <Building2 className="w-3.5 h-3.5" />
             <span>Projects Summary</span>
           </button>
           <button
             onClick={() => setReportType('task_expense')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              reportType === 'task_expense' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'task_expense' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
           >
             <ClipboardList className="w-3.5 h-3.5" />
             <span>Tasks & Expenses</span>
           </button>
           <button
             onClick={() => setReportType('labour')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              reportType === 'labour' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'labour' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
           >
             <Users className="w-3.5 h-3.5" />
             <span>Labour Wages</span>
           </button>
           <button
             onClick={() => setReportType('payouts')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              reportType === 'payouts' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'payouts' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
           >
             <Coins className="w-3.5 h-3.5" />
             <span>Disbursements</span>
           </button>
           <button
             onClick={() => setReportType('profit_loss')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              reportType === 'profit_loss' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'profit_loss' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
           >
             <TrendingUp className="w-3.5 h-3.5" />
             <span>Margins (Profit/Loss)</span>
           </button>
-           <button
-             onClick={() => setReportType('pending')}
-             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-               reportType === 'pending' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-             }`}
-           >
-             <AlertTriangle className="w-3.5 h-3.5" />
-             <span>Pending Balances</span>
-           </button>
-           <button
-             onClick={() => setReportType('monthly')}
-             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-               reportType === 'monthly' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-             }`}
-           >
-             <Calendar className="w-3.5 h-3.5" />
-             <span>Monthly Summary</span>
-           </button>
-           <button
-             onClick={() => setReportType('vendor_worker')}
-             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-               reportType === 'vendor_worker' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
-             }`}
-           >
-             <Users className="w-3.5 h-3.5" />
-             <span>Vendor/Worker Detail</span>
-           </button>
+          <button
+            onClick={() => setReportType('pending')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'pending' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Pending Balances</span>
+          </button>
+          <button
+            onClick={() => setReportType('monthly')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'monthly' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Monthly Summary</span>
+          </button>
+          <button
+            onClick={() => setReportType('vendor_worker')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${reportType === 'vendor_worker' ? 'bg-zinc-900 text-white shadow-sm' : 'hover:bg-zinc-100 text-zinc-600'
+              }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Vendor/Worker Detail</span>
+          </button>
 
         </div>
       </div>
@@ -253,7 +245,7 @@ export default function ReportsPage() {
         </div>
       ) : (
         <div className="bg-white border rounded-2xl p-4 sm:p-6 shadow-sm space-y-4 overflow-hidden print:border-none print:shadow-none">
-          
+
           {/* Print statement logo/header */}
           <div className="hidden print:flex items-center justify-between border-b pb-4 mb-4">
             <div>
@@ -269,7 +261,7 @@ export default function ReportsPage() {
           {reportType === 'project' && (
             <div className="space-y-4">
               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Active Projects Summary</h3>
-              
+
               {/* Mobile Card List */}
               <div className="space-y-3 md:hidden">
                 {filteredProjects.map((p) => (
@@ -349,7 +341,7 @@ export default function ReportsPage() {
           {reportType === 'task_expense' && (
             <div className="space-y-4">
               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Expenditures Report</h3>
-              
+
               {/* Mobile Card List */}
               <div className="space-y-3 md:hidden">
                 {filteredExpenses.map((e) => (
@@ -410,7 +402,7 @@ export default function ReportsPage() {
           {reportType === 'labour' && (
             <div className="space-y-4">
               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Labour Wages Sheet</h3>
-              
+
               {/* Mobile Card List */}
               <div className="space-y-3 md:hidden">
                 {filteredAttendance.map((a) => {
@@ -419,9 +411,8 @@ export default function ReportsPage() {
                     <div key={a.id} className="bg-zinc-50 border border-zinc-250/60 rounded-xl p-3.5 space-y-2 text-xs">
                       <div className="flex justify-between items-start">
                         <span className="font-bold text-zinc-950 text-sm leading-tight">{a.workerName}</span>
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          a.status === 'Present' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-                        }`}>
+                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${a.status === 'Present' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
+                          }`}>
                           {a.status}
                         </span>
                       </div>
@@ -470,9 +461,8 @@ export default function ReportsPage() {
                           <td className="py-3 px-3 font-bold">{a.workerName}</td>
                           <td className="py-3 px-3 font-medium">{a.taskName}</td>
                           <td className="py-3 px-3">
-                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              a.status === 'Present' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-                            }`}>
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${a.status === 'Present' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
+                              }`}>
                               {a.status}
                             </span>
                           </td>
@@ -492,7 +482,7 @@ export default function ReportsPage() {
           {reportType === 'payouts' && (
             <div className="space-y-4">
               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Subcontractor Payouts</h3>
-              
+
               {/* Mobile Card List */}
               <div className="space-y-3 md:hidden">
                 {filteredPayments.map((p) => (
@@ -555,12 +545,12 @@ export default function ReportsPage() {
           {reportType === 'profit_loss' && (
             <div className="space-y-4">
               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Financial Profit & Loss Sheet</h3>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/60">
                   <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-2">Most Profitable Tasks</h4>
                   <div className="space-y-2">
-                    {filteredTasks.slice().sort((a,b) => (b.profitLoss - a.profitLoss)).slice(0, 3).map(k => (
+                    {filteredTasks.slice().sort((a, b) => (b.profitLoss - a.profitLoss)).slice(0, 3).map(k => (
                       <div key={k.id} className="flex justify-between text-xs font-semibold">
                         <span className="text-zinc-800 truncate max-w-[170px]">{k.taskName}</span>
                         <span className="text-emerald-700">{formatCur(k.profitLoss)}</span>
@@ -588,7 +578,7 @@ export default function ReportsPage() {
               {/* Mobile Card List */}
               <div className="space-y-3 md:hidden">
                 {filteredTasks.map((t) => {
-                  const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0);
+                  const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0) + (t.pendingExpenses || 0);
                   const isProfit = t.profitLoss >= 0;
                   return (
                     <div key={t.id} className="bg-zinc-50 border border-zinc-250/60 rounded-xl p-3.5 space-y-2 text-xs">
@@ -639,7 +629,7 @@ export default function ReportsPage() {
                   </thead>
                   <tbody className="divide-y text-zinc-900">
                     {filteredTasks.map((t) => {
-                      const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0);
+                      const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0) + (t.pendingExpenses || 0);
                       const isProfit = t.profitLoss >= 0;
                       return (
                         <tr key={t.id} className="hover:bg-zinc-50/40">
@@ -664,186 +654,186 @@ export default function ReportsPage() {
           )}
 
           {/* Type 6: Pending payment report */}
-           {reportType === 'pending' && (
-             <div className="space-y-4">
-               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight flex items-center gap-2">
-                 <AlertTriangle className="w-4.5 h-4.5 text-amber-500" />
-                 <span>Outstanding Unpaid Balances</span>
-               </h3>
-               
-               {/* Mobile Card List */}
-               <div className="space-y-3 md:hidden">
-                 {/* Retrieve both pending bills and unpaid labor attendances */}
-                 {filteredPayments.filter(p => p.paymentStatus !== 'Paid').map((p) => (
-                   <div key={p.id} className="bg-zinc-50 border border-zinc-250/60 rounded-xl p-3.5 space-y-2 text-xs">
-                     <div className="flex justify-between items-start">
-                       <span className="font-extrabold text-zinc-950 text-sm leading-tight">{p.payeeName}</span>
-                       <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold uppercase">High Risk</span>
-                     </div>
-                     <div className="space-y-1 text-[11px] text-zinc-500">
-                       <p>Liability: <b className="text-zinc-800 font-semibold">{p.payeeType} Liability</b></p>
-                       <p>Linked Task: {p.taskName}</p>
-                       <p>Due Date: {p.paymentDate}</p>
-                     </div>
-                     <div className="flex justify-between items-center pt-2 border-t border-zinc-200/50">
-                       <span className="text-[10px] text-zinc-400 font-bold uppercase">Outstanding Debt</span>
-                       <span className="font-black text-rose-700 text-sm">{formatCur(p.amount)}</span>
-                     </div>
-                   </div>
-                 ))}
-                 {filteredAttendance.filter(a => a.paymentStatus !== 'Paid').map((a) => {
-                   const laborWage = (a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0);
-                   return (
-                     <div key={a.id} className="bg-zinc-50 border border-zinc-250/60 rounded-xl p-3.5 space-y-2 text-xs">
-                       <div className="flex justify-between items-start">
-                         <span className="font-extrabold text-zinc-950 text-sm leading-tight">{a.workerName}</span>
-                         <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Standard</span>
-                       </div>
-                       <div className="space-y-1 text-[11px] text-zinc-500">
-                         <p>Liability: <b className="text-zinc-800 font-semibold">Labour Wage ({a.status})</b></p>
-                         <p>Linked Task: {a.taskName}</p>
-                         <p>Log Date: {a.date}</p>
-                       </div>
-                       <div className="flex justify-between items-center pt-2 border-t border-zinc-200/50">
-                         <span className="text-[10px] text-zinc-400 font-bold uppercase">Outstanding Debt</span>
-                         <span className="font-black text-rose-700 text-sm">{formatCur(laborWage)}</span>
-                       </div>
-                     </div>
-                   );
-                 })}
-                 {filteredPayments.filter(p => p.paymentStatus !== 'Paid').length === 0 && 
+          {reportType === 'pending' && (
+            <div className="space-y-4">
+              <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight flex items-center gap-2">
+                <AlertTriangle className="w-4.5 h-4.5 text-amber-500" />
+                <span>Outstanding Unpaid Balances</span>
+              </h3>
+
+              {/* Mobile Card List */}
+              <div className="space-y-3 md:hidden">
+                {/* Retrieve both pending bills and unpaid labor attendances */}
+                {filteredPayments.filter(p => p.paymentStatus !== 'Paid').map((p) => (
+                  <div key={p.id} className="bg-zinc-50 border border-zinc-250/60 rounded-xl p-3.5 space-y-2 text-xs">
+                    <div className="flex justify-between items-start">
+                      <span className="font-extrabold text-zinc-950 text-sm leading-tight">{p.payeeName}</span>
+                      <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold uppercase">High Risk</span>
+                    </div>
+                    <div className="space-y-1 text-[11px] text-zinc-500">
+                      <p>Liability: <b className="text-zinc-800 font-semibold">{p.payeeType} Liability</b></p>
+                      <p>Linked Task: {p.taskName}</p>
+                      <p>Due Date: {p.paymentDate}</p>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-zinc-200/50">
+                      <span className="text-[10px] text-zinc-400 font-bold uppercase">Outstanding Debt</span>
+                      <span className="font-black text-rose-700 text-sm">{formatCur(p.amount)}</span>
+                    </div>
+                  </div>
+                ))}
+                {filteredAttendance.filter(a => a.paymentStatus !== 'Paid').map((a) => {
+                  const laborWage = (a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0);
+                  return (
+                    <div key={a.id} className="bg-zinc-50 border border-zinc-250/60 rounded-xl p-3.5 space-y-2 text-xs">
+                      <div className="flex justify-between items-start">
+                        <span className="font-extrabold text-zinc-950 text-sm leading-tight">{a.workerName}</span>
+                        <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Standard</span>
+                      </div>
+                      <div className="space-y-1 text-[11px] text-zinc-500">
+                        <p>Liability: <b className="text-zinc-800 font-semibold">Labour Wage ({a.status})</b></p>
+                        <p>Linked Task: {a.taskName}</p>
+                        <p>Log Date: {a.date}</p>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-zinc-200/50">
+                        <span className="text-[10px] text-zinc-400 font-bold uppercase">Outstanding Debt</span>
+                        <span className="font-black text-rose-700 text-sm">{formatCur(laborWage)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredPayments.filter(p => p.paymentStatus !== 'Paid').length === 0 &&
                   filteredAttendance.filter(a => a.paymentStatus !== 'Paid').length === 0 && (
-                   <p className="text-xs text-zinc-400 italic text-center py-6 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">No outstanding unpaid balances recorded.</p>
-                 )}
-               </div>
-               
-               {/* Desktop view */}
-               <div className="hidden md:block overflow-x-auto">
-                 <table className="w-full text-xs text-left text-zinc-600 border-collapse">
-                   <thead>
-                     <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b">
-                       <th className="py-2.5 px-3">Date Flagged</th>
-                       <th className="py-2.5 px-3">Obligation Type</th>
-                       <th className="py-2.5 px-3">Creditor designations</th>
-                       <th className="py-2.5 px-3">Linked Task scope</th>
-                       <th className="py-2.5 px-3 text-right">Risk Factor</th>
-                       <th className="py-2.5 px-3 text-right">Outstanding Debt</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y text-zinc-900">
-                     {filteredPayments.filter(p => p.paymentStatus !== 'Paid').map((p) => (
-                       <tr key={p.id} className="hover:bg-zinc-50/40">
-                         <td className="py-3 px-3">{p.paymentDate}</td>
-                         <td className="py-3 px-3 text-zinc-500 font-bold">{p.payeeType} Liability</td>
-                         <td className="py-3 px-3 font-extrabold">{p.payeeName}</td>
-                         <td className="py-3 px-3 font-medium">{p.taskName}</td>
-                         <td className="py-3 px-3 text-right"><span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-black uppercase">High</span></td>
-                         <td className="py-3 px-3 text-right font-black text-rose-700">{formatCur(p.amount)}</td>
-                       </tr>
-                     ))}
-                     {filteredAttendance.filter(a => a.paymentStatus !== 'Paid').map((a) => {
-                       const laborWage = (a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0);
-                       return (
-                         <tr key={a.id} className="hover:bg-zinc-50/40">
-                           <td className="py-3 px-3">{a.date}</td>
-                           <td className="py-3 px-3 text-zinc-500 font-semibold">Labour Crew</td>
-                           <td className="py-3 px-3 font-bold">{a.workerName}</td>
-                           <td className="py-3 px-3 font-medium">{a.taskName}</td>
-                           <td className="py-3 px-3 text-right"><span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold uppercase">Standard</span></td>
-                           <td className="py-3 px-3 text-right font-black text-rose-700">{formatCur(laborWage)}</td>
-                         </tr>
-                       );
-                     })}
-                     {filteredPayments.filter(p => p.paymentStatus !== 'Paid').length === 0 && 
+                    <p className="text-xs text-zinc-400 italic text-center py-6 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">No outstanding unpaid balances recorded.</p>
+                  )}
+              </div>
+
+              {/* Desktop view */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-xs text-left text-zinc-600 border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b">
+                      <th className="py-2.5 px-3">Date Flagged</th>
+                      <th className="py-2.5 px-3">Obligation Type</th>
+                      <th className="py-2.5 px-3">Creditor designations</th>
+                      <th className="py-2.5 px-3">Linked Task scope</th>
+                      <th className="py-2.5 px-3 text-right">Risk Factor</th>
+                      <th className="py-2.5 px-3 text-right">Outstanding Debt</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y text-zinc-900">
+                    {filteredPayments.filter(p => p.paymentStatus !== 'Paid').map((p) => (
+                      <tr key={p.id} className="hover:bg-zinc-50/40">
+                        <td className="py-3 px-3">{p.paymentDate}</td>
+                        <td className="py-3 px-3 text-zinc-500 font-bold">{p.payeeType} Liability</td>
+                        <td className="py-3 px-3 font-extrabold">{p.payeeName}</td>
+                        <td className="py-3 px-3 font-medium">{p.taskName}</td>
+                        <td className="py-3 px-3 text-right"><span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-black uppercase">High</span></td>
+                        <td className="py-3 px-3 text-right font-black text-rose-700">{formatCur(p.amount)}</td>
+                      </tr>
+                    ))}
+                    {filteredAttendance.filter(a => a.paymentStatus !== 'Paid').map((a) => {
+                      const laborWage = (a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0);
+                      return (
+                        <tr key={a.id} className="hover:bg-zinc-50/40">
+                          <td className="py-3 px-3">{a.date}</td>
+                          <td className="py-3 px-3 text-zinc-500 font-semibold">Labour Crew</td>
+                          <td className="py-3 px-3 font-bold">{a.workerName}</td>
+                          <td className="py-3 px-3 font-medium">{a.taskName}</td>
+                          <td className="py-3 px-3 text-right"><span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold uppercase">Standard</span></td>
+                          <td className="py-3 px-3 text-right font-black text-rose-700">{formatCur(laborWage)}</td>
+                        </tr>
+                      );
+                    })}
+                    {filteredPayments.filter(p => p.paymentStatus !== 'Paid').length === 0 &&
                       filteredAttendance.filter(a => a.paymentStatus !== 'Paid').length === 0 && (
-                       <tr>
-                         <td colSpan={6} className="py-8 text-center text-zinc-400 font-medium italic">
-                           No pending balances outstanding.
-                         </td>
-                       </tr>
-                     )}
-                   </tbody>
-                 </table>
-               </div>
-             </div>
-           )}
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-zinc-400 font-medium italic">
+                            No pending balances outstanding.
+                          </td>
+                        </tr>
+                      )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
-           {reportType === 'monthly' && (
-             <div className="space-y-4">
-               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Monthly Cashflow Summary</h3>
-               <div className="overflow-x-auto">
-                 <table className="w-full text-xs text-left text-zinc-600 border-collapse">
-                   <thead>
-                     <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b">
-                       <th className="py-2.5 px-3">Month</th>
-                       <th className="py-2.5 px-3 text-right">Total Inflow (₹)</th>
-                       <th className="py-2.5 px-3 text-right">Direct Expenses (₹)</th>
-                       <th className="py-2.5 px-3 text-right">Labour Wages (₹)</th>
-                       <th className="py-2.5 px-3 text-right">Net Cashflow (₹)</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y text-zinc-900">
-                     {Array.from(new Set(expenses.map(e => e.date.slice(0, 7)))).sort().reverse().map(month => {
-                       const mInflow = summaryStats?.officeTransactions?.filter(t => t.date.startsWith(month) && t.type === 'Cash In').reduce((s, t) => s + t.amount, 0) || 0;
-                       const mExp = expenses.filter(e => e.date.startsWith(month)).reduce((s, e) => s + e.amount, 0);
-                       const mWage = attendance.filter(a => a.date.startsWith(month)).reduce((s, a) => s + ((a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0)), 0);
-                       return (
-                         <tr key={month} className="hover:bg-zinc-50/40">
-                           <td className="py-3 px-3 font-bold">{month}</td>
-                           <td className="py-3 px-3 text-right text-emerald-700 font-bold">{formatCur(mInflow)}</td>
-                           <td className="py-3 px-3 text-right">{formatCur(mExp)}</td>
-                           <td className="py-3 px-3 text-right">{formatCur(mWage)}</td>
-                           <td className={`py-3 px-3 text-right font-black ${mInflow - (mExp + mWage) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                             {formatCur(mInflow - (mExp + mWage))}
-                           </td>
-                         </tr>
-                       );
-                     })}
-                   </tbody>
-                 </table>
-               </div>
-             </div>
-           )}
+          {reportType === 'monthly' && (
+            <div className="space-y-4">
+              <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Monthly Cashflow Summary</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left text-zinc-600 border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b">
+                      <th className="py-2.5 px-3">Month</th>
+                      <th className="py-2.5 px-3 text-right">Total Inflow (₹)</th>
+                      <th className="py-2.5 px-3 text-right">Direct Expenses (₹)</th>
+                      <th className="py-2.5 px-3 text-right">Labour Wages (₹)</th>
+                      <th className="py-2.5 px-3 text-right">Net Cashflow (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y text-zinc-900">
+                    {Array.from(new Set(expenses.map(e => e.date.slice(0, 7)))).sort().reverse().map(month => {
+                      const mInflow = summaryStats?.officeTransactions?.filter(t => t.date.startsWith(month) && t.type === 'Cash In').reduce((s, t) => s + t.amount, 0) || 0;
+                      const mExp = expenses.filter(e => e.date.startsWith(month)).reduce((s, e) => s + e.amount, 0);
+                      const mWage = attendance.filter(a => a.date.startsWith(month)).reduce((s, a) => s + ((a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0)), 0);
+                      return (
+                        <tr key={month} className="hover:bg-zinc-50/40">
+                          <td className="py-3 px-3 font-bold">{month}</td>
+                          <td className="py-3 px-3 text-right text-emerald-700 font-bold">{formatCur(mInflow)}</td>
+                          <td className="py-3 px-3 text-right">{formatCur(mExp)}</td>
+                          <td className="py-3 px-3 text-right">{formatCur(mWage)}</td>
+                          <td className={`py-3 px-3 text-right font-black ${mInflow - (mExp + mWage) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {formatCur(mInflow - (mExp + mWage))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
-           {reportType === 'vendor_worker' && (
-             <div className="space-y-4">
-               <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Payee Detailed Ledger</h3>
-               <div className="overflow-x-auto">
-                 <table className="w-full text-xs text-left text-zinc-600 border-collapse">
-                   <thead>
-                     <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b">
-                       <th className="py-2.5 px-3">Payee Name</th>
-                       <th className="py-2.5 px-3">Type</th>
-                       <th className="py-2.5 px-3 text-right">Total Allocated (Bills)</th>
-                       <th className="py-2.5 px-3 text-right">Total Paid (Payouts)</th>
-                       <th className="py-2.5 px-3 text-right">Outstanding Balance</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y text-zinc-900">
-                     {Array.from(new Set([...expenses.map(e => e.paidTo), ...payments.map(p => p.payeeName)])).sort().map(name => {
-                       const totalBilled = expenses.filter(e => e.paidTo === name).reduce((s, e) => s + e.amount, 0);
-                       const totalPaid = payments.filter(p => p.payeeName === name && p.paymentStatus === 'Paid').reduce((s, p) => s + p.amount, 0);
-                       const wageBilled = attendance.filter(a => a.workerName === name).reduce((s, a) => s + ((a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0)), 0);
-                       const totalAllocated = totalBilled + wageBilled;
-                       return (
-                         <tr key={name} className="hover:bg-zinc-50/40">
-                           <td className="py-3 px-3 font-bold">{name}</td>
-                           <td className="py-3 px-3 text-zinc-500">
-                             {payments.find(p => p.payeeName === name)?.payeeType || (wageBilled > 0 ? 'Worker' : 'Vendor')}
-                           </td>
-                           <td className="py-3 px-3 text-right">{formatCur(totalAllocated)}</td>
-                           <td className="py-3 px-3 text-right text-emerald-700 font-bold">{formatCur(totalPaid)}</td>
-                           <td className={`py-3 px-3 text-right font-black ${totalAllocated - totalPaid >= 0 ? 'text-rose-600' : 'text-zinc-900'}`}>
-                             {formatCur(totalAllocated - totalPaid)}
-                           </td>
-                         </tr>
-                       );
-                     })}
-                   </tbody>
-                 </table>
-               </div>
-             </div>
-           )}
+          {reportType === 'vendor_worker' && (
+            <div className="space-y-4">
+              <h3 className="text-sm sm:text-base font-bold text-zinc-900 tracking-tight">Payee Detailed Ledger</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left text-zinc-600 border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b">
+                      <th className="py-2.5 px-3">Payee Name</th>
+                      <th className="py-2.5 px-3">Type</th>
+                      <th className="py-2.5 px-3 text-right">Total Allocated (Bills)</th>
+                      <th className="py-2.5 px-3 text-right">Total Paid (Payouts)</th>
+                      <th className="py-2.5 px-3 text-right">Outstanding Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y text-zinc-900">
+                    {Array.from(new Set([...expenses.map(e => e.paidTo), ...payments.map(p => p.payeeName)])).sort().map(name => {
+                      const totalBilled = expenses.filter(e => e.paidTo === name).reduce((s, e) => s + e.amount, 0);
+                      const totalPaid = payments.filter(p => p.payeeName === name && p.paymentStatus === 'Paid').reduce((s, p) => s + p.amount, 0);
+                      const wageBilled = attendance.filter(a => a.workerName === name).reduce((s, a) => s + ((a.status === 'Present' ? a.dailyWage : a.status === 'Half Day' ? a.dailyWage * 0.5 : 0) + (a.overtimeAmount || 0)), 0);
+                      const totalAllocated = totalBilled + wageBilled;
+                      return (
+                        <tr key={name} className="hover:bg-zinc-50/40">
+                          <td className="py-3 px-3 font-bold">{name}</td>
+                          <td className="py-3 px-3 text-zinc-500">
+                            {payments.find(p => p.payeeName === name)?.payeeType || (wageBilled > 0 ? 'Worker' : 'Vendor')}
+                          </td>
+                          <td className="py-3 px-3 text-right">{formatCur(totalAllocated)}</td>
+                          <td className="py-3 px-3 text-right text-emerald-700 font-bold">{formatCur(totalPaid)}</td>
+                          <td className={`py-3 px-3 text-right font-black ${totalAllocated - totalPaid >= 0 ? 'text-rose-600' : 'text-zinc-900'}`}>
+                            {formatCur(totalAllocated - totalPaid)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
 
         </div>

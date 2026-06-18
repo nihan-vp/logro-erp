@@ -1,76 +1,77 @@
 export type UserRole = 'admin' | 'manager' | 'worker' | 'accountant';
 
 export interface OfficeFund {
-    id: string;
-    balance: number;
-    updatedAt: string;
+  id: string;
+  balance: number;
+  updatedAt: string;
 }
 export interface OfficeTransaction {
-    id: string;
-    type: 'Cash In' | 'Cash Out';
-    amount: number;
-    description: string;
-    date: string;
-    createdBy: string;
-    source?: string;
-    paymentMethod?: string;
-    reference?: string;
-    inflowType?: string;
+  id: string;
+  type: 'Cash In' | 'Cash Out';
+  amount: number;
+  description: string;
+  date: string;
+  createdBy: string;
+  source?: string;
+  paymentMethod?: string;
+  reference?: string;
+  inflowType?: string;
 }
 export interface PurchaseLineItem {
-    materialName: string;
-    qty: string;
-    pricePerCount: number;
-    total: number;
+  materialName: string;
+  qty: string;
+  pricePerCount: number;
+  total: number;
 }
 
 export interface PaymentRequest {
+  id: string;
+  projectId: string;
+  taskId: string;
+  payeeName: string;
+  category: 'Worker' | 'Vendor' | 'Transportation' | 'Vendor Payment' | 'Purchase' | 'Other';
+  amount: number;
+  description: string;
+  fromLocation?: string;
+  toLocation?: string;
+  dueDate: string;
+  priority: 'Low' | 'Medium' | 'High';
+  status: 'Draft' | 'Pending' | 'Paid' | 'Partially Paid' | 'Cancelled' | 'Deleted';
+  paymentMethod?: string;
+  billImage?: string;
+  billNo?: string;
+  createdBy?: string;
+  createdAt: string;
+  materialName?: string;
+  materialQty?: string;
+  tools?: string[];
+  vendorTotalToPay?: number;
+  vendorPaid?: number;
+  vendorRemaining?: number;
+  purchasePricePerCount?: number;
+  purchaseTotalFull?: number;
+  purchaseTotal?: number;
+  purchaseItems?: PurchaseLineItem[];
+  adjustmentType?: 'Edit' | 'Delete';
+  targetExpenseId?: string;
+  adjustmentData?: string;
+  paymentHistory?: Array<{
     id: string;
-    projectId: string;
-    taskId: string;
-    payeeName: string;
-    category: 'Worker' | 'Vendor' | 'Transportation' | 'Vendor Payment' | 'Purchase' | 'Other';
     amount: number;
-    description: string;
-    fromLocation?: string;
-    toLocation?: string;
-    dueDate: string;
-    priority: 'Low' | 'Medium' | 'High';
-    status: 'Pending' | 'Paid' | 'Partially Paid' | 'Cancelled' | 'Deleted';
-    paymentMethod?: string;
-    billImage?: string;
-    createdBy?: string;
-    createdAt: string;
-    materialName?: string;
-    materialQty?: string;
-    tools?: string[];
-    vendorTotalToPay?: number;
-    vendorPaid?: number;
-    vendorRemaining?: number;
-    purchasePricePerCount?: number;
-    purchaseTotalFull?: number;
-    purchaseTotal?: number;
-    purchaseItems?: PurchaseLineItem[];
-    adjustmentType?: 'Edit' | 'Delete';
-    targetExpenseId?: string;
-    adjustmentData?: string;
-    paymentHistory?: Array<{
-        id: string;
-        amount: number;
-        paymentMethod: string;
-        paidAt: string;
-        paidBy: string;
-        notes?: string;
-    }>;
+    paymentMethod: string;
+    paidAt: string;
+    paidBy: string;
+    notes?: string;
+  }>;
 }
 export interface AuditLog {
-    id: string;
-    action: string;
-    entity: string;
-    entityId: string;
-    performedBy: string;
-    timestamp: string;
-    details: string;
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  performedBy: string;
+  timestamp: string;
+  details: string;
 }
 
 
@@ -131,6 +132,7 @@ export interface Expense {
   toLocation?: string;
   notes?: string;
   billImage?: string; // base64 or URL
+  billNo?: string;
   createdBy: string;
   materialName?: string;
   materialQty?: string;

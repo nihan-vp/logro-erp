@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Plus, Search, FileText, X, Trash, UploadCloud, Eye, Clock, CheckCircle2, XCircle, AlertCircle, AlertTriangle,
-  ChevronLeft, ChevronRight, Edit2, Trash2, ChevronDown
+  ChevronLeft, ChevronRight, Edit2, Trash2, ChevronDown, Send
 } from 'lucide-react';
 import { api } from '../api/client';
 import { ExpenseCategory, PaymentRequest, PurchaseLineItem } from '../types';
@@ -29,6 +29,7 @@ const getStatusStyle = (status: PaymentRequest['status']) => {
     case 'Partially Paid': return 'bg-blue-50 text-blue-700 border-blue-200';
     case 'Cancelled': return 'bg-zinc-100 text-zinc-500 border-zinc-200';
     case 'Deleted': return 'bg-rose-50 text-rose-700 border-rose-200';
+    case 'Draft': return 'bg-zinc-100 text-zinc-700 border-zinc-300';
     default: return 'bg-zinc-50 text-zinc-600 border-zinc-200';
   }
 };
@@ -40,6 +41,7 @@ const getStatusIcon = (status: PaymentRequest['status']) => {
     case 'Partially Paid': return AlertCircle;
     case 'Cancelled': return XCircle;
     case 'Deleted': return XCircle;
+    case 'Draft': return Clock;
     default: return Clock;
   }
 };
@@ -75,6 +77,7 @@ const getStatusMessage = (status: PaymentRequest['status']) => {
     case 'Partially Paid': return 'A partial payment has been processed for this request.';
     case 'Cancelled': return 'This request was cancelled and will not be processed.';
     case 'Deleted': return 'This request was approved for deletion and the amount has been refunded to office funds.';
+    case 'Draft': return 'This is a draft expense request. It needs to be sent by an admin before the accountant can see and approve it.';
     default: return 'Status update pending.';
   }
 };
@@ -115,6 +118,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [reqPriority, setReqPriority] = useState<PaymentRequest['priority']>('Medium');
   const [selectedPaymentRequest, setSelectedPaymentRequest] = useState<EnrichedPaymentRequest | null>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [selectedDraftRequestIds, setSelectedDraftRequestIds] = useState<string[]>([]);
   const [reqProjectId, setReqProjectId] = useState('');
   const [reqTaskId, setReqTaskId] = useState('');
   const [reqCategory, setReqCategory] = useState<ExpenseCategory>('Material');
@@ -123,10 +127,12 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [reqPaymentMethod, setReqPaymentMethod] = useState('Bank Transfer');
   const [reqDate, setReqDate] = useState('');
   const [reqNotes, setReqNotes] = useState('');
+  const [reqBillNo, setReqBillNo] = useState('');
   const [reqFromLocation, setReqFromLocation] = useState('');
   const [reqToLocation, setReqToLocation] = useState('');
   const [reqBillImage, setReqBillImage] = useState<string>('');
   const [reqSubmitError, setReqSubmitError] = useState<string | null>(null);
+  const [reqSubmitStatus, setReqSubmitStatus] = useState<'Draft' | 'Pending'>('Draft');
   const [officeBalance, setOfficeBalance] = useState(0);
 
   // Custom category fields
@@ -207,6 +213,10 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   }, [reqSearchQuery, reqProjectFilter, reqTaskFilter, reqCategoryFilter, reqStatusFilter, rowsPerPage]);
 
   useEffect(() => {
+    setSelectedDraftRequestIds((current) => current.filter((id) => requests.some((request) => request.id === id && request.status === 'Draft')));
+  }, [requests]);
+
+  useEffect(() => {
     localStorage.setItem(ROWS_PER_PAGE_STORAGE_KEY, String(rowsPerPage));
   }, [rowsPerPage]);
 
@@ -244,6 +254,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqPaymentMethod('Bank Transfer');
     setReqDate(new Date().toISOString().split('T')[0]);
     setReqNotes('');
+    setReqBillNo('');
     setReqFromLocation('');
     setReqToLocation('');
     setReqBillImage('');
@@ -271,8 +282,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const handleOpenEditRequest = async (request: EnrichedPaymentRequest) => {
     if (request.status === 'Paid') {
       setIsEditingPaidExpense(true);
-    } else if (request.status !== 'Pending') {
-      notify.warning('Only pending requests can be edited directly.');
+    } else if (request.status !== 'Pending' && request.status !== 'Draft') {
+      notify.warning('Only draft or pending requests can be edited directly.');
       return;
     } else {
       setIsEditingPaidExpense(false);
@@ -286,6 +297,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setReqPaymentMethod(request.paymentMethod || 'Bank Transfer');
     setReqDate(request.dueDate);
     setReqNotes(request.description || '');
+    setReqBillNo(request.billNo || '');
     setReqFromLocation(request.fromLocation || '');
     setReqToLocation(request.toLocation || '');
     setReqBillImage(request.billImage || '');
@@ -369,8 +381,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       return;
     }
 
-    if (request.status !== 'Pending') {
-      notify.warning('Only pending requests can be deleted.');
+    if (request.status !== 'Pending' && request.status !== 'Draft') {
+      notify.warning('Only draft or pending requests can be deleted.');
       return;
     }
 
@@ -392,6 +404,75 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       notify.success('Payment request deleted.');
     } catch (err: any) {
       notify.error(err?.message || 'Failed to delete payment request');
+    }
+  };
+
+  const sendRequestsToAccountant = async (draftRequests: EnrichedPaymentRequest[]) => {
+    await Promise.all(draftRequests.map((request) => api.updatePaymentRequest(request.id, {
+      ...request,
+      status: 'Pending'
+    })));
+  };
+
+  const handleSendRequest = async (request: EnrichedPaymentRequest) => {
+    const ok = await confirm({
+      title: 'Send payment request?',
+      message: `Send request for ${formatCur(request.amount)} to ${request.payeeName} to the accountant for review?`,
+      confirmLabel: 'Send Request',
+      variant: 'default',
+    });
+    if (!ok) return;
+
+    try {
+      await sendRequestsToAccountant([request]);
+      setSelectedDraftRequestIds((current) => current.filter((id) => id !== request.id));
+      fetchInitialData();
+      notify.success('Request sent to accountant.');
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to send payment request');
+    }
+  };
+
+  const handleToggleDraftSelection = (requestId: string) => {
+    setSelectedDraftRequestIds((current) => (
+      current.includes(requestId)
+        ? current.filter((id) => id !== requestId)
+        : [...current, requestId]
+    ));
+  };
+
+  const handleToggleAllVisibleDrafts = (draftIds: string[]) => {
+    if (draftIds.length === 0) return;
+    setSelectedDraftRequestIds((current) => {
+      const allSelected = draftIds.every((id) => current.includes(id));
+      if (allSelected) {
+        return current.filter((id) => !draftIds.includes(id));
+      }
+      return Array.from(new Set([...current, ...draftIds]));
+    });
+  };
+
+  const handleSendSelectedDraftRequests = async (draftRequests: EnrichedPaymentRequest[]) => {
+    if (draftRequests.length === 0) {
+      notify.warning('Select at least one draft request to send.');
+      return;
+    }
+
+    const ok = await confirm({
+      title: 'Send selected draft requests?',
+      message: `Send ${draftRequests.length} selected draft request${draftRequests.length > 1 ? 's' : ''} to the accountant for review?`,
+      confirmLabel: 'Send Selected',
+      variant: 'default',
+    });
+    if (!ok) return;
+
+    try {
+      await sendRequestsToAccountant(draftRequests);
+      setSelectedDraftRequestIds((current) => current.filter((id) => !draftRequests.some((request) => request.id === id)));
+      fetchInitialData();
+      notify.success(`${draftRequests.length} draft request${draftRequests.length > 1 ? 's' : ''} sent to accountant.`);
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to send selected draft requests');
     }
   };
 
@@ -438,11 +519,11 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       };
       await api.createVendor(payload);
       notify.success(`Vendor "${payload.name}" registered.`);
-      
+
       const vendorsRes = await api.getVendors('active').catch(() => ({ vendors: [] }));
       const updatedList = vendorsRes.vendors || [];
       setVendorsList(updatedList);
-      
+
       setReqPaidTo(payload.name);
       setIsVendorDropdownOpen(false);
       setVendorSearchQuery('');
@@ -460,6 +541,14 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       notify.warning('All core fields are required.');
       return;
     }
+    if (reqCategory === 'Material' && !reqBillNo.trim()) {
+      notify.warning('Bill No is required for material expenses.');
+      return;
+    }
+    if (reqCategory === 'Material' && !reqPurchaseItems[0]?.materialName.trim()) {
+      notify.warning('Material item is required.');
+      return;
+    }
     if (reqCategory === 'Vendor Payment' || reqCategory === 'Material' || reqCategory === 'Tools') {
       if (reqVendorTotalToPay === '' || reqVendorTotalToPay <= 0) {
         notify.warning('Total to pay must be greater than 0.');
@@ -475,19 +564,25 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       ? 'Submit edit approval request?'
       : reqEditId
         ? 'Update payment request?'
-        : 'Submit payment request?';
+        : reqSubmitStatus === 'Draft'
+          ? 'Save as Draft?'
+          : 'Submit Payment Request?';
 
     const messageText = isEditingPaidExpense
       ? `Submit a request to edit the paid expense ${reqEditId} to ${amountLabel}? It will require review and approval by the accountant/admin.`
       : reqEditId
         ? `Save changes to the ${amountLabel} request for ${reqPaidTo}?`
-        : `Submit a request for ${amountLabel} to ${reqPaidTo}? The accountant will review it.`;
+        : reqSubmitStatus === 'Draft'
+          ? `Save this request for ${amountLabel} to ${reqPaidTo} as a draft?`
+          : `Submit a request for ${amountLabel} to ${reqPaidTo}? The accountant will review it.`;
 
     const confirmLabelText = isEditingPaidExpense
       ? 'Submit Edit Request'
       : reqEditId
         ? 'Save Changes'
-        : 'Submit Request';
+        : reqSubmitStatus === 'Draft'
+          ? 'Save as Draft'
+          : 'Submit Request';
 
     const ok = await confirm({
       title: titleText,
@@ -510,6 +605,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       priority: reqPriority,
       paymentMethod: reqPaymentMethod,
       billImage: reqBillImage || undefined,
+      billNo: reqCategory === 'Material' ? reqBillNo.trim() : undefined,
       materialName: (reqCategory === 'Material' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].materialName : undefined,
       materialQty: (reqCategory === 'Material' && reqPurchaseItems.length > 0) ? reqPurchaseItems[0].qty : undefined,
       tools: reqCategory === 'Tools' ? reqPurchaseItems.map(it => it.materialName).filter(Boolean) : undefined,
@@ -518,6 +614,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       purchaseTotalFull: (reqCategory === 'Material' || reqCategory === 'Tools') ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
       purchaseTotal: (reqCategory === 'Material' || reqCategory === 'Tools') ? reqPurchaseItems.reduce((s, it) => s + it.total, 0) : undefined,
       purchaseItems: (reqCategory === 'Material' || reqCategory === 'Tools') ? reqPurchaseItems.map(it => ({ ...it, pricePerCount: it.pricePerCount === '' ? 0 : Number(it.pricePerCount) })) : undefined,
+      status: reqSubmitStatus
     };
     try {
       setReqSubmitError(null);
@@ -544,7 +641,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
         notify.success('Payment request updated.');
       } else {
         await api.createPaymentRequest(payload);
-        notify.success('Expense request submitted to accountant.');
+        notify.success(reqSubmitStatus === 'Draft' ? 'Expense saved as draft.' : 'Expense request submitted to accountant.');
       }
       setIsReqFormOpen(false);
       setReqEditId(null);
@@ -559,8 +656,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const filteredRequests = requests
     .filter(r => {
       const matchesSearch = r.payeeName.toLowerCase().includes(reqSearchQuery.toLowerCase()) ||
-                            (r.description || '').toLowerCase().includes(reqSearchQuery.toLowerCase()) ||
-                            r.taskName.toLowerCase().includes(reqSearchQuery.toLowerCase());
+        (r.description || '').toLowerCase().includes(reqSearchQuery.toLowerCase()) ||
+        r.taskName.toLowerCase().includes(reqSearchQuery.toLowerCase());
       const matchesProject = reqProjectFilter === 'All' || r.projectId === reqProjectFilter;
       const matchesTask = reqTaskFilter === 'All' || r.taskId === reqTaskFilter;
       const matchesCategory = reqCategoryFilter === 'All' || r.category === reqCategoryFilter;
@@ -577,6 +674,11 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const tableBodyHeight = rowsPerPage * TABLE_ROW_HEIGHT_PX;
   const rangeStart = filteredRequests.length === 0 ? 0 : startIndex + 1;
   const rangeEnd = Math.min(startIndex + rowsPerPage, filteredRequests.length);
+  const visibleDraftRequests = paginatedRequests.filter((request) => userRole === 'admin' && request.status === 'Draft');
+  const visibleDraftRequestIds = visibleDraftRequests.map((request) => request.id);
+  const selectedVisibleDraftCount = visibleDraftRequestIds.filter((id) => selectedDraftRequestIds.includes(id)).length;
+  const areAllVisibleDraftsSelected = visibleDraftRequestIds.length > 0 && selectedVisibleDraftCount === visibleDraftRequestIds.length;
+  const selectedDraftRequests = requests.filter((request) => selectedDraftRequestIds.includes(request.id) && request.status === 'Draft');
 
   const insufficientOfficeFunds = userRole === 'admin' && reqAmount !== '' && reqAmount > 0 && reqAmount > officeBalance;
 
@@ -636,6 +738,43 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       </div>
 
       <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+        {userRole === 'admin' && (
+          <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold text-zinc-800">Select draft requests</p>
+              <p className="text-[11px] text-zinc-500">
+                {selectedDraftRequests.length} draft request{selectedDraftRequests.length !== 1 ? 's' : ''} selected for sending.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleToggleAllVisibleDrafts(visibleDraftRequestIds)}
+                disabled={visibleDraftRequestIds.length === 0}
+                className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-[11px] font-semibold text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {areAllVisibleDraftsSelected ? 'Unselect Page Drafts' : 'Select Page Drafts'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDraftRequestIds([])}
+                disabled={selectedDraftRequestIds.length === 0}
+                className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-[11px] font-semibold text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Clear Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendSelectedDraftRequests(selectedDraftRequests)}
+                disabled={selectedDraftRequests.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-950 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>Send Selected</span>
+              </button>
+            </div>
+          </div>
+        )}
         <div className="relative">
           <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400">
             <Search className="w-4 h-4" />
@@ -669,6 +808,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
             <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5">Status</label>
             <select value={reqStatusFilter} onChange={(e) => setReqStatusFilter(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700">
               <option value="All">All Statuses</option>
+              <option value="Draft">Draft</option>
               <option value="Pending">Pending</option>
               <option value="Paid">Paid</option>
               <option value="Partially Paid">Partially Paid</option>
@@ -677,7 +817,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
           </div>
           <div className="flex flex-col justify-end">
             <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5 invisible select-none" aria-hidden="true">Reset</label>
-            <button onClick={() => { setReqProjectFilter('All'); setReqTaskFilter('All'); setReqCategoryFilter('All'); setReqStatusFilter('All'); setReqSearchQuery(''); setCurrentPage(1); }} className="w-full text-center py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs rounded-xl transition-all font-semibold">Reset</button>
+            <button onClick={() => { setReqProjectFilter('All'); setReqTaskFilter('All'); setReqCategoryFilter('All'); setReqStatusFilter('All'); setReqSearchQuery(''); setSelectedDraftRequestIds([]); setCurrentPage(1); }} className="w-full text-center py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs rounded-xl transition-all font-semibold">Reset</button>
           </div>
         </div>
       </div>
@@ -697,6 +837,21 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
             <table className="w-full text-xs text-left text-zinc-600 border-collapse min-w-[720px]">
               <thead>
                 <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[9px] border-b border-zinc-200">
+                  {userRole === 'admin' && (
+                    <th className="py-3 px-4 text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <span>Select</span>
+                        <input
+                          type="checkbox"
+                          checked={areAllVisibleDraftsSelected}
+                          onChange={() => handleToggleAllVisibleDrafts(visibleDraftRequestIds)}
+                          disabled={visibleDraftRequestIds.length === 0}
+                          className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 disabled:cursor-not-allowed"
+                          aria-label="Select all draft requests on this page"
+                        />
+                      </div>
+                    </th>
+                  )}
                   <th className="py-3 px-4">Vendor</th>
                   <th className="py-3 px-4">Project</th>
                   <th className="py-3 px-4">Task</th>
@@ -720,6 +875,21 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       className="hover:bg-zinc-50/50 transition-colors"
                       style={{ height: TABLE_ROW_HEIGHT_PX }}
                     >
+                      {userRole === 'admin' && (
+                        <td className="px-4 align-middle text-center">
+                          {r.status === 'Draft' ? (
+                            <input
+                              type="checkbox"
+                              checked={selectedDraftRequestIds.includes(r.id)}
+                              onChange={() => handleToggleDraftSelection(r.id)}
+                              className="h-4 w-4 cursor-pointer rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+                              aria-label={`Select draft request for ${r.payeeName}`}
+                            />
+                          ) : (
+                            <span className="text-[10px] text-zinc-300">-</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 align-middle">
                         <span className="font-bold text-zinc-950 block truncate max-w-[160px]">{r.payeeName}</span>
                         {r.description && (
@@ -746,16 +916,27 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                       </td>
                       <td className="px-4 align-middle text-center">
                         <div className="inline-flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenStatusModal(r)}
-                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border text-[10px] font-semibold transition-all whitespace-nowrap"
-                            title="View details"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          {userRole === 'admin' && (r.status === 'Pending' || r.status === 'Paid') && (
+
+                          {userRole === 'admin' && (r.status === 'Pending' || r.status === 'Paid' || r.status === 'Draft') && (
                             <>
+                              {r.status === 'Draft' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendRequest(r)}
+                                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 border text-[10px] font-semibold transition-all whitespace-nowrap"
+                                  title="Send request to accountant"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenStatusModal(r)}
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border text-[10px] font-semibold transition-all whitespace-nowrap"
+                                title="View details"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditRequest(r)}
@@ -781,7 +962,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 })}
                 {Array.from({ length: emptyRowCount }).map((_, i) => (
                   <tr key={`empty-row-${i}`} style={{ height: TABLE_ROW_HEIGHT_PX }} aria-hidden="true">
-                    <td colSpan={9} className="px-4 align-middle">&nbsp;</td>
+                    <td colSpan={userRole === 'admin' ? 10 : 9} className="px-4 align-middle">&nbsp;</td>
                   </tr>
                 ))}
               </tbody>
@@ -999,14 +1180,48 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 </div>
               )}
 
-              {/* Purchase fields — multi-line items table */}
-              {(reqCategory === 'Material' || reqCategory === 'Tools') && (
+              {/* Purchase fields */}
+              {reqCategory === 'Material' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Item</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Cement"
+                      value={reqPurchaseItems[0]?.materialName || ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setReqMaterialName(value);
+                        setReqPurchaseItems([{
+                          ...(reqPurchaseItems[0] || { materialName: '', qty: '', pricePerCount: '', total: 0 }),
+                          materialName: value,
+                        }]);
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Bill No</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. INV-1024"
+                      value={reqBillNo}
+                      onChange={(e) => setReqBillNo(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {reqCategory === 'Tools' && (
                 <div className="space-y-4">
                   <div className="border border-zinc-200 rounded-xl overflow-hidden">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
-                          <th className="text-left px-3 py-2.5 w-[30%]">{reqCategory === 'Tools' ? 'Tool' : 'Material'}</th>
+                          <th className="text-left px-3 py-2.5 w-[30%]">Tool</th>
                           <th className="text-left px-3 py-2.5 w-[18%]">Qty</th>
                           <th className="text-right px-3 py-2.5 w-[20%]">Price / Unit (₹)</th>
                           <th className="text-right px-3 py-2.5 w-[20%]">Total (₹)</th>
@@ -1020,7 +1235,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                               <input
                                 type="text"
                                 required
-                                placeholder={reqCategory === 'Tools' ? 'e.g. Hammer' : 'e.g. Cement'}
+                                placeholder="e.g. Hammer"
                                 value={item.materialName}
                                 onChange={(e) => {
                                   const items = [...reqPurchaseItems];
@@ -1034,7 +1249,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                               <input
                                 type="text"
                                 required
-                                placeholder="e.g. 100 bags"
+                                placeholder="e.g. 2"
                                 value={item.qty}
                                 onChange={(e) => {
                                   const items = [...reqPurchaseItems];
@@ -1110,7 +1325,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-xs font-semibold transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>{reqCategory === 'Tools' ? 'Add Tool' : 'Add Material'}</span>
+                    <span>Add Tool</span>
                   </button>
                 </div>
               )}
@@ -1122,7 +1337,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     type="text"
                     required
                     value={reqPaidTo}
-                    onChange={() => {}}
+                    onChange={() => { }}
                     className="absolute opacity-0 pointer-events-none w-0 h-0"
                   />
                   <div
@@ -1227,10 +1442,32 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                   )}
                 </div>
 
-                {(reqCategory === 'Material' || reqCategory === 'Tools') ? (
+                {reqCategory === 'Tools' ? (
                   <div className="flex flex-col justify-center bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 min-h-[58px]">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Grand Total to Pay</span>
                     <span className="text-sm font-black text-zinc-900 mt-0.5">{formatCur(reqPurchaseItems.reduce((s, it) => s + it.total, 0))}</span>
+                  </div>
+                ) : reqCategory === 'Material' ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Total Amount (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0.01}
+                      step="any"
+                      placeholder="e.g. 1500"
+                      value={reqVendorTotalToPay === '' ? '' : reqVendorTotalToPay}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : Number(e.target.value);
+                        setReqVendorTotalToPay(val);
+                        setReqAmount(val);
+                        setReqPurchaseItems([{
+                          ...(reqPurchaseItems[0] || { materialName: '', qty: '', pricePerCount: '', total: 0 }),
+                          total: val === '' ? 0 : val,
+                        }]);
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950"
+                    />
                   </div>
                 ) : (
                   reqCategory !== 'Vendor Payment' && (
@@ -1309,12 +1546,22 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 />
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
-              >
-                {reqEditId ? 'Save Changes' : 'Site Expense'}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  onClick={() => setReqSubmitStatus('Draft')}
+                  className="flex-1 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+                >
+                  Save as Draft
+                </button>
+                <button
+                  type="submit"
+                  onClick={() => setReqSubmitStatus('Pending')}
+                  className="w-1/3 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+                >
+                  Sent
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -1548,7 +1795,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 ×
               </button>
             </div>
-            
+
             {quickVendorError && (
               <div className="bg-rose-50 border border-rose-100 text-rose-600 rounded-lg p-2.5 text-xs">
                 {quickVendorError}

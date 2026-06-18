@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Search, Edit2, Trash2, Calendar, ClipboardList, 
-  ChevronRight, ArrowLeft, RefreshCw, AlertTriangle, 
-  ChevronDown, DollarSign, Briefcase, PlusCircle 
+import {
+  Plus, Search, Edit2, Trash2, Calendar, ClipboardList,
+  ChevronRight, ArrowLeft, RefreshCw, AlertTriangle,
+  ChevronDown, DollarSign, Briefcase, PlusCircle
 } from 'lucide-react';
 import { api } from '../api/client';
 import { Task, TaskStatus } from '../types';
@@ -59,13 +59,13 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
     try {
       setLoading(true);
       setError(null);
-      
+
       const [projectsRes, tasksRes, crewRes] = await Promise.all([
         api.getProjects(),
         api.getTasks(),
         api.getCrew('active').catch(() => ({ crew: [] }))
       ]);
-      
+
       setProjects(projectsRes.projects || []);
       setTasks(tasksRes.tasks || []);
       setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
@@ -113,9 +113,9 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
     setDescription(t.description || '');
     setAssignedBudget(t.assignedBudget);
     setAssignedStaff(t.assignedStaff || '');
-    
-    const parsedStaff = t.assignedStaff 
-      ? t.assignedStaff.split(',').map((s: string) => s.trim()).filter(Boolean) 
+
+    const parsedStaff = t.assignedStaff
+      ? t.assignedStaff.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [];
     setAssignedStaffList(parsedStaff);
     setMemberInput('');
@@ -257,10 +257,10 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
 
   // Filter computations
   const filteredTasks = tasks.filter(t => {
-    const matchesSearch = t.taskName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (t.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (t.assignedStaff || '').toLowerCase().includes(searchQuery.toLowerCase());
-    
+    const matchesSearch = t.taskName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.assignedStaff || '').toLowerCase().includes(searchQuery.toLowerCase());
+
     const matchesStatus = statusFilter === 'All' || t.status === statusFilter;
     const matchesProject = projectFilter === 'All' || t.projectId === projectFilter;
 
@@ -269,7 +269,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
 
   return (
     <div className="space-y-6 font-sans">
-      
+
       {!isFormOpen && !isViewOpen && (
         <>
           {/* Header */}
@@ -278,15 +278,15 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
               <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Engineering Scopes</h1>
               <p className="text-xs sm:text-sm text-zinc-500">Track task budgets, on-site expenses and profits</p>
             </div>
-             {userRole === 'admin' && (
-               <button
-                 onClick={handleOpenCreate}
-                 className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
-               >
-                 <Plus className="w-4 h-4" />
-                 <span>Add Task Scope</span>
-               </button>
-             )}
+            {userRole === 'admin' && (
+              <button
+                onClick={handleOpenCreate}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Task Scope</span>
+              </button>
+            )}
 
           </div>
 
@@ -345,26 +345,26 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
           ) : filteredTasks.length === 0 ? (
             <div className="bg-zinc-50 border border-dashed rounded-2xl p-10 text-center">
               <ClipboardList className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
-               <p className="text-zinc-500 text-xs">No project tasks found. {userRole === 'admin' && 'Click Add Task to register a scope.'}</p>
-               {userRole === 'admin' && (
-                 <button 
-                   onClick={handleOpenCreate} 
-                   className="mt-3 px-4 py-2 bg-zinc-900 text-white rounded-xl text-xs font-semibold hover:bg-zinc-800 transition-colors"
-                 >
-                   Create Task
-                 </button>
-               )}
+              <p className="text-zinc-500 text-xs">No project tasks found. {userRole === 'admin' && 'Click Add Task to register a scope.'}</p>
+              {userRole === 'admin' && (
+                <button
+                  onClick={handleOpenCreate}
+                  className="mt-3 px-4 py-2 bg-zinc-900 text-white rounded-xl text-xs font-semibold hover:bg-zinc-800 transition-colors"
+                >
+                  Create Task
+                </button>
+              )}
 
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredTasks.map((t) => {
-                const totalExpenses = (t.directExpenses || 0) + (t.labourCost || 0);
+                const totalExpenses = (t.directExpenses || 0) + (t.labourCost || 0) + (t.pendingExpenses || 0);
                 const isOver = totalExpenses > t.assignedBudget;
                 const isNearing = !isOver && (totalExpenses / t.assignedBudget) > 0.85;
 
                 return (
-                  <div 
+                  <div
                     key={t.id}
                     className="bg-white border border-zinc-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between hover:border-zinc-300 transition-all"
                   >
@@ -372,7 +372,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <span className="text-[10px] text-zinc-400 block font-bold truncate max-w-[200px]">{t.projectName}</span>
-                          <h3 
+                          <h3
                             className="text-sm font-bold text-zinc-950 mt-0.5 hover:underline cursor-pointer"
                             onClick={() => { setSelectedTask(t); setIsViewOpen(true); }}
                           >
@@ -384,11 +384,10 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                         <select
                           value={t.status}
                           onChange={(e) => handleQuickStatusUpdate(t, e.target.value as TaskStatus)}
-                          className={`text-[10px] font-semibold px-2 py-1 rounded-full outline-none border cursor-pointer ${
-                            t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          className={`text-[10px] font-semibold px-2 py-1 rounded-full outline-none border cursor-pointer ${t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                             t.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border-zinc-200' :
-                            t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-50 text-zinc-500 border-zinc-200'
-                          }`}
+                              t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-50 text-zinc-500 border-zinc-200'
+                            }`}
                         >
                           <option value="Pending">Pending</option>
                           <option value="In Progress">In Progress</option>
@@ -427,7 +426,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                           </div>
                           <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Expenses</span>
-                            <span className="text-zinc-900 block">{formatCur(t.directExpenses || 0)}</span>
+                            <span className="text-zinc-900 block">{formatCur((t.directExpenses || 0) + (t.pendingExpenses || 0))}</span>
                           </div>
                           <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Labour</span>
@@ -467,26 +466,26 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                     {/* Bottom controls */}
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100 text-xs">
                       <span className="text-[10px] text-zinc-400 font-medium">Staff: {t.assignedStaff || 'Unassigned'}</span>
-                         <div className="flex items-center gap-2">
-                           {userRole === 'admin' && (
-                             <button 
-                               onClick={() => handleOpenEdit(t)}
-                               className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
-                               title="Edit Task"
-                             >
-                               <Edit2 className="w-3 h-3" />
-                             </button>
-                           )}
-                           {userRole === 'admin' && (
-                             <button 
-                               onClick={() => handleDelete(t.id)}
-                               className="p-1 text-rose-500 hover:text-rose-900 rounded bg-zinc-50 border border-zinc-200/40"
-                               title="Delete Task"
-                             >
-                               <Trash2 className="w-3 h-3" />
-                             </button>
-                           )}
-                         </div>
+                      <div className="flex items-center gap-2">
+                        {userRole === 'admin' && (
+                          <button
+                            onClick={() => handleOpenEdit(t)}
+                            className="p-1 text-zinc-500 hover:text-zinc-900 rounded bg-zinc-50 border border-zinc-200/40"
+                            title="Edit Task"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        )}
+                        {userRole === 'admin' && (
+                          <button
+                            onClick={() => handleDelete(t.id)}
+                            className="p-1 text-rose-500 hover:text-rose-900 rounded bg-zinc-50 border border-zinc-200/40"
+                            title="Delete Task"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
 
                     </div>
                   </div>
@@ -500,7 +499,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
       {/* DETAILED LEDGER VIEW: Single Task */}
       {isViewOpen && selectedTask && (
         <div className="space-y-6">
-          <button 
+          <button
             onClick={() => { setIsViewOpen(false); setSelectedTask(null); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors"
           >
@@ -517,7 +516,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             </div>
 
             {userRole !== 'manager' && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
                 <div>
                   <span className="text-[10px] text-zinc-400 font-bold uppercase block">Scoped Budget</span>
                   <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.assignedBudget)}</span>
@@ -529,6 +528,10 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 <div>
                   <span className="text-[10px] text-zinc-400 font-bold uppercase block">Site Attendance Cost</span>
                   <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.labourCost || 0)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Pending</span>
+                  <span className="text-base font-bold text-amber-600 block">{formatCur(selectedTask.pendingExpenses || 0)}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments</span>
@@ -543,13 +546,12 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                   <div>
                     <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Task Profit / Loss</span>
                     <span className="text-sm sm:text-base font-bold">
-                      {formatCur(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0)))}
+                      {formatCur(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.pendingExpenses || 0)))}
                     </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold text-zinc-900 ${
-                    (selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0))) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
-                  }`}>
-                    {(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0))) >= 0 ? 'Profitable' : 'Deficit'}
+                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold text-zinc-900 ${(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.pendingExpenses || 0))) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
+                    }`}>
+                    {(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.pendingExpenses || 0))) >= 0 ? 'Profitable' : 'Deficit'}
                   </span>
                 </div>
               )}
@@ -584,21 +586,21 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             <div className="border-t border-zinc-100 pt-4">
               <span className="text-[10px] text-zinc-400 font-bold uppercase block mb-2.5">Quick Operations</span>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button 
+                <button
                   onClick={() => onNavigate('expenses', { projectId: selectedTask.projectId, taskId: selectedTask.id })}
                   className="px-3 py-2 bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <PlusCircle className="w-4 h-4 text-zinc-500" />
                   Log Task Expense
                 </button>
-                <button 
+                <button
                   onClick={() => onNavigate('projects', { projectId: selectedTask.projectId, taskId: selectedTask.id, openSubTab: 'tasks' })}
                   className="px-3 py-2 bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Calendar className="w-4 h-4 text-zinc-500" />
                   Open in Project
                 </button>
-                <button 
+                <button
                   onClick={() => onNavigate('payments', { projectId: selectedTask.projectId, taskId: selectedTask.id })}
                   className="px-3 py-2 bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
@@ -609,14 +611,14 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             </div>
 
             <div className="flex gap-2 justify-end border-t border-zinc-100 pt-4">
-              <button 
+              <button
                 onClick={() => handleOpenEdit(selectedTask)}
                 className="px-3 py-1.5 text-xs font-bold bg-zinc-100 rounded-lg hover:bg-zinc-200 transition-all text-zinc-700"
               >
                 Modify Scope
               </button>
               {userRole === 'admin' && (
-                <button 
+                <button
                   onClick={() => handleDelete(selectedTask.id)}
                   className="px-3 py-1.5 text-xs font-bold bg-rose-50 rounded-lg hover:bg-rose-100 hover:text-rose-700 transition-all text-rose-600"
                 >
@@ -635,7 +637,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             <h2 className="text-base sm:text-lg font-bold text-zinc-900">
               {editId ? 'Modify Task Details' : 'Initialize Task Scope'}
             </h2>
-            <button 
+            <button
               onClick={() => setIsFormOpen(false)}
               className="px-2 py-1 bg-zinc-100 text-zinc-700 rounded-lg text-xs font-semibold transition-colors"
             >
@@ -650,7 +652,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
-            
+
             {/* If creating fresh, require parenting project selection */}
             {!editId && (
               <div>
@@ -705,12 +707,12 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
                   Assigned Site Staff / Crew
                 </label>
-                
+
                 {/* Selected staff badges */}
                 <div className="flex flex-wrap gap-1 mb-2 bg-zinc-50 border border-zinc-200/80 p-1.5 rounded-xl min-h-[38px] items-center">
                   {assignedStaffList.map((member) => (
-                    <span 
-                      key={member} 
+                    <span
+                      key={member}
                       className="inline-flex items-center gap-1 bg-zinc-900 text-white text-[10px] font-bold pl-2.5 pr-1.5 py-0.5 rounded-lg"
                     >
                       <span>{member}</span>
@@ -750,7 +752,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                       }}
                       className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 text-xs"
                     />
-                    
+
                     {/* Floating suggestions dropdown */}
                     {showSuggestions && (
                       <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs font-semibold divide-y divide-zinc-100">
@@ -764,7 +766,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
 
                         {/* Matching suggestions */}
                         {crewSuggestions
-                          .filter(worker => 
+                          .filter(worker =>
                             (!memberInput || worker.toLowerCase().includes(memberInput.toLowerCase())) &&
                             !assignedStaffList.includes(worker)
                           )
@@ -780,7 +782,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                             </button>
                           ))
                         }
-                        
+
                         {/* Custom input addition fallback */}
                         {memberInput.trim() && !assignedStaffList.includes(memberInput.trim()) && (
                           <button
@@ -792,18 +794,18 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                             <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">+ Assign</span>
                           </button>
                         )}
-                        
+
                         {/* If no matches are found overall */}
-                        {crewSuggestions.filter(worker => 
+                        {crewSuggestions.filter(worker =>
                           (!memberInput || worker.toLowerCase().includes(memberInput.toLowerCase())) &&
                           !assignedStaffList.includes(worker)
                         ).length === 0 && !memberInput.trim() && (
-                          <div className="px-3 py-3 text-zinc-400 italic text-center select-none">All available crew assigned!</div>
-                        )}
+                            <div className="px-3 py-3 text-zinc-400 italic text-center select-none">All available crew assigned!</div>
+                          )}
                       </div>
                     )}
                   </div>
-                  
+
                   <button
                     type="button"
                     onClick={() => {
@@ -820,8 +822,8 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 {/* Close recommendation list layout controller */}
                 {showSuggestions && (
                   <div className="flex justify-end mt-1">
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={() => setShowSuggestions(false)}
                       className="text-[10px] text-zinc-400 hover:text-zinc-650 font-bold underline"
                     >

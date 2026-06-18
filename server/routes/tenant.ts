@@ -101,9 +101,9 @@ async function calculateMetrics(companyName: string) {
     taskToExpensesCost[exp.taskId] = (taskToExpensesCost[exp.taskId] || 0) + exp.amount;
   });
 
-  // 2b. Pending payment requests
+  // 2b. Pending & Draft payment requests
   const taskToPendingExpenseCost: Record<string, number> = {};
-  paymentRequests.filter((pr: any) => pr.status === 'Pending').forEach((pr: any) => {
+  paymentRequests.filter((pr: any) => pr.status === 'Pending' || pr.status === 'Draft').forEach((pr: any) => {
     taskToPendingExpenseCost[pr.taskId] = (taskToPendingExpenseCost[pr.taskId] || 0) + pr.amount;
   });
 
@@ -164,11 +164,11 @@ router.patch('/users/:id/status', requireAdmin, async (req: any, res) => {
 
   const tenantDb = await getTenantDb(req.user.companyName);
   const result = await tenantDb.collection('users').findOneAndUpdate(
-      { id: req.params.id },
-      { $set: { status } },
-      { returnDocument: 'after' }
+    { id: req.params.id },
+    { $set: { status } },
+    { returnDocument: 'after' }
   );
-  
+
   if (!result) return res.status(404).json({ error: 'User not found' });
   res.json(result);
 });
@@ -182,9 +182,9 @@ router.put('/users/profile', async (req: any, res) => {
 
   const tenantDb = await getTenantDb(req.user.companyName);
   const result = await tenantDb.collection('users').findOneAndUpdate(
-      { id: req.user.userId },
-      { $set: { name, phone: phone !== undefined ? phone : undefined } },
-      { returnDocument: 'after' }
+    { id: req.user.userId },
+    { $set: { name, phone: phone !== undefined ? phone : undefined } },
+    { returnDocument: 'after' }
   );
 
   if (!result) return res.status(404).json({ error: 'User not found' });
@@ -194,7 +194,7 @@ router.put('/users/profile', async (req: any, res) => {
 // 2. Project routes
 router.get('/projects', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const projects = await tenantDb.collection('projects').find({}).toArray();
   const tasks = await tenantDb.collection('tasks').find({}).toArray();
   const expenses = await tenantDb.collection('expenses').find({}).toArray();
@@ -219,7 +219,7 @@ router.get('/projects', async (req: any, res) => {
     }, 0);
 
     const pendingRequestAmt = paymentRequests
-      .filter((pr: any) => pr.projectId === prj.id && pr.status === 'Pending')
+      .filter((pr: any) => pr.projectId === prj.id && (pr.status === 'Pending' || pr.status === 'Draft'))
       .reduce((acc: number, pr: any) => acc + pr.amount, 0);
 
     const totalActualExpense = regularExpenseAmt + labourCostAmt;
@@ -284,11 +284,11 @@ router.put('/projects/:id', async (req: any, res) => {
 
   const tenantDb = await getTenantDb(req.user.companyName);
   const result = await tenantDb.collection('projects').findOneAndUpdate(
-      { id: req.params.id },
-      { $set: { projectName, clientName, location, startDate, expectedEndDate, status, notes, contractBudget: contractBudget ? Number(contractBudget) : 0 } },
-      { returnDocument: 'after' }
+    { id: req.params.id },
+    { $set: { projectName, clientName, location, startDate, expectedEndDate, status, notes, contractBudget: contractBudget ? Number(contractBudget) : 0 } },
+    { returnDocument: 'after' }
   );
-  
+
   if (!result) {
     return res.status(404).json({ error: 'Project not found' });
   }
@@ -298,7 +298,7 @@ router.put('/projects/:id', async (req: any, res) => {
 
 router.delete('/projects/:id', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const result = await tenantDb.collection('projects').deleteOne({ id: req.params.id });
   if (result.deletedCount === 0) {
     return res.status(404).json({ error: 'Project not found' });
@@ -399,30 +399,32 @@ router.put('/tasks/:id', async (req: any, res) => {
 
   const tenantDb = await getTenantDb(req.user.companyName);
   const result = await tenantDb.collection('tasks').findOneAndUpdate(
-      { id: req.params.id },
-      { $set: { 
-          taskName,
-          description,
-          assignedBudget: Number(assignedBudget),
-          assignedStaff,
-          startDate,
-          endDate,
-          progress: progress !== undefined ? Number(progress) : undefined,
-          status,
-          notes
-      } },
-      { returnDocument: 'after' }
+    { id: req.params.id },
+    {
+      $set: {
+        taskName,
+        description,
+        assignedBudget: Number(assignedBudget),
+        assignedStaff,
+        startDate,
+        endDate,
+        progress: progress !== undefined ? Number(progress) : undefined,
+        status,
+        notes
+      }
+    },
+    { returnDocument: 'after' }
   );
-  
+
   if (!result) {
     return res.status(404).json({ error: 'Task not found' });
   }
-  
+
   // If progress wasn't updated, handle it
   if (progress === undefined) {
-      // Need to find existing to keep progress
-      const existing = await tenantDb.collection('tasks').findOne({ id: req.params.id });
-      await tenantDb.collection('tasks').updateOne({ id: req.params.id }, { $set: { progress: existing?.progress } });
+    // Need to find existing to keep progress
+    const existing = await tenantDb.collection('tasks').findOne({ id: req.params.id });
+    await tenantDb.collection('tasks').updateOne({ id: req.params.id }, { $set: { progress: existing?.progress } });
   }
 
   res.json(result);
@@ -430,7 +432,7 @@ router.put('/tasks/:id', async (req: any, res) => {
 
 router.delete('/tasks/:id', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const result = await tenantDb.collection('tasks').deleteOne({ id: req.params.id });
   if (result.deletedCount === 0) {
     return res.status(404).json({ error: 'Task not found' });
@@ -467,7 +469,7 @@ router.get('/expenses', async (req: any, res) => {
     };
   });
 
-  const pendingRequestsQuery: any = { status: 'Pending' };
+  const pendingRequestsQuery: any = { status: { $in: ['Pending', 'Draft'] } };
   if (projectId) pendingRequestsQuery.projectId = projectId;
   if (taskId) pendingRequestsQuery.taskId = taskId;
 
@@ -491,53 +493,20 @@ router.put('/expenses/:id', async (req: any, res) => {
 
   if (req.params.id.startsWith('pr_')) {
     const result = await tenantDb.collection('paymentRequests').findOneAndUpdate(
-        { id: req.params.id },
-        { $set: {
-            projectId: projectId || null,
-            taskId: taskId || null,
-            payeeName: String(paidTo).trim(),
-            category: expenseCategoryToRequestCategory(category),
-            amount: Number(amount),
-            description: notes || '',
-            fromLocation: fromLocation ?? null,
-            toLocation: toLocation ?? null,
-            dueDate: date,
-            paymentMethod,
-            billImage: billImage !== undefined ? billImage : null,
-            materialName: materialName ?? null,
-            materialQty: materialQty ?? null,
-            tools: tools ?? null,
-            vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : null,
-            vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : null,
-            vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : null,
-            purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : null,
-            purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : null,
-            purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : null,
-            purchaseItems: purchaseItems ?? null,
-        }},
-        { returnDocument: 'after' }
-    );
-    if (!result) return res.status(404).json({ error: 'Payment request not found' });
-    
-    // Need projects/tasks for the expense view
-    const project = await tenantDb.collection('projects').findOne({ id: result.projectId });
-    const task = await tenantDb.collection('tasks').findOne({ id: result.taskId });
-    
-    return res.json(paymentRequestToExpenseItem(result, [project].filter(Boolean), [task].filter(Boolean)));
-  }
-
-  const result = await tenantDb.collection('expenses').findOneAndUpdate(
       { id: req.params.id },
-      { $set: {
-          category: category,
+      {
+        $set: {
+          projectId: projectId || null,
+          taskId: taskId || null,
+          payeeName: String(paidTo).trim(),
+          category: expenseCategoryToRequestCategory(category),
           amount: Number(amount),
-          paidTo,
-          paymentMethod,
-          date,
-          notes,
-          billImage: billImage !== undefined ? billImage : null,
+          description: notes || '',
           fromLocation: fromLocation ?? null,
           toLocation: toLocation ?? null,
+          dueDate: date,
+          paymentMethod,
+          billImage: billImage !== undefined ? billImage : null,
           materialName: materialName ?? null,
           materialQty: materialQty ?? null,
           tools: tools ?? null,
@@ -548,8 +517,45 @@ router.put('/expenses/:id', async (req: any, res) => {
           purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : null,
           purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : null,
           purchaseItems: purchaseItems ?? null,
-      }},
+        }
+      },
       { returnDocument: 'after' }
+    );
+    if (!result) return res.status(404).json({ error: 'Payment request not found' });
+
+    // Need projects/tasks for the expense view
+    const project = await tenantDb.collection('projects').findOne({ id: result.projectId });
+    const task = await tenantDb.collection('tasks').findOne({ id: result.taskId });
+
+    return res.json(paymentRequestToExpenseItem(result, [project].filter(Boolean), [task].filter(Boolean)));
+  }
+
+  const result = await tenantDb.collection('expenses').findOneAndUpdate(
+    { id: req.params.id },
+    {
+      $set: {
+        category: category,
+        amount: Number(amount),
+        paidTo,
+        paymentMethod,
+        date,
+        notes,
+        billImage: billImage !== undefined ? billImage : null,
+        fromLocation: fromLocation ?? null,
+        toLocation: toLocation ?? null,
+        materialName: materialName ?? null,
+        materialQty: materialQty ?? null,
+        tools: tools ?? null,
+        vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : null,
+        vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : null,
+        vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : null,
+        purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : null,
+        purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : null,
+        purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : null,
+        purchaseItems: purchaseItems ?? null,
+      }
+    },
+    { returnDocument: 'after' }
   );
 
   if (!result) return res.status(404).json({ error: 'Expense not found' });
@@ -563,14 +569,14 @@ router.delete('/expenses/:id', async (req: any, res) => {
     const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
     if (!existing) return res.status(404).json({ error: 'Payment request not found' });
     if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
-    
+
     await tenantDb.collection('paymentRequests').deleteOne({ id: req.params.id });
     return res.json({ success: true, message: 'Payment request cancelled' });
   }
 
   const result = await tenantDb.collection('expenses').deleteOne({ id: req.params.id });
   if (result.deletedCount === 0) return res.status(404).json({ error: 'Expense not found' });
-  
+
   res.json({ success: true, message: 'Expense deleted successfully' });
 });
 
@@ -578,12 +584,12 @@ router.delete('/expenses/:id', async (req: any, res) => {
 router.get('/crew', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
   const { status } = req.query;
-  
+
   const query: any = {};
   if (status === 'active' || status === 'inactive') {
     query.status = status;
   }
-  
+
   const crew = await tenantDb.collection('crew').find(query).sort({ name: 1 }).toArray();
   res.json({ crew });
 });
@@ -595,7 +601,7 @@ router.post('/crew', async (req: any, res) => {
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const duplicate = await tenantDb.collection('crew').findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
   if (duplicate) {
     return res.status(400).json({ error: 'A crew member with this name already exists' });
@@ -623,26 +629,28 @@ router.put('/crew/:id', async (req: any, res) => {
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
-  
-  const duplicate = await tenantDb.collection('crew').findOne({ 
-      id: { $ne: req.params.id }, 
-      name: { $regex: new RegExp(`^${name}$`, 'i') } 
+
+  const duplicate = await tenantDb.collection('crew').findOne({
+    id: { $ne: req.params.id },
+    name: { $regex: new RegExp(`^${name}$`, 'i') }
   });
   if (duplicate) {
     return res.status(400).json({ error: 'A crew member with this name already exists' });
   }
 
   const result = await tenantDb.collection('crew').findOneAndUpdate(
-      { id: req.params.id },
-      { $set: { 
-          name: String(name).trim(),
-          trade,
-          dailyWage: Number(dailyWage),
-          phone: phone || '',
-          status,
-          notes: notes || ''
-      } },
-      { returnDocument: 'after' }
+    { id: req.params.id },
+    {
+      $set: {
+        name: String(name).trim(),
+        trade,
+        dailyWage: Number(dailyWage),
+        phone: phone || '',
+        status,
+        notes: notes || ''
+      }
+    },
+    { returnDocument: 'after' }
   );
 
   if (!result) return res.status(404).json({ error: 'Crew member not found' });
@@ -651,10 +659,10 @@ router.put('/crew/:id', async (req: any, res) => {
 
 router.delete('/crew/:id', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const result = await tenantDb.collection('crew').deleteOne({ id: req.params.id });
   if (result.deletedCount === 0) return res.status(404).json({ error: 'Crew member not found' });
-  
+
   res.json({ success: true, message: 'Crew member removed' });
 });
 
@@ -681,14 +689,14 @@ router.post('/crew/bulk', async (req: any, res) => {
     if (duplicate) continue;
 
     const newMember = {
-        id: 'crew_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        name,
-        trade: m.trade || 'Other',
-        dailyWage: Number(m.dailyWage) || 0,
-        phone: m.phone ? String(m.phone).trim() : '',
-        status: m.status === 'inactive' ? 'inactive' : 'active',
-        notes: m.notes ? String(m.notes).trim() : '',
-        createdAt: new Date().toISOString()
+      id: 'crew_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      name,
+      trade: m.trade || 'Other',
+      dailyWage: Number(m.dailyWage) || 0,
+      phone: m.phone ? String(m.phone).trim() : '',
+      status: m.status === 'inactive' ? 'inactive' : 'active',
+      notes: m.notes ? String(m.notes).trim() : '',
+      createdAt: new Date().toISOString()
     };
 
     await crewCol.insertOne(newMember);
@@ -702,12 +710,12 @@ router.post('/crew/bulk', async (req: any, res) => {
 router.get('/vendors', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
   const { status } = req.query;
-  
+
   const query: any = {};
   if (status === 'active' || status === 'inactive') {
     query.status = status;
   }
-  
+
   const vendors = await tenantDb.collection('vendors').find(query).sort({ name: 1 }).toArray();
   res.json({ vendors });
 });
@@ -719,7 +727,7 @@ router.post('/vendors', async (req: any, res) => {
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const duplicate = await tenantDb.collection('vendors').findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
   if (duplicate) {
     return res.status(400).json({ error: 'A vendor with this name already exists' });
@@ -746,25 +754,27 @@ router.put('/vendors/:id', async (req: any, res) => {
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
-  
-  const duplicate = await tenantDb.collection('vendors').findOne({ 
-      id: { $ne: req.params.id }, 
-      name: { $regex: new RegExp(`^${name}$`, 'i') } 
+
+  const duplicate = await tenantDb.collection('vendors').findOne({
+    id: { $ne: req.params.id },
+    name: { $regex: new RegExp(`^${name}$`, 'i') }
   });
   if (duplicate) {
     return res.status(400).json({ error: 'A vendor with this name already exists' });
   }
 
   const result = await tenantDb.collection('vendors').findOneAndUpdate(
-      { id: req.params.id },
-      { $set: { 
-          name: String(name).trim(),
-          trade: String(trade).trim(),
-          phone: phone || '',
-          status,
-          notes: notes || ''
-      } },
-      { returnDocument: 'after' }
+    { id: req.params.id },
+    {
+      $set: {
+        name: String(name).trim(),
+        trade: String(trade).trim(),
+        phone: phone || '',
+        status,
+        notes: notes || ''
+      }
+    },
+    { returnDocument: 'after' }
   );
 
   if (!result) return res.status(404).json({ error: 'Vendor not found' });
@@ -773,10 +783,10 @@ router.put('/vendors/:id', async (req: any, res) => {
 
 router.delete('/vendors/:id', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const result = await tenantDb.collection('vendors').deleteOne({ id: req.params.id });
   if (result.deletedCount === 0) return res.status(404).json({ error: 'Vendor not found' });
-  
+
   res.json({ success: true, message: 'Vendor removed' });
 });
 
@@ -803,13 +813,13 @@ router.post('/vendors/bulk', async (req: any, res) => {
     if (duplicate) continue;
 
     const newVendor = {
-        id: 'vend_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        name,
-        trade: v.trade || 'Other Supply',
-        phone: v.phone ? String(v.phone).trim() : '',
-        status: v.status === 'inactive' ? 'inactive' : 'active',
-        notes: v.notes ? String(v.notes).trim() : '',
-        createdAt: new Date().toISOString()
+      id: 'vend_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      name,
+      trade: v.trade || 'Other Supply',
+      phone: v.phone ? String(v.phone).trim() : '',
+      status: v.status === 'inactive' ? 'inactive' : 'active',
+      notes: v.notes ? String(v.notes).trim() : '',
+      createdAt: new Date().toISOString()
     };
 
     await vendorCol.insertOne(newVendor);
@@ -871,7 +881,7 @@ router.post('/attendance', async (req: any, res) => {
 });
 
 router.post('/attendance/bulk', async (req: any, res) => {
-  const { projectId, taskId, date, workers } = req.body; 
+  const { projectId, taskId, date, workers } = req.body;
   if (!projectId || !taskId || !date || !Array.isArray(workers)) {
     return res.status(400).json({ error: 'Valid Project, Task, Date and workers array are required' });
   }
@@ -912,18 +922,20 @@ router.put('/attendance/:id', async (req: any, res) => {
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const result = await tenantDb.collection('attendance').findOneAndUpdate(
-      { id: req.params.id },
-      { $set: { 
-          workerName,
-          status,
-          dailyWage: Number(dailyWage),
-          overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : 0,
-          paymentStatus,
-          notes
-      } },
-      { returnDocument: 'after' }
+    { id: req.params.id },
+    {
+      $set: {
+        workerName,
+        status,
+        dailyWage: Number(dailyWage),
+        overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : 0,
+        paymentStatus,
+        notes
+      }
+    },
+    { returnDocument: 'after' }
   );
 
   if (!result) return res.status(404).json({ error: 'Attendance record not found' });
@@ -932,10 +944,10 @@ router.put('/attendance/:id', async (req: any, res) => {
 
 router.delete('/attendance/:id', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const result = await tenantDb.collection('attendance').deleteOne({ id: req.params.id });
   if (result.deletedCount === 0) return res.status(404).json({ error: 'Attendance record not found' });
-  
+
   res.json({ success: true });
 });
 
@@ -979,277 +991,283 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
 
   let pr: any = null;
   if (requestId) {
-      pr = await tenantDb.collection('paymentRequests').findOne({ id: requestId });
+    pr = await tenantDb.collection('paymentRequests').findOne({ id: requestId });
   }
 
   if (pr && pr.adjustmentType) {
-      if (paymentStatus !== 'Paid') {
-          await tenantDb.collection('paymentRequests').updateOne(
-              { id: requestId },
-              { $set: { status: paymentStatus } }
-          );
-          notifyTenantRequestsUpdate(req.user.companyName);
-          return res.json({ success: true, message: 'Adjustment request status updated' });
+    if (paymentStatus !== 'Paid') {
+      await tenantDb.collection('paymentRequests').updateOne(
+        { id: requestId },
+        { $set: { status: paymentStatus } }
+      );
+      notifyTenantRequestsUpdate(req.user.companyName);
+      return res.json({ success: true, message: 'Adjustment request status updated' });
+    }
+
+    const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
+    const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
+
+    if (pr.adjustmentType === 'Delete') {
+      let targetExpense = await tenantDb.collection('expenses').findOne({
+        $or: [
+          { id: pr.targetExpenseId },
+          { requestId: pr.targetExpenseId }
+        ]
+      });
+
+      if (!targetExpense && pr.targetExpenseId) {
+        const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+        if (origReq) {
+          targetExpense = await tenantDb.collection('expenses').findOne({
+            projectId: origReq.projectId,
+            taskId: origReq.taskId,
+            paidTo: origReq.payeeName,
+            amount: origReq.amount
+          });
+        }
       }
 
-      const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
-      const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
-
-      if (pr.adjustmentType === 'Delete') {
-          let targetExpense = await tenantDb.collection('expenses').findOne({
-              $or: [
-                  { id: pr.targetExpenseId },
-                  { requestId: pr.targetExpenseId }
-              ]
-          });
-          
-          if (!targetExpense && pr.targetExpenseId) {
-              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
-              if (origReq) {
-                  targetExpense = await tenantDb.collection('expenses').findOne({
-                      projectId: origReq.projectId,
-                      taskId: origReq.taskId,
-                      paidTo: origReq.payeeName,
-                      amount: origReq.amount
-                  });
-              }
-          }
-
-          if (targetExpense) {
-              await tenantDb.collection('expenses').deleteOne({ id: targetExpense.id });
-          }
-
-          let targetPayment = await tenantDb.collection('payments').findOne({
-              $or: [
-                  { id: pr.targetExpenseId },
-                  { requestId: pr.targetExpenseId }
-              ]
-          });
-          
-          if (!targetPayment && pr.targetExpenseId) {
-              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
-              if (origReq) {
-                  targetPayment = await tenantDb.collection('payments').findOne({
-                      projectId: origReq.projectId,
-                      taskId: origReq.taskId,
-                      payeeName: origReq.payeeName,
-                      amount: origReq.amount
-                  });
-              } else if (targetExpense) {
-                  targetPayment = await tenantDb.collection('payments').findOne({
-                      projectId: targetExpense.projectId,
-                      taskId: targetExpense.taskId,
-                      payeeName: targetExpense.paidTo,
-                      amount: targetExpense.amount
-                  });
-              }
-          }
-
-          if (targetPayment) {
-              await tenantDb.collection('payments').deleteOne({ id: targetPayment.id });
-          }
-
-          const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
-          const refundAmount = targetExpense ? targetExpense.amount : (origReq ? origReq.amount : pr.amount);
-          currentFund.balance += Number(refundAmount);
-          currentFund.updatedAt = new Date().toISOString();
-          await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
-
-          await tenantDb.collection('officeTransactions').insertOne({
-              id: 'tx_' + Date.now(),
-              type: 'Cash In',
-              amount: Number(refundAmount),
-              description: `Refund: Deleted expense of ${refundAmount} to ${pr.payeeName}`,
-              date: new Date().toISOString(),
-              createdBy: req.user.userId
-          });
-
-          if (pr.category === 'Worker' || (targetExpense && targetExpense.category === 'Labour')) {
-              if (pr.attendanceIds && Array.isArray(pr.attendanceIds)) {
-                  await tenantDb.collection('attendance').updateMany(
-                      { id: { $in: pr.attendanceIds } },
-                      { $set: { paymentStatus: 'Unpaid' } }
-                  );
-              } else {
-                  await tenantDb.collection('attendance').updateOne(
-                      {
-                          projectId: pr.projectId,
-                          taskId: pr.taskId,
-                          workerName: pr.payeeName,
-                          date: pr.dueDate
-                      },
-                      { $set: { paymentStatus: 'Unpaid' } }
-                  );
-              }
-          }
-
-          if (pr.targetExpenseId) {
-              await tenantDb.collection('paymentRequests').updateOne(
-                  { id: pr.targetExpenseId },
-                  { $set: { status: 'Deleted' } }
-              );
-          }
-
-          await tenantDb.collection('paymentRequests').updateOne(
-              { id: requestId },
-              { $set: { status: 'Paid' } }
-          );
-
-          notifyTenantRequestsUpdate(req.user.companyName);
-          return res.json({ success: true, message: 'Delete adjustment request approved and processed' });
+      if (targetExpense) {
+        await tenantDb.collection('expenses').deleteOne({ id: targetExpense.id });
       }
 
-      if (pr.adjustmentType === 'Edit') {
-          let editData: any = {};
-          try {
-              editData = JSON.parse(pr.adjustmentData || '{}');
-          } catch (e) {
-              return res.status(400).json({ error: 'Invalid adjustment data format' });
-          }
+      let targetPayment = await tenantDb.collection('payments').findOne({
+        $or: [
+          { id: pr.targetExpenseId },
+          { requestId: pr.targetExpenseId }
+        ]
+      });
 
-          let targetExpense = await tenantDb.collection('expenses').findOne({
-              $or: [
-                  { id: pr.targetExpenseId },
-                  { requestId: pr.targetExpenseId }
-              ]
+      if (!targetPayment && pr.targetExpenseId) {
+        const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+        if (origReq) {
+          targetPayment = await tenantDb.collection('payments').findOne({
+            projectId: origReq.projectId,
+            taskId: origReq.taskId,
+            payeeName: origReq.payeeName,
+            amount: origReq.amount
           });
-          
-          if (!targetExpense && pr.targetExpenseId) {
-              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
-              if (origReq) {
-                  targetExpense = await tenantDb.collection('expenses').findOne({
-                      projectId: origReq.projectId,
-                      taskId: origReq.taskId,
-                      paidTo: origReq.payeeName,
-                      amount: origReq.amount
-                  });
-              }
-          }
-
-          let targetPayment = await tenantDb.collection('payments').findOne({
-              $or: [
-                  { id: pr.targetExpenseId },
-                  { requestId: pr.targetExpenseId }
-              ]
+        } else if (targetExpense) {
+          targetPayment = await tenantDb.collection('payments').findOne({
+            projectId: targetExpense.projectId,
+            taskId: targetExpense.taskId,
+            payeeName: targetExpense.paidTo,
+            amount: targetExpense.amount
           });
-          
-          if (!targetPayment && pr.targetExpenseId) {
-              const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
-              if (origReq) {
-                  targetPayment = await tenantDb.collection('payments').findOne({
-                      projectId: origReq.projectId,
-                      taskId: origReq.taskId,
-                      payeeName: origReq.payeeName,
-                      amount: origReq.amount
-                  });
-              } else if (targetExpense) {
-                  targetPayment = await tenantDb.collection('payments').findOne({
-                      projectId: targetExpense.projectId,
-                      taskId: targetExpense.taskId,
-                      payeeName: targetExpense.paidTo,
-                      amount: targetExpense.amount
-                  });
-              }
-          }
-
-          const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
-          const oldAmount = targetExpense ? targetExpense.amount : (origReq ? origReq.amount : pr.amount);
-          const newAmount = Number(pr.amount);
-          const diff = newAmount - oldAmount;
-
-          if (diff > 0 && currentFund.balance < diff) {
-              return res.status(400).json({ error: `Insufficient office balance for the additional cost of ₹${diff.toFixed(2)}` });
-          }
-
-          if (diff > 0) {
-              currentFund.balance -= diff;
-              await tenantDb.collection('officeTransactions').insertOne({
-                  id: 'tx_' + Date.now(),
-                  type: 'Cash Out',
-                  amount: Number(diff),
-                  description: `Adjustment: Additional cost for edited expense to ${pr.payeeName}`,
-                  date: new Date().toISOString(),
-                  createdBy: req.user.userId
-              });
-          } else if (diff < 0) {
-              currentFund.balance += Math.abs(diff);
-              await tenantDb.collection('officeTransactions').insertOne({
-                  id: 'tx_' + Date.now(),
-                  type: 'Cash In',
-                  amount: Number(Math.abs(diff)),
-                  description: `Adjustment Refund: Reduced cost for edited expense to ${pr.payeeName}`,
-                  date: new Date().toISOString(),
-                  createdBy: req.user.userId
-              });
-          }
-
-          currentFund.updatedAt = new Date().toISOString();
-          await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
-
-          if (targetExpense) {
-              await tenantDb.collection('expenses').updateOne(
-                  { id: targetExpense.id },
-                  { $set: {
-                      amount: newAmount,
-                      paidTo: editData.paidTo || pr.payeeName,
-                      category: editData.category || targetExpense.category,
-                      notes: editData.notes || targetExpense.notes,
-                      paymentMethod: editData.paymentMethod || targetExpense.paymentMethod,
-                      date: editData.date || targetExpense.date,
-                      materialName: editData.materialName,
-                      materialQty: editData.materialQty,
-                      tools: editData.tools,
-                      vendorTotalToPay: editData.vendorTotalToPay,
-                      vendorPaid: editData.vendorPaid,
-                      vendorRemaining: editData.vendorRemaining,
-                      purchasePricePerCount: editData.purchasePricePerCount,
-                      purchaseTotalFull: editData.purchaseTotalFull,
-                      purchaseItems: editData.purchaseItems
-                   }}
-              );
-          }
-
-          if (targetPayment) {
-              await tenantDb.collection('payments').updateOne(
-                  { id: targetPayment.id },
-                  { $set: {
-                      amount: newAmount,
-                      payeeName: editData.paidTo || pr.payeeName,
-                      paymentDate: editData.date || targetPayment.paymentDate,
-                      paymentMethod: editData.paymentMethod || targetPayment.paymentMethod,
-                      notes: editData.notes || targetPayment.notes
-                  }}
-              );
-          }
-
-          if (pr.targetExpenseId) {
-              await tenantDb.collection('paymentRequests').updateOne(
-                  { id: pr.targetExpenseId },
-                  { $set: { 
-                      amount: newAmount,
-                      payeeName: editData.paidTo || pr.payeeName,
-                      description: editData.notes || pr.description,
-                      paymentMethod: editData.paymentMethod || pr.paymentMethod,
-                      dueDate: editData.date || pr.dueDate
-                  } }
-              );
-          }
-
-          await tenantDb.collection('paymentRequests').updateOne(
-              { id: requestId },
-              { $set: { status: 'Paid' } }
-          );
-
-          notifyTenantRequestsUpdate(req.user.companyName);
-          return res.json({ success: true, message: 'Edit adjustment request approved and processed' });
+        }
       }
+
+      if (targetPayment) {
+        await tenantDb.collection('payments').deleteOne({ id: targetPayment.id });
+      }
+
+      const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+      const refundAmount = targetExpense ? targetExpense.amount : (origReq ? origReq.amount : pr.amount);
+      currentFund.balance += Number(refundAmount);
+      currentFund.updatedAt = new Date().toISOString();
+      await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
+
+      await tenantDb.collection('officeTransactions').insertOne({
+        id: 'tx_' + Date.now(),
+        type: 'Cash In',
+        amount: Number(refundAmount),
+        description: `Refund: Deleted expense of ${refundAmount} to ${pr.payeeName}`,
+        date: new Date().toISOString(),
+        createdBy: req.user.userId
+      });
+
+      if (pr.category === 'Worker' || (targetExpense && targetExpense.category === 'Labour')) {
+        if (pr.attendanceIds && Array.isArray(pr.attendanceIds)) {
+          await tenantDb.collection('attendance').updateMany(
+            { id: { $in: pr.attendanceIds } },
+            { $set: { paymentStatus: 'Unpaid' } }
+          );
+        } else {
+          await tenantDb.collection('attendance').updateOne(
+            {
+              projectId: pr.projectId,
+              taskId: pr.taskId,
+              workerName: pr.payeeName,
+              date: pr.dueDate
+            },
+            { $set: { paymentStatus: 'Unpaid' } }
+          );
+        }
+      }
+
+      if (pr.targetExpenseId) {
+        await tenantDb.collection('paymentRequests').updateOne(
+          { id: pr.targetExpenseId },
+          { $set: { status: 'Deleted' } }
+        );
+      }
+
+      await tenantDb.collection('paymentRequests').updateOne(
+        { id: requestId },
+        { $set: { status: 'Paid' } }
+      );
+
+      notifyTenantRequestsUpdate(req.user.companyName);
+      return res.json({ success: true, message: 'Delete adjustment request approved and processed' });
+    }
+
+    if (pr.adjustmentType === 'Edit') {
+      let editData: any = {};
+      try {
+        editData = JSON.parse(pr.adjustmentData || '{}');
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid adjustment data format' });
+      }
+
+      let targetExpense = await tenantDb.collection('expenses').findOne({
+        $or: [
+          { id: pr.targetExpenseId },
+          { requestId: pr.targetExpenseId }
+        ]
+      });
+
+      if (!targetExpense && pr.targetExpenseId) {
+        const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+        if (origReq) {
+          targetExpense = await tenantDb.collection('expenses').findOne({
+            projectId: origReq.projectId,
+            taskId: origReq.taskId,
+            paidTo: origReq.payeeName,
+            amount: origReq.amount
+          });
+        }
+      }
+
+      let targetPayment = await tenantDb.collection('payments').findOne({
+        $or: [
+          { id: pr.targetExpenseId },
+          { requestId: pr.targetExpenseId }
+        ]
+      });
+
+      if (!targetPayment && pr.targetExpenseId) {
+        const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+        if (origReq) {
+          targetPayment = await tenantDb.collection('payments').findOne({
+            projectId: origReq.projectId,
+            taskId: origReq.taskId,
+            payeeName: origReq.payeeName,
+            amount: origReq.amount
+          });
+        } else if (targetExpense) {
+          targetPayment = await tenantDb.collection('payments').findOne({
+            projectId: targetExpense.projectId,
+            taskId: targetExpense.taskId,
+            payeeName: targetExpense.paidTo,
+            amount: targetExpense.amount
+          });
+        }
+      }
+
+      const origReq = await tenantDb.collection('paymentRequests').findOne({ id: pr.targetExpenseId });
+      const oldAmount = targetExpense ? targetExpense.amount : (origReq ? origReq.amount : pr.amount);
+      const newAmount = Number(pr.amount);
+      const diff = newAmount - oldAmount;
+
+      if (diff > 0 && currentFund.balance < diff) {
+        return res.status(400).json({ error: `Insufficient office balance for the additional cost of ₹${diff.toFixed(2)}` });
+      }
+
+      if (diff > 0) {
+        currentFund.balance -= diff;
+        await tenantDb.collection('officeTransactions').insertOne({
+          id: 'tx_' + Date.now(),
+          type: 'Cash Out',
+          amount: Number(diff),
+          description: `Adjustment: Additional cost for edited expense to ${pr.payeeName}`,
+          date: new Date().toISOString(),
+          createdBy: req.user.userId
+        });
+      } else if (diff < 0) {
+        currentFund.balance += Math.abs(diff);
+        await tenantDb.collection('officeTransactions').insertOne({
+          id: 'tx_' + Date.now(),
+          type: 'Cash In',
+          amount: Number(Math.abs(diff)),
+          description: `Adjustment Refund: Reduced cost for edited expense to ${pr.payeeName}`,
+          date: new Date().toISOString(),
+          createdBy: req.user.userId
+        });
+      }
+
+      currentFund.updatedAt = new Date().toISOString();
+      await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
+
+      if (targetExpense) {
+        await tenantDb.collection('expenses').updateOne(
+          { id: targetExpense.id },
+          {
+            $set: {
+              amount: newAmount,
+              paidTo: editData.paidTo || pr.payeeName,
+              category: editData.category || targetExpense.category,
+              notes: editData.notes || targetExpense.notes,
+              paymentMethod: editData.paymentMethod || targetExpense.paymentMethod,
+              date: editData.date || targetExpense.date,
+              materialName: editData.materialName,
+              materialQty: editData.materialQty,
+              tools: editData.tools,
+              vendorTotalToPay: editData.vendorTotalToPay,
+              vendorPaid: editData.vendorPaid,
+              vendorRemaining: editData.vendorRemaining,
+              purchasePricePerCount: editData.purchasePricePerCount,
+              purchaseTotalFull: editData.purchaseTotalFull,
+              purchaseItems: editData.purchaseItems
+            }
+          }
+        );
+      }
+
+      if (targetPayment) {
+        await tenantDb.collection('payments').updateOne(
+          { id: targetPayment.id },
+          {
+            $set: {
+              amount: newAmount,
+              payeeName: editData.paidTo || pr.payeeName,
+              paymentDate: editData.date || targetPayment.paymentDate,
+              paymentMethod: editData.paymentMethod || targetPayment.paymentMethod,
+              notes: editData.notes || targetPayment.notes
+            }
+          }
+        );
+      }
+
+      if (pr.targetExpenseId) {
+        await tenantDb.collection('paymentRequests').updateOne(
+          { id: pr.targetExpenseId },
+          {
+            $set: {
+              amount: newAmount,
+              payeeName: editData.paidTo || pr.payeeName,
+              description: editData.notes || pr.description,
+              paymentMethod: editData.paymentMethod || pr.paymentMethod,
+              dueDate: editData.date || pr.dueDate
+            }
+          }
+        );
+      }
+
+      await tenantDb.collection('paymentRequests').updateOne(
+        { id: requestId },
+        { $set: { status: 'Paid' } }
+      );
+
+      notifyTenantRequestsUpdate(req.user.companyName);
+      return res.json({ success: true, message: 'Edit adjustment request approved and processed' });
+    }
   }
-  
+
   const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
   const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
-  
+
   const paymentAmount = Number(amount);
-  
+
   if (paymentStatus === 'Paid' && currentFund.balance < paymentAmount) {
     return res.status(400).json({ error: 'Insufficient office balance for this payment.' });
   }
@@ -1276,105 +1294,107 @@ router.post('/payments', requireAdminOrAccountant, async (req: any, res) => {
     await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
 
     await tenantDb.collection('officeTransactions').insertOne({
-        id: 'tx_' + Date.now(),
-        type: 'Cash Out',
-        amount: paymentAmount,
-        description: `Payment to ${payeeName} for ${taskId}`,
-        date: new Date().toISOString(),
-        createdBy: req.user.userId
+      id: 'tx_' + Date.now(),
+      type: 'Cash Out',
+      amount: paymentAmount,
+      description: `Payment to ${payeeName} for ${taskId}`,
+      date: new Date().toISOString(),
+      createdBy: req.user.userId
     });
   }
 
   if (requestId) {
-      const pr = await tenantDb.collection('paymentRequests').findOne({ id: requestId });
-      if (pr) {
-          const currentHistory = pr.paymentHistory || [];
-          const newHistoryItem = {
-              id: 'pay_hist_' + Date.now(),
-              amount: paymentAmount,
-              paymentMethod: paymentMethod,
-              paidAt: new Date().toISOString(),
-              paidBy: req.user.userId,
-              notes: notes || ''
-          };
-          const updatedHistory = [...currentHistory, newHistoryItem];
-          const totalPaid = updatedHistory.reduce((sum: number, item: any) => sum + item.amount, 0);
-          const remaining = Math.max(0, pr.amount - totalPaid);
-          const finalStatus = remaining <= 0 ? 'Paid' : 'Partially Paid';
+    const pr = await tenantDb.collection('paymentRequests').findOne({ id: requestId });
+    if (pr) {
+      const currentHistory = pr.paymentHistory || [];
+      const newHistoryItem = {
+        id: 'pay_hist_' + Date.now(),
+        amount: paymentAmount,
+        paymentMethod: paymentMethod,
+        paidAt: new Date().toISOString(),
+        paidBy: req.user.userId,
+        notes: notes || ''
+      };
+      const updatedHistory = [...currentHistory, newHistoryItem];
+      const totalPaid = updatedHistory.reduce((sum: number, item: any) => sum + item.amount, 0);
+      const remaining = Math.max(0, pr.amount - totalPaid);
+      const finalStatus = remaining <= 0 ? 'Paid' : 'Partially Paid';
 
-          await tenantDb.collection('paymentRequests').updateOne(
-              { id: requestId },
-              { $set: { 
-                  status: finalStatus,
-                  paymentHistory: updatedHistory
-              } }
-          );
-
-          if (pr.category === 'Worker' && finalStatus === 'Paid') {
-              if (pr.attendanceIds && Array.isArray(pr.attendanceIds)) {
-                  await tenantDb.collection('attendance').updateMany(
-                      { id: { $in: pr.attendanceIds } },
-                      { $set: { paymentStatus: 'Paid' } }
-                  );
-              } else {
-                  await tenantDb.collection('attendance').updateOne(
-                      {
-                          projectId: pr.projectId,
-                          taskId: pr.taskId,
-                          workerName: pr.payeeName,
-                          date: pr.dueDate
-                      },
-                      { $set: { paymentStatus: 'Paid' } }
-                  );
-              }
+      await tenantDb.collection('paymentRequests').updateOne(
+        { id: requestId },
+        {
+          $set: {
+            status: finalStatus,
+            paymentHistory: updatedHistory
           }
-          
-          const categoryMap: Record<string, string> = {
-            'Worker': 'Labour',
-            'Vendor': 'Material',
-            'Transportation': 'Transport',
-            'Vendor Payment': 'Vendor Payment',
-            'Purchase': 'Material',
-            'Other': 'Other'
-          };
-          
-          await tenantDb.collection('expenses').insertOne({
-            id: 'exp_' + Date.now(),
-            projectId: pr.projectId,
-            taskId: pr.taskId,
-            category: categoryMap[pr.category] || 'Other',
-            amount: paymentAmount,
-            paidTo: pr.payeeName,
-            paymentMethod: paymentMethod || pr.paymentMethod || 'Office Fund',
-            date: paymentDate,
-            fromLocation: pr.fromLocation,
-            toLocation: pr.toLocation,
-            notes: notes || pr.description,
-            billImage: pr.billImage,
-            createdBy: pr.createdBy || req.user.userId,
-            materialName: pr.materialName,
-            materialQty: pr.materialQty,
-            tools: pr.tools,
-            vendorTotalToPay: pr.vendorTotalToPay,
-            vendorPaid: totalPaid,
-            vendorRemaining: remaining,
-            purchasePricePerCount: pr.purchasePricePerCount,
-            purchaseTotalFull: pr.purchaseTotalFull,
-            purchaseTotal: pr.purchaseTotal,
-            purchaseItems: pr.purchaseItems,
-            requestId: pr.id
-          });
+        }
+      );
+
+      if (pr.category === 'Worker' && finalStatus === 'Paid') {
+        if (pr.attendanceIds && Array.isArray(pr.attendanceIds)) {
+          await tenantDb.collection('attendance').updateMany(
+            { id: { $in: pr.attendanceIds } },
+            { $set: { paymentStatus: 'Paid' } }
+          );
+        } else {
+          await tenantDb.collection('attendance').updateOne(
+            {
+              projectId: pr.projectId,
+              taskId: pr.taskId,
+              workerName: pr.payeeName,
+              date: pr.dueDate
+            },
+            { $set: { paymentStatus: 'Paid' } }
+          );
+        }
       }
+
+      const categoryMap: Record<string, string> = {
+        'Worker': 'Labour',
+        'Vendor': 'Material',
+        'Transportation': 'Transport',
+        'Vendor Payment': 'Vendor Payment',
+        'Purchase': 'Material',
+        'Other': 'Other'
+      };
+
+      await tenantDb.collection('expenses').insertOne({
+        id: 'exp_' + Date.now(),
+        projectId: pr.projectId,
+        taskId: pr.taskId,
+        category: categoryMap[pr.category] || 'Other',
+        amount: paymentAmount,
+        paidTo: pr.payeeName,
+        paymentMethod: paymentMethod || pr.paymentMethod || 'Office Fund',
+        date: paymentDate,
+        fromLocation: pr.fromLocation,
+        toLocation: pr.toLocation,
+        notes: notes || pr.description,
+        billImage: pr.billImage,
+        createdBy: pr.createdBy || req.user.userId,
+        materialName: pr.materialName,
+        materialQty: pr.materialQty,
+        tools: pr.tools,
+        vendorTotalToPay: pr.vendorTotalToPay,
+        vendorPaid: totalPaid,
+        vendorRemaining: remaining,
+        purchasePricePerCount: pr.purchasePricePerCount,
+        purchaseTotalFull: pr.purchaseTotalFull,
+        purchaseTotal: pr.purchaseTotal,
+        purchaseItems: pr.purchaseItems,
+        requestId: pr.id
+      });
+    }
   }
 
   await tenantDb.collection('auditLogs').insertOne({
-      id: 'audit_' + Date.now(),
-      action: 'Create',
-      entity: 'Payment',
-      entityId: newPayment.id,
-      performedBy: req.user.userId,
-      timestamp: new Date().toISOString(),
-      details: `Processed payment of ${amount} to ${payeeName}`
+    id: 'audit_' + Date.now(),
+    action: 'Create',
+    entity: 'Payment',
+    entityId: newPayment.id,
+    performedBy: req.user.userId,
+    timestamp: new Date().toISOString(),
+    details: `Processed payment of ${amount} to ${payeeName}`
   });
 
   notifyTenantRequestsUpdate(req.user.companyName);
@@ -1389,9 +1409,9 @@ router.put('/payments/:id', requireAdminOrAccountant, async (req: any, res) => {
 
   const tenantDb = await getTenantDb(req.user.companyName);
   const result = await tenantDb.collection('payments').findOneAndUpdate(
-      { id: req.params.id },
-      { $set: { payeeType, payeeName, amount: Number(amount), paymentDate, paymentMethod, paymentStatus, notes } },
-      { returnDocument: 'after' }
+    { id: req.params.id },
+    { $set: { payeeType, payeeName, amount: Number(amount), paymentDate, paymentMethod, paymentStatus, notes } },
+    { returnDocument: 'after' }
   );
 
   if (!result) return res.status(404).json({ error: 'Payment not found' });
@@ -1400,7 +1420,7 @@ router.put('/payments/:id', requireAdminOrAccountant, async (req: any, res) => {
 
 router.delete('/payments/:id', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
-  
+
   const payment = await tenantDb.collection('payments').findOne({ id: req.params.id });
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
@@ -1410,87 +1430,139 @@ router.delete('/payments/:id', async (req: any, res) => {
   if (payment.paymentStatus === 'Paid') {
     const fund = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
     const currentFund = fund || { id: 'fund_main', balance: 0, updatedAt: '' };
-    
+
     currentFund.balance += Number(payment.amount);
     currentFund.updatedAt = new Date().toISOString();
     await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
 
     await tenantDb.collection('officeTransactions').insertOne({
-        id: 'tx_' + Date.now(),
-        type: 'Cash In',
-        amount: Number(payment.amount),
-        description: `Refund: Deleted payment of ${payment.amount} to ${payment.payeeName}`,
-        date: new Date().toISOString(),
-        createdBy: req.user.userId
+      id: 'tx_' + Date.now(),
+      type: 'Cash In',
+      amount: Number(payment.amount),
+      description: `Refund: Deleted payment of ${payment.amount} to ${payment.payeeName}`,
+      date: new Date().toISOString(),
+      createdBy: req.user.userId
     });
   }
-  
+
   res.json({ success: true, message: 'Payment deleted and refunded successfully' });
 });
 
 // 8. Accountant Module Routes
 router.get('/office/funds', async (req: any, res) => {
-    const tenantDb = await getTenantDb(req.user.companyName);
-    const officeFunds = await tenantDb.collection('officeFunds').find({}).toArray();
-    const officeTransactions = await tenantDb.collection('officeTransactions').find({}).sort({ _id: -1 }).toArray();
-    res.json({ officeFunds, officeTransactions });
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const officeFunds = await tenantDb.collection('officeFunds').find({}).toArray();
+  const officeTransactions = await tenantDb.collection('officeTransactions').find({}).sort({ _id: -1 }).toArray();
+  res.json({ officeFunds, officeTransactions });
 });
 
 router.post('/office/funds', requireAdminOrAccountant, async (req: any, res) => {
-    const { type, amount, description, date, projectId, source, paymentMethod, reference, inflowType } = req.body;
-    const tenantDb = await getTenantDb(req.user.companyName);
-    
-    const newTransaction = {
-        id: 'tx_' + Date.now(),
-        type,
-        amount: Number(amount),
-        description,
-        date: date || new Date().toISOString(),
-        createdBy: req.user.userId,
-        source,
-        paymentMethod,
-        reference,
-        inflowType
-    };
-    await tenantDb.collection('officeTransactions').insertOne(newTransaction);
-    
-    let currentFund: any = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
-    if (!currentFund) currentFund = { id: 'fund_main', balance: 0, updatedAt: '' };
-    
-    if (type === 'Cash In') currentFund.balance += Number(amount);
-    else currentFund.balance -= Number(amount);
-    currentFund.updatedAt = new Date().toISOString();
-    
-    await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
-    
-    await tenantDb.collection('auditLogs').insertOne({
-        id: 'audit_' + Date.now(),
-        action: 'Transaction',
-        entity: 'OfficeFund',
-        entityId: newTransaction.id,
-        performedBy: req.user.userId,
-        timestamp: new Date().toISOString(),
-        details: `${type} of ${amount} from ${source || 'unknown'} for project ${projectId || 'General'}`
-    });
-    
-    res.status(201).json(newTransaction);
+  const { type, amount, description, date, projectId, source, paymentMethod, reference, inflowType } = req.body;
+  const tenantDb = await getTenantDb(req.user.companyName);
+
+  const newTransaction = {
+    id: 'tx_' + Date.now(),
+    type,
+    amount: Number(amount),
+    description,
+    date: date || new Date().toISOString(),
+    createdBy: req.user.userId,
+    source,
+    paymentMethod,
+    reference,
+    inflowType
+  };
+  await tenantDb.collection('officeTransactions').insertOne(newTransaction);
+
+  let currentFund: any = await tenantDb.collection('officeFunds').findOne({ id: 'fund_main' });
+  if (!currentFund) currentFund = { id: 'fund_main', balance: 0, updatedAt: '' };
+
+  if (type === 'Cash In') currentFund.balance += Number(amount);
+  else currentFund.balance -= Number(amount);
+  currentFund.updatedAt = new Date().toISOString();
+
+  await tenantDb.collection('officeFunds').replaceOne({ id: 'fund_main' }, currentFund, { upsert: true });
+
+  await tenantDb.collection('auditLogs').insertOne({
+    id: 'audit_' + Date.now(),
+    action: 'Transaction',
+    entity: 'OfficeFund',
+    entityId: newTransaction.id,
+    performedBy: req.user.userId,
+    timestamp: new Date().toISOString(),
+    details: `${type} of ${amount} from ${source || 'unknown'} for project ${projectId || 'General'}`
+  });
+
+  res.status(201).json(newTransaction);
 });
 
 router.get('/payment-requests', async (req: any, res) => {
-    const tenantDb = await getTenantDb(req.user.companyName);
-    const paymentRequests = await tenantDb.collection('paymentRequests').find({}).sort({ createdAt: -1 }).toArray();
-    res.json({ paymentRequests });
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const paymentRequests = await tenantDb.collection('paymentRequests').find({}).sort({ createdAt: -1 }).toArray();
+  res.json({ paymentRequests });
 });
 
 router.post('/payment-requests', async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, adjustmentType, targetExpenseId, adjustmentData, attendanceIds } = req.body;
-    if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
-        return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
-    }
+  const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, billNo, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, adjustmentType, targetExpenseId, adjustmentData, attendanceIds, status } = req.body;
+  if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
+    return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
+  }
 
-    const tenantDb = await getTenantDb(req.user.companyName);
-    const newRequest = {
-        id: 'pr_' + Date.now(),
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const newRequest = {
+    id: 'pr_' + Date.now(),
+    projectId,
+    taskId,
+    payeeName: String(payeeName).trim(),
+    category,
+    amount: Number(amount),
+    description: description || '',
+    fromLocation: fromLocation || '',
+    toLocation: toLocation || '',
+    dueDate,
+    priority: priority || 'Medium',
+    status: status || 'Draft',
+    paymentMethod: paymentMethod || 'Bank Transfer',
+    billImage,
+    billNo: typeof billNo === 'string' ? billNo.trim() || undefined : undefined,
+    createdBy: req.user.userId,
+    createdAt: new Date().toISOString(),
+    materialName,
+    materialQty,
+    tools,
+    vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : undefined,
+    vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : undefined,
+    vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : undefined,
+    purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : undefined,
+    purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : undefined,
+    purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : undefined,
+    purchaseItems: purchaseItems ?? undefined,
+    adjustmentType: adjustmentType || undefined,
+    targetExpenseId: targetExpenseId || undefined,
+    adjustmentData: adjustmentData || undefined,
+    attendanceIds: attendanceIds ?? undefined,
+  };
+  await tenantDb.collection('paymentRequests').insertOne(newRequest);
+  notifyTenantRequestsUpdate(req.user.companyName);
+  res.status(201).json(newRequest);
+});
+
+router.put('/payment-requests/:id', async (req: any, res) => {
+  const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage, billNo, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, status } = req.body;
+  if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
+    return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
+  }
+
+  const tenantDb = await getTenantDb(req.user.companyName);
+
+  const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
+  if (!existing) return res.status(404).json({ error: 'Payment request not found' });
+  if (existing.status !== 'Pending' && existing.status !== 'Draft') return res.status(400).json({ error: 'Only draft or pending payment requests can be edited' });
+
+  const result = await tenantDb.collection('paymentRequests').findOneAndUpdate(
+    { id: req.params.id },
+    {
+      $set: {
         projectId,
         taskId,
         payeeName: String(payeeName).trim(),
@@ -1500,119 +1572,73 @@ router.post('/payment-requests', async (req: any, res) => {
         fromLocation: fromLocation || '',
         toLocation: toLocation || '',
         dueDate,
-        priority: priority || 'Medium',
-        status: 'Pending',
-        paymentMethod: paymentMethod || 'Bank Transfer',
-        billImage,
-        createdBy: req.user.userId,
-        createdAt: new Date().toISOString(),
-        materialName,
-        materialQty,
-        tools,
-        vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : undefined,
-        vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : undefined,
-        vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : undefined,
-        purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : undefined,
-        purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : undefined,
-        purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : undefined,
-        purchaseItems: purchaseItems ?? undefined,
-        adjustmentType: adjustmentType || undefined,
-        targetExpenseId: targetExpenseId || undefined,
-        adjustmentData: adjustmentData || undefined,
-        attendanceIds: attendanceIds ?? undefined,
-    };
-    await tenantDb.collection('paymentRequests').insertOne(newRequest);
-    notifyTenantRequestsUpdate(req.user.companyName);
-    res.status(201).json(newRequest);
-});
-
-router.put('/payment-requests/:id', async (req: any, res) => {
-    const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems } = req.body;
-    if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
-        return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
-    }
-
-    const tenantDb = await getTenantDb(req.user.companyName);
-    
-    const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
-    if (!existing) return res.status(404).json({ error: 'Payment request not found' });
-    if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be edited' });
-
-    const result = await tenantDb.collection('paymentRequests').findOneAndUpdate(
-        { id: req.params.id },
-        { $set: { 
-            projectId,
-            taskId,
-            payeeName: String(payeeName).trim(),
-            category,
-            amount: Number(amount),
-            description: description || '',
-            fromLocation: fromLocation || '',
-            toLocation: toLocation || '',
-            dueDate,
-            priority: priority || existing.priority || 'Medium',
-            paymentMethod: paymentMethod ?? existing.paymentMethod,
-            billImage: billImage !== undefined ? billImage : existing.billImage,
-            materialName: materialName !== undefined ? materialName : existing.materialName,
-            materialQty: materialQty !== undefined ? materialQty : existing.materialQty,
-            tools: tools !== undefined ? tools : existing.tools,
-            vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : existing.vendorTotalToPay,
-            vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : existing.vendorPaid,
-            vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : existing.vendorRemaining,
-            purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : existing.purchasePricePerCount,
-            purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : existing.purchaseTotalFull,
-            purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : existing.purchaseTotal,
-            purchaseItems: purchaseItems !== undefined ? purchaseItems : existing.purchaseItems,
-        } },
-        { returnDocument: 'after' }
-    );
-    notifyTenantRequestsUpdate(req.user.companyName);
-    res.json(result);
+        priority: priority || existing.priority || 'Medium',
+        status: status || existing.status,
+        paymentMethod: paymentMethod ?? existing.paymentMethod,
+        billImage: billImage !== undefined ? billImage : existing.billImage,
+        billNo: billNo !== undefined ? (typeof billNo === 'string' ? billNo.trim() || undefined : undefined) : existing.billNo,
+        materialName: materialName !== undefined ? materialName : existing.materialName,
+        materialQty: materialQty !== undefined ? materialQty : existing.materialQty,
+        tools: tools !== undefined ? tools : existing.tools,
+        vendorTotalToPay: vendorTotalToPay !== undefined ? Number(vendorTotalToPay) : existing.vendorTotalToPay,
+        vendorPaid: vendorPaid !== undefined ? Number(vendorPaid) : existing.vendorPaid,
+        vendorRemaining: vendorRemaining !== undefined ? Number(vendorRemaining) : existing.vendorRemaining,
+        purchasePricePerCount: purchasePricePerCount !== undefined ? Number(purchasePricePerCount) : existing.purchasePricePerCount,
+        purchaseTotalFull: purchaseTotalFull !== undefined ? Number(purchaseTotalFull) : existing.purchaseTotalFull,
+        purchaseTotal: purchaseTotal !== undefined ? Number(purchaseTotal) : existing.purchaseTotal,
+        purchaseItems: purchaseItems !== undefined ? purchaseItems : existing.purchaseItems,
+      }
+    },
+    { returnDocument: 'after' }
+  );
+  notifyTenantRequestsUpdate(req.user.companyName);
+  res.json(result);
 });
 
 router.delete('/payment-requests/:id', async (req: any, res) => {
-    const tenantDb = await getTenantDb(req.user.companyName);
-    
-    const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
-    if (!existing) return res.status(404).json({ error: 'Payment request not found' });
-    if (existing.status !== 'Pending') return res.status(400).json({ error: 'Only pending payment requests can be deleted' });
+  const tenantDb = await getTenantDb(req.user.companyName);
 
-    if (existing.category === 'Worker') {
-        if (existing.attendanceIds && Array.isArray(existing.attendanceIds)) {
-            await tenantDb.collection('attendance').updateMany(
-                { id: { $in: existing.attendanceIds } },
-                { $set: { paymentStatus: 'Unpaid' } }
-            );
-        } else {
-            await tenantDb.collection('attendance').updateOne(
-                {
-                    projectId: existing.projectId,
-                    taskId: existing.taskId,
-                    workerName: existing.payeeName,
-                    date: existing.dueDate
-                },
-                { $set: { paymentStatus: 'Unpaid' } }
-            );
-        }
+  const existing = await tenantDb.collection('paymentRequests').findOne({ id: req.params.id });
+  if (!existing) return res.status(404).json({ error: 'Payment request not found' });
+  if (existing.status !== 'Pending' && existing.status !== 'Draft') return res.status(400).json({ error: 'Only draft or pending payment requests can be deleted' });
+
+  if (existing.category === 'Worker') {
+    if (existing.attendanceIds && Array.isArray(existing.attendanceIds)) {
+      await tenantDb.collection('attendance').updateMany(
+        { id: { $in: existing.attendanceIds } },
+        { $set: { paymentStatus: 'Unpaid' } }
+      );
+    } else {
+      await tenantDb.collection('attendance').updateOne(
+        {
+          projectId: existing.projectId,
+          taskId: existing.taskId,
+          workerName: existing.payeeName,
+          date: existing.dueDate
+        },
+        { $set: { paymentStatus: 'Unpaid' } }
+      );
     }
+  }
 
-    await tenantDb.collection('paymentRequests').deleteOne({ id: req.params.id });
-    notifyTenantRequestsUpdate(req.user.companyName);
-    res.json({ success: true, message: 'Payment request deleted' });
+  await tenantDb.collection('paymentRequests').deleteOne({ id: req.params.id });
+  notifyTenantRequestsUpdate(req.user.companyName);
+  res.json({ success: true, message: 'Payment request deleted' });
 });
 
 // 7. General ERP reports and stats endpoint
 router.get('/reports/summary', async (req: any, res) => {
   const tenantDb = await getTenantDb(req.user.companyName);
 
-  const { taskToLabourCost, taskToExpensesCost } = await calculateMetrics(req.user.companyName);
-  
+  const { taskToLabourCost, taskToExpensesCost, taskToPendingExpenseCost } = await calculateMetrics(req.user.companyName);
+
   const projects = await tenantDb.collection('projects').find({}).toArray();
   const tasks = await tenantDb.collection('tasks').find({}).toArray();
   const expenses = await tenantDb.collection('expenses').find({}).toArray();
   const attendance = await tenantDb.collection('attendance').find({}).toArray();
   const payments = await tenantDb.collection('payments').find({}).toArray();
   const officeFunds = await tenantDb.collection('officeFunds').find({}).toArray();
+  const paymentRequests = await tenantDb.collection('paymentRequests').find({}).toArray();
 
   const totalProjects = projects.length;
   const totalTasks = tasks.length;
@@ -1627,7 +1653,11 @@ router.get('/reports/summary', async (req: any, res) => {
     return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
   }, 0);
 
-  const totalExpenses = directExpensesSum + labourWagesSum;
+  const pendingRequestSum = paymentRequests
+    .filter((pr: any) => pr.status === 'Pending' || pr.status === 'Draft')
+    .reduce((sum: number, pr: any) => sum + pr.amount, 0);
+
+  const totalExpenses = directExpensesSum + labourWagesSum + pendingRequestSum;
 
   const totalPaidAmount = payments.filter((p: any) => p.paymentStatus === 'Paid').reduce((sum: number, p: any) => sum + p.amount, 0);
   const pendingPayments = payments.filter((p: any) => p.paymentStatus === 'Pending' || p.paymentStatus === 'Partial').reduce((sum: number, p: any) => sum + p.amount, 0);
@@ -1643,11 +1673,12 @@ router.get('/reports/summary', async (req: any, res) => {
 
   const taskSummary = tasks.map((t: any) => {
     const dExp = expenses.filter((e: any) => e.taskId === t.id).reduce((sum: number, e: any) => sum + e.amount, 0);
+    const pExp = taskToPendingExpenseCost[t.id] || 0;
     const lExp = attendance.filter((a: any) => a.taskId === t.id).reduce((sum: number, att: any) => {
       let portion = att.status === 'Present' ? 1 : att.status === 'Half Day' ? 0.5 : 0;
       return sum + (att.dailyWage * portion) + (att.overtimeAmount || 0);
     }, 0);
-    const totalExp = dExp + lExp;
+    const totalExp = dExp + lExp + pExp;
     return {
       taskId: t.id,
       taskName: t.taskName,
@@ -1661,11 +1692,32 @@ router.get('/reports/summary', async (req: any, res) => {
     };
   });
 
-  const recentExpenses = expenses.slice(-5).reverse().map((e: any) => ({
+  // Recent expenses include both approved expenses and pending/draft requests
+  const pendingAsExpenses = paymentRequests
+    .filter((pr: any) => pr.status === 'Pending' || pr.status === 'Draft')
+    .map((pr: any) => ({
+      id: pr.id,
+      projectId: pr.projectId,
+      taskId: pr.taskId,
+      paidTo: pr.payeeName,
+      category: pr.category,
+      amount: pr.amount,
+      date: pr.dueDate,
+      notes: pr.description,
+      status: pr.status,
+      paymentMethod: pr.paymentMethod,
+      projectName: projects.find((p: any) => p.id === pr.projectId)?.projectName || 'Unknown',
+      taskName: tasks.find((t: any) => t.id === pr.taskId)?.taskName || 'Unknown',
+      isPendingRequest: true
+    }));
+
+  const allRecentItems = [...pendingAsExpenses, ...expenses.map((e: any) => ({
     ...e,
     projectName: projects.find((p: any) => p.id === e.projectId)?.projectName || 'Unknown',
     taskName: tasks.find((t: any) => t.id === e.taskId)?.taskName || 'Unknown'
-  }));
+  }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const recentExpenses = allRecentItems.slice(0, 5);
 
   const recentPayments = payments.slice(-5).reverse().map((p: any) => ({
     ...p,
@@ -1739,7 +1791,7 @@ router.post('/projects/:projectId/documents', async (req: any, res) => {
         console.log(`[CLOUDINARY] Uploading file: ${name}`);
         const base64Clean = base64Data.replace(/^data:.*;base64,/, '');
         const uploadStr = `data:${type};base64,${base64Clean}`;
-        
+
         const result = await cloudinary.uploader.upload(uploadStr, {
           folder: `logro/documents/${req.params.projectId}`,
           resource_type: 'auto'
@@ -1803,7 +1855,7 @@ router.post('/projects/:projectId/documents', async (req: any, res) => {
     };
 
     await tenantDb.collection('documents').insertOne(newDoc);
-    
+
     let storageType = 'Local DB';
     if (isUploadedToCloudinary) storageType = 'Cloudinary';
     else if (isUploadedToMega) storageType = 'MEGA';
@@ -1832,7 +1884,7 @@ router.post('/projects/:projectId/documents', async (req: any, res) => {
 router.delete('/projects/:projectId/documents/:documentId', async (req: any, res) => {
   try {
     const tenantDb = await getTenantDb(req.user.companyName);
-    
+
     const doc = await tenantDb.collection('documents').findOne({ id: req.params.documentId });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
