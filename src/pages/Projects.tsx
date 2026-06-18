@@ -1895,26 +1895,30 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                           )}
 
                           {userRole !== 'manager' && (
-                            <div className="grid grid-cols-3 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-bold border border-zinc-100">
-                              <div>
-                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
-                                <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
-                              </div>
-                              <div>
-                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Actual Cost</span>
-                                <span className="text-zinc-900 block">{formatCur(taskCommitted)}</span>
-                                {(t.pendingExpenses || 0) > 0 && (
-                                  <span className="text-[9px] text-amber-600 block">{formatCur(t.pendingExpenses)} pending</span>
-                                )}
-                              </div>
-                              <div>
-                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
-                                <span className={`block ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                  {formatCur(t.assignedBudget - taskCommitted)}
-                                </span>
-                              </div>
-                            </div>
-                          )}
+                             <div className="grid grid-cols-4 gap-1 sm:gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-bold border border-zinc-100">
+                               <div>
+                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
+                                 <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
+                               </div>
+                               <div>
+                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Expenses</span>
+                                 <span className="text-zinc-900 block">{formatCur(t.directExpenses || 0)}</span>
+                                 {(t.pendingExpenses || 0) > 0 && (
+                                   <span className="text-[9px] text-amber-600 block">+{formatCur(t.pendingExpenses)} pending</span>
+                                 )}
+                               </div>
+                               <div>
+                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Labour</span>
+                                 <span className="text-zinc-900 block">{formatCur(t.labourCost || 0)}</span>
+                                </div>
+                               <div>
+                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
+                                 <span className={`block ${isOver ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                   {formatCur(t.assignedBudget - taskCommitted)}
+                                 </span>
+                               </div>
+                             </div>
+                           )}
 
                           {/* Instant Slider */}
                           <div className="space-y-1.5">
@@ -2167,14 +2171,18 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             {/* Quick stats specific to this active task */}
             {userRole !== 'manager' && (
               <>
-                <div className="grid grid-cols-3 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
+                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
                   <div>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase block">Budget</span>
                     <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.assignedBudget)}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Task Overheads</span>
-                    <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.totalExpenses || 0)}</span>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Expenses</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.directExpenses || 0)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Labour</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.labourCost || 0)}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase block">Difference</span>

@@ -420,14 +420,18 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
 
                       {/* Cost Details bar */}
                       {userRole !== 'manager' && (
-                        <div className="grid grid-cols-3 gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-semibold border border-zinc-100">
+                        <div className="grid grid-cols-4 gap-1 sm:gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-semibold border border-zinc-100">
                           <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
                             <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
                           </div>
                           <div>
-                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Actual Costs</span>
-                            <span className="text-zinc-900 block">{formatCur(totalExpenses)}</span>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Expenses</span>
+                            <span className="text-zinc-900 block">{formatCur(t.directExpenses || 0)}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Labour</span>
+                            <span className="text-zinc-900 block">{formatCur(t.labourCost || 0)}</span>
                           </div>
                           <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
