@@ -485,8 +485,8 @@ router.get('/expenses', async (req: any, res) => {
 
 router.put('/expenses/:id', async (req: any, res) => {
   const { projectId, taskId, category, amount, paidTo, paymentMethod, date, notes, billImage, fromLocation, toLocation, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems } = req.body;
-  if (!category || amount === undefined || !paidTo || !paymentMethod || !date) {
-    return res.status(400).json({ error: 'All core fields are required' });
+  if (!category || amount === undefined || !paidTo) {
+    return res.status(400).json({ error: 'Category, amount, and payee are required' });
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
@@ -504,8 +504,8 @@ router.put('/expenses/:id', async (req: any, res) => {
           description: notes || '',
           fromLocation: fromLocation ?? null,
           toLocation: toLocation ?? null,
-          dueDate: date,
-          paymentMethod,
+          dueDate: date || new Date().toISOString().split('T')[0],
+          paymentMethod: paymentMethod || 'Bank Transfer',
           billImage: billImage !== undefined ? billImage : null,
           materialName: materialName ?? null,
           materialQty: materialQty ?? null,
@@ -537,8 +537,8 @@ router.put('/expenses/:id', async (req: any, res) => {
         category: category,
         amount: Number(amount),
         paidTo,
-        paymentMethod,
-        date,
+        paymentMethod: paymentMethod || 'Bank Transfer',
+        date: date || new Date().toISOString().split('T')[0],
         notes,
         billImage: billImage !== undefined ? billImage : null,
         fromLocation: fromLocation ?? null,
@@ -1504,8 +1504,8 @@ router.get('/payment-requests', async (req: any, res) => {
 
 router.post('/payment-requests', async (req: any, res) => {
   const { projectId, taskId, payeeName, category, amount, description, dueDate, priority, fromLocation, toLocation, paymentMethod, billImage, billNo, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, adjustmentType, targetExpenseId, adjustmentData, attendanceIds, status } = req.body;
-  if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
-    return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
+  if (!projectId || !taskId || !payeeName || !category || amount === undefined) {
+    return res.status(400).json({ error: 'Project, task, payee, category, and amount are required' });
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
@@ -1519,7 +1519,7 @@ router.post('/payment-requests', async (req: any, res) => {
     description: description || '',
     fromLocation: fromLocation || '',
     toLocation: toLocation || '',
-    dueDate,
+    dueDate: dueDate || new Date().toISOString().split('T')[0],
     priority: priority || 'Medium',
     status: status || 'Draft',
     paymentMethod: paymentMethod || 'Bank Transfer',
@@ -1549,8 +1549,8 @@ router.post('/payment-requests', async (req: any, res) => {
 
 router.put('/payment-requests/:id', async (req: any, res) => {
   const { projectId, taskId, payeeName, category, amount, description, fromLocation, toLocation, dueDate, priority, paymentMethod, billImage, billNo, materialName, materialQty, tools, vendorTotalToPay, vendorPaid, vendorRemaining, purchasePricePerCount, purchaseTotalFull, purchaseTotal, purchaseItems, status } = req.body;
-  if (!projectId || !taskId || !payeeName || !category || amount === undefined || !dueDate) {
-    return res.status(400).json({ error: 'Project, task, payee, category, amount, and due date are required' });
+  if (!projectId || !taskId || !payeeName || !category || amount === undefined) {
+    return res.status(400).json({ error: 'Project, task, payee, category, and amount are required' });
   }
 
   const tenantDb = await getTenantDb(req.user.companyName);
@@ -1571,10 +1571,10 @@ router.put('/payment-requests/:id', async (req: any, res) => {
         description: description || '',
         fromLocation: fromLocation || '',
         toLocation: toLocation || '',
-        dueDate,
+        dueDate: dueDate || existing.dueDate || new Date().toISOString().split('T')[0],
         priority: priority || existing.priority || 'Medium',
         status: status || existing.status,
-        paymentMethod: paymentMethod ?? existing.paymentMethod,
+        paymentMethod: paymentMethod ?? existing.paymentMethod ?? 'Bank Transfer',
         billImage: billImage !== undefined ? billImage : existing.billImage,
         billNo: billNo !== undefined ? (typeof billNo === 'string' ? billNo.trim() || undefined : undefined) : existing.billNo,
         materialName: materialName !== undefined ? materialName : existing.materialName,
