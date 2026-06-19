@@ -1487,33 +1487,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                   )
                 )}
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment date</label>
-                  <input
-                    type="date"
-                    required
-                    value={reqDate}
-                    onChange={(e) => setReqDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Method</label>
-                  <select
-                    value={reqPaymentMethod}
-                    onChange={(e) => setReqPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl"
-                  >
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Upload Doc</label>
                 <div className="flex items-center gap-3">

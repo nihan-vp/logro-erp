@@ -3158,36 +3158,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   )
                 )}
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment date</label>
-                  <input
-                    type="date"
-                    required
-                    value={expenseDate}
-                    onChange={(e) => setExpenseDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Payment Method</label>
-                  <select
-                    value={expensePaymentMethod}
-                    onChange={(e) => setExpensePaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl"
-                  >
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Upload Doc</label>
                 <div className="flex items-center gap-3">
                   <label className="flex-1 flex flex-col items-center justify-center border border-zinc-300 border-dashed rounded-xl px-2 py-3.5 cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition text-center text-xs text-zinc-600 font-bold gap-1 mt-1">
                     <UploadCloud className="w-5 h-5 text-zinc-400" />
