@@ -9,6 +9,16 @@ const formatLocalDate = (d: Date) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
+const savePdf = (doc: jsPDF, fileName: string) => {
+  const channel = (window as any).PdfDownloadChannel;
+  if (channel && typeof channel.postMessage === 'function') {
+    const base64String = doc.output('datauristring').split(',')[1];
+    channel.postMessage(JSON.stringify({ blobData: base64String, name: fileName }));
+  } else {
+    doc.save(fileName);
+  }
+};
+
 interface GenerateAllWorkersPdfParams {
   customStartStr: string;
   customEndStr: string;
@@ -279,7 +289,7 @@ export const generateAllWorkersAttendancePdf = ({
       });
     }
 
-    doc.save(`all_workers_attendance_${startStr}_to_${endStr}.pdf`);
+    savePdf(doc, `all_workers_attendance_${startStr}_to_${endStr}.pdf`);
     notify.success('All workers attendance PDF statement downloaded.');
   } catch (pdfErr) {
     console.error('All Workers PDF Generation Error:', pdfErr);
@@ -656,7 +666,7 @@ export const generateSingleWorkerAttendancePdf = ({
       doc.text(`Page ${i} of ${pageCount}`, 195, 287, { align: 'right' });
     }
 
-    doc.save(`report_${worker.name.toLowerCase().replace(/\s+/g, '_')}_${startStr}_to_${endStr}.pdf`);
+    savePdf(doc, `report_${worker.name.toLowerCase().replace(/\s+/g, '_')}_${startStr}_to_${endStr}.pdf`);
     notify.success('PDF report downloaded successfully.');
   } catch (pdfErr) {
     console.error('PDF Generation Error:', pdfErr);
