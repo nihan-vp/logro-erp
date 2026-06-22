@@ -494,12 +494,12 @@ export const generateSingleWorkerAttendancePdf = ({
     doc.text('No Log', 173, calStartY + 5.5);
 
     // Calculate and draw dots
-    let days: Date[] = [];
+    const days: Date[] = [];
     if (overviewFilterType === 'weekly') {
       const curr = new Date();
       const dayOffset = curr.getDay();
-      const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
-      const start = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+      const sundayOffset = -dayOffset;
+      const start = new Date(curr.setDate(curr.getDate() + sundayOffset + (selectedWeekOffset * 7)));
       for (let i = 0; i < 7; i++) {
         const d = new Date(start);
         d.setDate(start.getDate() + i);
@@ -582,10 +582,9 @@ export const generateSingleWorkerAttendancePdf = ({
     drawTableHeader(currentY);
     currentY += 7;
 
-    doc.setFont('Helvetica', 'normal');
-    doc.setFontSize(8);
+    const sortedWorkerAtt = [...workerAtt].sort((a, b) => a.date.localeCompare(b.date));
 
-    workerAtt.forEach((a) => {
+    sortedWorkerAtt.forEach((a) => {
       if (currentY > 255) {
         doc.addPage();
         currentY = 20;

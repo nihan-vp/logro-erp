@@ -578,7 +578,7 @@ export default function ReportsPage() {
               {/* Mobile Card List */}
               <div className="space-y-3 md:hidden">
                 {filteredTasks.map((t) => {
-                  const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0) + (t.pendingExpenses || 0);
+                  const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0) + (t.outsideLabourCost || 0) + (t.pendingExpenses || 0) + (t.pendingOutsideLabourCost || 0);
                   const isProfit = t.profitLoss >= 0;
                   return (
                     <div key={t.id} className="bg-zinc-50 border border-zinc-250/60 rounded-xl p-3.5 space-y-2 text-xs">
@@ -623,13 +623,14 @@ export default function ReportsPage() {
                       <th className="py-2.5 px-3 text-right">Assigned Budget</th>
                       <th className="py-2.5 px-3 text-right">Sum Outflow Costs</th>
                       <th className="py-2.5 px-3 text-right">Labour portion</th>
+                      <th className="py-2.5 px-3 text-right">Out. Labour</th>
                       <th className="py-2.5 px-3 text-right">Active Balance</th>
                       <th className="py-2.5 px-3 text-right">Profit / Deficit</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y text-zinc-900">
                     {filteredTasks.map((t) => {
-                      const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0) + (t.pendingExpenses || 0);
+                      const expensesSum = (t.directExpenses || 0) + (t.labourCost || 0) + (t.outsideLabourCost || 0) + (t.pendingExpenses || 0) + (t.pendingOutsideLabourCost || 0);
                       const isProfit = t.profitLoss >= 0;
                       return (
                         <tr key={t.id} className="hover:bg-zinc-50/40">
@@ -638,6 +639,7 @@ export default function ReportsPage() {
                           <td className="py-3 px-3 text-right font-medium">{formatCur(t.assignedBudget)}</td>
                           <td className="py-3 px-3 text-right font-medium">{formatCur(expensesSum)}</td>
                           <td className="py-3 px-3 text-right text-zinc-500">{formatCur(t.labourCost || 0)}</td>
+                          <td className="py-3 px-3 text-right text-zinc-500">{formatCur((t.outsideLabourCost || 0) + (t.pendingOutsideLabourCost || 0))}</td>
                           <td className={`py-3 px-3 text-right font-bold ${t.remainingBudget >= 0 ? 'text-zinc-700' : 'text-red-500'}`}>
                             {formatCur(t.remainingBudget)}
                           </td>

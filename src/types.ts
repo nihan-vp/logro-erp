@@ -29,7 +29,7 @@ export interface PaymentRequest {
   projectId: string;
   taskId: string;
   payeeName: string;
-  category: 'Worker' | 'Vendor' | 'Transportation' | 'Vendor Payment' | 'Purchase' | 'Other';
+  category: 'Worker' | 'Vendor' | 'Transportation' | 'Vendor Payment' | 'Purchase' | 'Outside Labour' | 'Other';
   amount: number;
   description: string;
   fromLocation?: string;
@@ -109,6 +109,8 @@ export interface Task {
   taskName: string;
   description?: string;
   assignedBudget: number;
+  labourBudget?: number;
+  materialsBudget?: number;
   assignedStaff?: string;
   startDate: string;
   endDate: string;
@@ -117,7 +119,7 @@ export interface Task {
   notes?: string;
 }
 
-export type ExpenseCategory = 'Material' | 'Labour' | 'Transport' | 'Tools' | 'Company Payment' | 'Vendor Payment' | 'Purchase' | 'Other';
+export type ExpenseCategory = 'Material' | 'Labour' | 'Transport' | 'Tools' | 'Company Payment' | 'Vendor Payment' | 'Purchase' | 'Outside Labour' | 'Other';
 
 export interface Expense {
   id: string;
@@ -150,6 +152,16 @@ export interface Vendor {
   id: string;
   name: string;
   trade: string; // e.g. Cement Supplier, Steel Supplier
+  phone?: string;
+  status: 'active' | 'inactive';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface OutsideLabour {
+  id: string;
+  name: string;
+  trade: string;
   phone?: string;
   status: 'active' | 'inactive';
   notes?: string;

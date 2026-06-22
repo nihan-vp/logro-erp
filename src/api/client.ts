@@ -147,6 +147,16 @@ export const api = {
   updateVendor: (id: string, data: any) => request(`/vendors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteVendor: (id: string) => request(`/vendors/${id}`, { method: 'DELETE' }),
 
+  // Outside Labours
+  getOutsideLabours: (status?: 'active' | 'inactive') => {
+    const q = status ? `?status=${status}` : '';
+    return request(`/outside-labours${q}`);
+  },
+  createOutsideLabour: (data: any) => request('/outside-labours', { method: 'POST', body: JSON.stringify(data) }),
+  bulkOutsideLabour: (data: { outsideLabours: any[] }) => request('/outside-labours/bulk', { method: 'POST', body: JSON.stringify(data) }),
+  updateOutsideLabour: (id: string, data: any) => request(`/outside-labours/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteOutsideLabour: (id: string) => request(`/outside-labours/${id}`, { method: 'DELETE' }),
+
   // Attendance
   getAttendance: (projectId?: string, taskId?: string, date?: string) => {
     const params = new URLSearchParams();

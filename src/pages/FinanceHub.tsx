@@ -52,6 +52,7 @@ const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest[
   if (cat === 'Labour') return 'Worker';
   if (cat === 'Transport') return 'Transportation';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
+  if (cat === 'Outside Labour') return 'Outside Labour';
   return 'Other';
 };
 
@@ -67,6 +68,7 @@ const paymentCategoryToExpenseCategory = (cat: PaymentRequest['category'], item?
   if (cat === 'Transportation') return 'Transport';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
   if (cat === 'Purchase') return 'Material';
+  if (cat === 'Outside Labour') return 'Outside Labour';
   return 'Other';
 };
 
@@ -150,6 +152,12 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [crewSuggestions, setCrewSuggestions] = useState<string[]>([]);
   const [showCrewSuggestions, setShowCrewSuggestions] = useState(false);
 
+  // Outside Labour states
+  const [outsideLaboursList, setOutsideLaboursList] = useState<any[]>([]);
+  const [isOutsideLabourDropdownOpen, setIsOutsideLabourDropdownOpen] = useState(false);
+  const [outsideLabourSearchQuery, setOutsideLabourSearchQuery] = useState('');
+  const [showOutsideLabourSuggestions, setShowOutsideLabourSuggestions] = useState(false);
+
   // Quick Add Vendor states
   const [isQuickAddVendorOpen, setIsQuickAddVendorOpen] = useState(false);
   const [quickVendorName, setQuickVendorName] = useState('');
@@ -158,17 +166,26 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const [quickVendorError, setQuickVendorError] = useState<string | null>(null);
   const [isSavingQuickVendor, setIsSavingQuickVendor] = useState(false);
 
+  // Quick Add Outside Labour states
+  const [isQuickAddOutsideLabourOpen, setIsQuickAddOutsideLabourOpen] = useState(false);
+  const [quickOutsideLabourName, setQuickOutsideLabourName] = useState('');
+  const [quickOutsideLabourTrade, setQuickOutsideLabourTrade] = useState('Labourer');
+  const [quickOutsideLabourPhone, setQuickOutsideLabourPhone] = useState('');
+  const [quickOutsideLabourError, setQuickOutsideLabourError] = useState<string | null>(null);
+  const [isSavingQuickOutsideLabour, setIsSavingQuickOutsideLabour] = useState(false);
+
   const selectedReqProjectName = projects.find(p => p.id === reqProjectId)?.projectName;
 
   const fetchInitialData = async () => {
     if (!hasLoaded) setLoading(true);
     try {
-      const [projectsRes, tasksRes, paymentRequestsRes, crewRes, vendorsRes] = await Promise.all([
+      const [projectsRes, tasksRes, paymentRequestsRes, crewRes, vendorsRes, outsideLaboursRes] = await Promise.all([
         api.getProjects(),
         api.getTasks(),
         api.getPaymentRequests(),
         api.getCrew('active').catch(() => ({ crew: [] })),
-        api.getVendors('active').catch(() => ({ vendors: [] }))
+        api.getVendors('active').catch(() => ({ vendors: [] })),
+        api.getOutsideLabours('active').catch(() => ({ outsideLabours: [] }))
       ]);
       const projectList = projectsRes.projects || [];
       const taskList = tasksRes.tasks || [];
@@ -181,6 +198,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       })));
       setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
       setVendorsList(vendorsRes.vendors || []);
+      setOutsideLaboursList(outsideLaboursRes.outsideLabours || []);
       setHasLoaded(true);
     } catch (err: any) {
       const message = err?.message || 'Failed to load finance data';
@@ -240,7 +258,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       const res = await api.getOfficeFunds();
       setOfficeBalance(res.officeFunds[0]?.balance ?? 0);
     } catch {
-      // non-blocking — warning simply won't show if fetch fails
     }
   };
 
@@ -271,6 +288,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setShowCrewSuggestions(false);
     setIsVendorDropdownOpen(false);
     setVendorSearchQuery('');
+    setShowOutsideLabourSuggestions(false);
+    setIsOutsideLabourDropdownOpen(false);
+    setOutsideLabourSearchQuery('');
   };
 
   const handleOpenCreateRequest = () => {
@@ -316,7 +336,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
         pricePerCount: item.pricePerCount === 0 ? 0 : (item.pricePerCount || '')
       })));
     } else if (request.materialName) {
-      // Backward compatibility: convert old single-item data to array
       setReqPurchaseItems([{
         materialName: request.materialName || '',
         qty: request.materialQty || '',
@@ -337,6 +356,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     setShowCrewSuggestions(false);
     setIsVendorDropdownOpen(false);
     setVendorSearchQuery('');
+    setShowOutsideLabourSuggestions(false);
+    setIsOutsideLabourDropdownOpen(false);
+    setOutsideLabourSearchQuery('');
 
     try {
       const res = await api.getTasks(request.projectId);
@@ -493,6 +515,48 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
     reader.readAsDataURL(file);
   };
 
+  const handleOpenAddOutsideLabourQuick = (initialName: string) => {
+    setQuickOutsideLabourName(initialName);
+    setQuickOutsideLabourTrade('Labourer');
+    setQuickOutsideLabourPhone('');
+    setQuickOutsideLabourError(null);
+    setIsQuickAddOutsideLabourOpen(true);
+  };
+
+  const handleQuickOutsideLabourSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickOutsideLabourName.trim()) {
+      setQuickOutsideLabourError('Name is required.');
+      return;
+    }
+    setIsSavingQuickOutsideLabour(true);
+    setQuickOutsideLabourError(null);
+    try {
+      const payload = {
+        name: quickOutsideLabourName.trim(),
+        trade: quickOutsideLabourTrade.trim() || 'Labourer',
+        phone: quickOutsideLabourPhone.trim(),
+        status: 'active',
+        notes: 'Added quickly from payment request form'
+      };
+      await api.createOutsideLabour(payload);
+      notify.success(`Outside labour "${payload.name}" registered.`);
+
+      const olRes = await api.getOutsideLabours('active').catch(() => ({ outsideLabours: [] }));
+      const updatedList = olRes.outsideLabours || [];
+      setOutsideLaboursList(updatedList);
+
+      setReqPaidTo(payload.name);
+      setIsOutsideLabourDropdownOpen(false);
+      setOutsideLabourSearchQuery('');
+      setIsQuickAddOutsideLabourOpen(false);
+    } catch (err: any) {
+      setQuickOutsideLabourError(err?.message || 'Failed to register new outside labour.');
+    } finally {
+      setIsSavingQuickOutsideLabour(false);
+    }
+  };
+
   const handleOpenAddVendorQuick = (initialName: string) => {
     setQuickVendorName(initialName);
     setQuickVendorTrade('Supplier');
@@ -504,7 +568,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
   const handleQuickVendorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickVendorName.trim()) {
-      setQuickVendorError('Vendor name is required.');
+      setQuickVendorError('Name is required.');
       return;
     }
     setIsSavingQuickVendor(true);
@@ -520,8 +584,8 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       await api.createVendor(payload);
       notify.success(`Vendor "${payload.name}" registered.`);
 
-      const vendorsRes = await api.getVendors('active').catch(() => ({ vendors: [] }));
-      const updatedList = vendorsRes.vendors || [];
+      const vRes = await api.getVendors('active').catch(() => ({ vendors: [] }));
+      const updatedList = vRes.vendors || [];
       setVendorsList(updatedList);
 
       setReqPaidTo(payload.name);
@@ -1017,7 +1081,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
         </div>
       )}
 
-      {/* Requests Form Modal */}
       {isReqFormOpen && (
         <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border text-xs sm:text-sm border-zinc-200 rounded-3xl p-5 sm:p-6 shadow-2xl max-w-xl w-full space-y-4 font-sans animate-fade-in relative max-h-[90vh] overflow-y-auto">
@@ -1110,6 +1173,7 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     <option value="Material">Material</option>
                     <option value="Transport">Transport</option>
                     <option value="Tools">Tools</option>
+                    <option value="Outside Labour">Outside Labour</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -1127,7 +1191,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 </div>
               </div>
 
-              {/* Transport fields */}
               {reqCategory === 'Transport' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -1180,7 +1243,6 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 </div>
               )}
 
-              {/* Purchase fields */}
               {reqCategory === 'Material' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -1332,7 +1394,9 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Vendor</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                    {reqCategory === 'Outside Labour' ? 'Outside Labour' : 'Vendor'}
+                  </label>
                   <input
                     type="text"
                     required
@@ -1341,16 +1405,24 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     className="absolute opacity-0 pointer-events-none w-0 h-0"
                   />
                   <div
-                    onClick={() => setIsVendorDropdownOpen(!isVendorDropdownOpen)}
+                    onClick={() => {
+                      if (reqCategory === 'Outside Labour') {
+                        setIsOutsideLabourDropdownOpen(!isOutsideLabourDropdownOpen);
+                        setIsVendorDropdownOpen(false);
+                      } else {
+                        setIsVendorDropdownOpen(!isVendorDropdownOpen);
+                        setIsOutsideLabourDropdownOpen(false);
+                      }
+                    }}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 flex items-center justify-between text-xs min-h-[38px] cursor-pointer"
                   >
                     <span className={reqPaidTo ? "text-zinc-950 font-medium" : "text-zinc-400"}>
-                      {reqPaidTo || "Select Vendor..."}
+                      {reqPaidTo || (reqCategory === 'Outside Labour' ? "Select Outside Labour..." : "Select Vendor...")}
                     </span>
                     <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
                   </div>
 
-                  {isVendorDropdownOpen && (
+                  {reqCategory !== 'Outside Labour' && isVendorDropdownOpen && (
                     <>
                       <div
                         className="fixed inset-0 z-40 cursor-default"
@@ -1441,6 +1513,97 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                     </>
                   )}
                 </div>
+
+                {reqCategory === 'Outside Labour' && isOutsideLabourDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40 cursor-default"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsOutsideLabourDropdownOpen(false);
+                      }}
+                    />
+                    <div className="absolute left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs flex flex-col max-h-60 overflow-hidden">
+                      <div className="p-2 border-b border-zinc-100 flex items-center gap-2 bg-zinc-50">
+                        <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        <input
+                          type="text"
+                          placeholder="Search outside labour..."
+                          value={outsideLabourSearchQuery}
+                          onChange={(e) => setOutsideLabourSearchQuery(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const filtered = outsideLaboursList.filter(ol =>
+                                ol.name.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) ||
+                                ol.trade.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase())
+                              );
+                              if (filtered.length > 0) {
+                                setReqPaidTo(filtered[0].name);
+                                setOutsideLabourSearchQuery('');
+                                setIsOutsideLabourDropdownOpen(false);
+                              }
+                            }
+                          }}
+                          className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 focus:outline-none text-zinc-900"
+                          autoFocus
+                        />
+                        {outsideLabourSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOutsideLabourSearchQuery('');
+                            }}
+                            className="text-zinc-400 hover:text-zinc-600 font-bold px-1 text-sm"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                      <div className="overflow-y-auto divide-y divide-zinc-100 max-h-48">
+                        {outsideLaboursList
+                          .filter(ol => ol.name.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) || ol.trade.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()))
+                          .map(ol => (
+                            <button
+                              key={ol.id}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReqPaidTo(ol.name);
+                                setOutsideLabourSearchQuery('');
+                                setIsOutsideLabourDropdownOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                            >
+                              <span>{ol.name}</span>
+                              <span className="text-[9px] text-zinc-400 font-bold uppercase">{ol.trade}</span>
+                            </button>
+                          ))
+                        }
+                        {outsideLaboursList.filter(ol => ol.name.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) || ol.trade.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase())).length === 0 && (
+                          <div className="p-3 text-zinc-400 text-center font-medium flex flex-col gap-2">
+                            <span>No outside labours found</span>
+                            {outsideLabourSearchQuery.trim() && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenAddOutsideLabourQuick(outsideLabourSearchQuery);
+                                }}
+                                className="w-full py-1.5 bg-zinc-950 hover:bg-zinc-800 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                              >
+                                + Add &quot;{outsideLabourSearchQuery}&quot;
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {reqCategory === 'Tools' ? (
                   <div className="flex flex-col justify-center bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 min-h-[58px]">
@@ -1814,6 +1977,72 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isSavingQuickVendor ? "Registering..." : "Register Vendor"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK ADD OUTSIDE LABOUR MODAL */}
+      {isQuickAddOutsideLabourOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b pb-2 border-zinc-100">
+              <h4 className="text-sm font-extrabold text-zinc-950">Add Outside Labour</h4>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddOutsideLabourOpen(false)}
+                className="text-zinc-400 hover:text-zinc-650 font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {quickOutsideLabourError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-600 rounded-lg p-2.5 text-xs">
+                {quickOutsideLabourError}
+              </div>
+            )}
+
+            <form onSubmit={handleQuickOutsideLabourSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Raj"
+                  value={quickOutsideLabourName}
+                  onChange={(e) => setQuickOutsideLabourName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Trade/Role</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Mason"
+                  value={quickOutsideLabourTrade}
+                  onChange={(e) => setQuickOutsideLabourTrade(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Phone (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 9876543210"
+                  value={quickOutsideLabourPhone}
+                  onChange={(e) => setQuickOutsideLabourPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 text-xs focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSavingQuickOutsideLabour}
+                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSavingQuickOutsideLabour ? "Registering..." : "Register Outside Labour"}
               </button>
             </form>
           </div>

@@ -29,7 +29,7 @@ interface CsvCrewRow {
   status: CrewMemberStatus;
   notes: string;
 }
- 
+
 function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = '';
@@ -108,9 +108,37 @@ function parseVendorCsv(text: string): CsvVendorRow[] {
   }).filter(row => row.name.trim() !== '');
 }
 
+interface CsvOutsideLabourRow {
+  name: string;
+  trade: string;
+  phone: string;
+  status: 'active' | 'inactive';
+  notes: string;
+}
+
+function parseOutsideLabourCsv(text: string): CsvOutsideLabourRow[] {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const firstCols = parseCsvLine(lines[0]).map(c => c.toLowerCase());
+  const hasHeader = firstCols.some(c => c.includes('name') || c.includes('trade') || c.includes('status') || c.includes('phone'));
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  return dataLines.map(line => {
+    const [name, trade, phone, status, notes] = parseCsvLine(line);
+    return {
+      name: name || '',
+      trade: trade || 'Labourer',
+      phone: phone || '',
+      status: (status || '').trim().toLowerCase() === 'inactive' ? 'inactive' as const : 'active' as const,
+      notes: notes || ''
+    };
+  }).filter(row => row.name.trim() !== '');
+}
+
 export default function AttendancePage() {
   const confirm = useConfirm();
-  const [activeTab, setActiveTab] = useState<'crew' | 'vendors' | 'overview' | 'payouts'>('crew');
+  const [activeTab, setActiveTab] = useState<'crew' | 'vendors' | 'outside_labours' | 'overview' | 'payouts'>('crew');
 
   const [crew, setCrew] = useState<CrewMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,6 +181,28 @@ export default function AttendancePage() {
   const [vendorImportRows, setVendorImportRows] = useState<any[]>([]);
   const [isVendorImporting, setIsVendorImporting] = useState(false);
   const [vendorImportError, setVendorImportError] = useState<string | null>(null);
+
+  // Outside Labour states
+  const [outsideLabours, setOutsideLabours] = useState<any[]>([]);
+  const [outsideLaboursLoading, setOutsideLaboursLoading] = useState(false);
+  const [outsideLabourSearchQuery, setOutsideLabourSearchQuery] = useState('');
+  const [outsideLabourStatusFilter, setOutsideLabourStatusFilter] = useState<'All' | 'active' | 'inactive'>('All');
+
+  // Outside Labour Add/Edit states
+  const [isOutsideLabourFormOpen, setIsOutsideLabourFormOpen] = useState(false);
+  const [outsideLabourEditId, setOutsideLabourEditId] = useState<string | null>(null);
+  const [outsideLabourName, setOutsideLabourName] = useState('');
+  const [outsideLabourTrade, setOutsideLabourTrade] = useState('Labourer');
+  const [outsideLabourPhone, setOutsideLabourPhone] = useState('');
+  const [outsideLabourStatus, setOutsideLabourStatus] = useState<'active' | 'inactive'>('active');
+  const [outsideLabourNotes, setOutsideLabourNotes] = useState('');
+  const [outsideLabourSubmitError, setOutsideLabourSubmitError] = useState<string | null>(null);
+
+  // Outside Labour bulk CSV states
+  const [isOutsideLabourImportOpen, setIsOutsideLabourImportOpen] = useState(false);
+  const [outsideLabourImportRows, setOutsideLabourImportRows] = useState<any[]>([]);
+  const [isOutsideLabourImporting, setIsOutsideLabourImporting] = useState(false);
+  const [outsideLabourImportError, setOutsideLabourImportError] = useState<string | null>(null);
 
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('all');
   const [selectedWorkersForPayment, setSelectedWorkersForPayment] = useState<string[]>([]);
@@ -263,8 +313,8 @@ export default function AttendancePage() {
         if (overviewFilterType === 'weekly') {
           const curr = new Date();
           const dayOffset = curr.getDay();
-          const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
-          startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+          const sundayOffset = -dayOffset;
+          startDate = new Date(curr.setDate(curr.getDate() + sundayOffset + (selectedWeekOffset * 7)));
           startDate.setHours(0, 0, 0, 0);
           endDate = new Date(startDate);
           endDate.setDate(startDate.getDate() + 6);
@@ -302,6 +352,7 @@ export default function AttendancePage() {
   useEffect(() => {
     fetchCrew();
     fetchVendors();
+    fetchOutsideLabours();
   }, []);
 
 
@@ -310,8 +361,8 @@ export default function AttendancePage() {
     if (overviewFilterType === 'weekly') {
       const curr = new Date();
       const dayOffset = curr.getDay();
-      const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
-      const start = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+      const sundayOffset = -dayOffset;
+      const start = new Date(curr.setDate(curr.getDate() + sundayOffset + (selectedWeekOffset * 7)));
       for (let i = 0; i < 7; i++) {
         const d = new Date(start);
         d.setDate(start.getDate() + i);
@@ -514,6 +565,18 @@ export default function AttendancePage() {
       notify.error(err?.message || 'Failed to load vendors');
     } finally {
       setVendorsLoading(false);
+    }
+  };
+
+  const fetchOutsideLabours = async () => {
+    try {
+      setOutsideLaboursLoading(true);
+      const res = await api.getOutsideLabours();
+      setOutsideLabours(res.outsideLabours || []);
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to load outside labours');
+    } finally {
+      setOutsideLaboursLoading(false);
     }
   };
 
@@ -821,6 +884,151 @@ export default function AttendancePage() {
     }
   };
 
+  // Outside Labour Handlers
+  const resetOutsideLabourForm = () => {
+    setOutsideLabourEditId(null);
+    setOutsideLabourName('');
+    setOutsideLabourTrade('Labourer');
+    setOutsideLabourPhone('');
+    setOutsideLabourStatus('active');
+    setOutsideLabourNotes('');
+    setOutsideLabourSubmitError(null);
+  };
+
+  const handleOpenAddOutsideLabour = () => {
+    resetOutsideLabourForm();
+    setIsOutsideLabourFormOpen(true);
+  };
+
+  const handleOpenEditOutsideLabour = (ol: any) => {
+    setOutsideLabourEditId(ol.id);
+    setOutsideLabourName(ol.name);
+    setOutsideLabourTrade(ol.trade);
+    setOutsideLabourPhone(ol.phone || '');
+    setOutsideLabourStatus(ol.status);
+    setOutsideLabourNotes(ol.notes || '');
+    setOutsideLabourSubmitError(null);
+    setIsOutsideLabourFormOpen(true);
+  };
+
+  const handleOutsideLabourSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!outsideLabourName.trim()) {
+      notify.warning('Name is required.');
+      return;
+    }
+    if (!outsideLabourTrade.trim()) {
+      notify.warning('Trade/role is required.');
+      return;
+    }
+
+    const payload = {
+      name: outsideLabourName.trim(),
+      trade: outsideLabourTrade.trim(),
+      phone: outsideLabourPhone,
+      status: outsideLabourStatus,
+      notes: outsideLabourNotes
+    };
+
+    try {
+      setOutsideLabourSubmitError(null);
+      if (outsideLabourEditId) {
+        await api.updateOutsideLabour(outsideLabourEditId, payload);
+        notify.success('Outside labour updated.');
+      } else {
+        await api.createOutsideLabour(payload);
+        notify.success('Outside labour registered.');
+      }
+      setIsOutsideLabourFormOpen(false);
+      fetchOutsideLabours();
+    } catch (err: any) {
+      const message = err?.message || 'Failed to save outside labour';
+      setOutsideLabourSubmitError(message);
+      notify.error(message);
+    }
+  };
+
+  const handleOutsideLabourDelete = async (id: string) => {
+    const ol = outsideLabours.find(o => o.id === id);
+    const ok = await confirm({
+      title: 'Remove Outside Labour?',
+      message: ol
+        ? `Remove "${ol.name}" from registry?`
+        : 'Remove this outside labour?',
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      await api.deleteOutsideLabour(id);
+      fetchOutsideLabours();
+      notify.success('Outside labour removed.');
+    } catch (err: any) {
+      notify.error(err?.message || 'Failed to remove outside labour');
+    }
+  };
+
+  // Outside Labour CSV Import Operations
+  const handleDownloadOutsideLabourTemplate = () => {
+    const template = 'Name,Trade,Phone,Status,Notes\nJohn Doe,Mason,9876543213,active,Outside subcontractor\nJane Smith,Supervisor,,active,Contract supervisor';
+    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'outside_labour_import_template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleOutsideLabourCsvFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setOutsideLabourImportError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const parsed = parseOutsideLabourCsv(text);
+      if (parsed.length === 0) {
+        setOutsideLabourImportError('No valid rows found in the CSV file.');
+        setOutsideLabourImportRows([]);
+      } else {
+        setOutsideLabourImportRows(parsed);
+      }
+      e.target.value = '';
+    };
+    reader.onerror = () => {
+      setOutsideLabourImportError('Failed to read the CSV file.');
+    };
+    reader.readAsText(file);
+  };
+
+  const handleOutsideLabourBulkImport = async () => {
+    if (outsideLabourImportRows.length === 0) {
+      notify.warning('Upload a CSV file with at least one row.');
+      return;
+    }
+
+    try {
+      setIsOutsideLabourImporting(true);
+      setOutsideLabourImportError(null);
+      const res = await api.bulkOutsideLabour({ outsideLabours: outsideLabourImportRows });
+      const skippedMsg = res.skipped > 0 ? ` ${res.skipped} duplicate(s) skipped.` : '';
+      const errorMsg = res.errors?.length ? ` ${res.errors.length} row(s) had errors.` : '';
+      notify.success(`Imported ${res.added} outside labourer(s).${skippedMsg}${errorMsg}`);
+      setIsOutsideLabourImportOpen(false);
+      setOutsideLabourImportRows([]);
+      fetchOutsideLabours();
+    } catch (err: any) {
+      const message = err?.message || 'Bulk import failed';
+      setOutsideLabourImportError(message);
+      notify.error(message);
+    } finally {
+      setIsOutsideLabourImporting(false);
+    }
+  };
+
   const formatCur = (num: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num);
 
@@ -830,8 +1038,8 @@ export default function AttendancePage() {
     if (overviewFilterType === 'weekly') {
       const curr = new Date();
       const dayOffset = curr.getDay();
-      const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
-      startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+      const sundayOffset = -dayOffset;
+      startDate = new Date(curr.setDate(curr.getDate() + sundayOffset + (selectedWeekOffset * 7)));
       startDate.setHours(0, 0, 0, 0);
       endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
@@ -1150,6 +1358,17 @@ export default function AttendancePage() {
 
   const activeVendorCount = vendors.filter(v => v.status === 'active').length;
 
+  const filteredOutsideLabours = outsideLabours.filter(o => {
+    const matchesSearch =
+      o.name.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) ||
+      o.trade.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) ||
+      (o.phone || '').includes(outsideLabourSearchQuery);
+    const matchesStatus = outsideLabourStatusFilter === 'All' || o.status === outsideLabourStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const activeOutsideLabourCount = outsideLabours.filter(o => o.status === 'active').length;
+
   return (
     <div className="space-y-6 font-sans">
       {/* ── Tab Bar ── */}
@@ -1179,6 +1398,18 @@ export default function AttendancePage() {
             }`}>{vendors.length}</span>
         </button>
         <button
+          onClick={() => setActiveTab('outside_labours')}
+          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'outside_labours'
+            ? 'bg-white text-zinc-950 shadow-sm'
+            : 'text-zinc-500 hover:text-zinc-700'
+            }`}
+        >
+          <Briefcase className="w-4 h-4" />
+          <span>Outside Labours</span>
+          <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-black ${activeTab === 'outside_labours' ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-200/60 text-zinc-500'
+            }`}>{outsideLabours.length}</span>
+        </button>
+        <button
           onClick={() => setActiveTab('overview')}
           className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'overview'
             ? 'bg-white text-zinc-950 shadow-sm'
@@ -1187,19 +1418,6 @@ export default function AttendancePage() {
         >
           <BookmarkCheck className="w-4 h-4" />
           <span>Crew Overview</span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('payouts');
-            fetchOverviewLogs();
-          }}
-          className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'payouts'
-            ? 'bg-white text-zinc-950 shadow-sm'
-            : 'text-zinc-500 hover:text-zinc-700'
-            }`}
-        >
-          <Wallet className="w-4 h-4" />
-          <span>Daily Payouts Ledger</span>
         </button>
       </div>
 
@@ -1902,6 +2120,310 @@ export default function AttendancePage() {
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════ OUTSIDE LABOURS TAB ══════════════════════════════════ */}
+      {activeTab === 'outside_labours' && (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-zinc-950">Outside Labours Registry</h1>
+              <p className="text-xs sm:text-sm text-zinc-500">Manage external labourers and subcontractors paid via Outside Labour category</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setOutsideLabourImportRows([]); setOutsideLabourImportError(null); setIsOutsideLabourImportOpen(true); }}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white border border-zinc-200 text-zinc-800 rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-50 transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import CSV</span>
+              </button>
+              <button
+                onClick={handleOpenAddOutsideLabour}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-zinc-800 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Outside Labour</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white border rounded-xl p-4 flex flex-col justify-between shadow-sm">
+              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Total Outside Labours</span>
+              <span className="text-2xl font-black text-zinc-950 block mt-1">{outsideLabours.length}</span>
+            </div>
+            <div className="bg-white border rounded-xl p-4 flex flex-col justify-between shadow-sm">
+              <span className="text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">Active Outside Labours</span>
+              <span className="text-2xl font-black text-emerald-700 block mt-1">{activeOutsideLabourCount}</span>
+            </div>
+          </div>
+
+          <div className="bg-white border rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400">
+                <Search className="w-4 h-4" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search by name, trade, or phone..."
+                value={outsideLabourSearchQuery}
+                onChange={(e) => setOutsideLabourSearchQuery(e.target.value)}
+                className="w-full text-xs pl-9 pr-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl outline-none"
+              />
+            </div>
+            <div>
+              <select
+                value={outsideLabourStatusFilter}
+                onChange={(e) => setOutsideLabourStatusFilter(e.target.value as 'All' | 'active' | 'inactive')}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
+              >
+                <option value="All">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+
+          {outsideLaboursLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-4 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin" />
+            </div>
+          ) : filteredOutsideLabours.length === 0 ? (
+            <div className="p-8 border border-dashed rounded-2xl text-center bg-zinc-50">
+              <Briefcase className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
+              <p className="text-xs text-zinc-500">
+                {outsideLabours.length === 0
+                  ? 'No outside labours registered yet. Click "Add Outside Labour" to start.'
+                  : 'No outside labours match your search.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-zinc-600 border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 text-zinc-400 uppercase font-bold text-[10px] tracking-wider border-b border-zinc-200">
+                        <th className="py-3 px-4">Name</th>
+                        <th className="py-3 px-4">Trade / Role</th>
+                        <th className="py-3 px-4">Phone</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4">Notes</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 text-zinc-900">
+                      {filteredOutsideLabours.map((ol) => (
+                        <tr key={ol.id} className="hover:bg-zinc-50/50 transition-colors" style={{ height: ROSTER_ROW_HEIGHT_PX }}>
+                          <td className="py-3 px-4 font-bold text-zinc-950 text-sm align-middle">
+                            {ol.name}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-zinc-700 align-middle">{ol.trade}</td>
+                          <td className="py-3 px-4 font-medium text-zinc-600 align-middle">{ol.phone || '—'}</td>
+                          <td className="py-3 px-4 text-center align-middle">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-tight uppercase ${ol.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-zinc-100 text-zinc-500 border border-zinc-200'}`}>
+                              {ol.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-zinc-400 italic max-w-[200px] truncate align-middle" title={ol.notes || ''}>
+                            {ol.notes ? `"${ol.notes}"` : '—'}
+                          </td>
+                          <td className="py-3 px-4 text-right align-middle">
+                            <div className="flex gap-1.5 justify-end">
+                              <button
+                                onClick={() => handleOpenEditOutsideLabour(ol)}
+                                className="p-1.5 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
+                                title="Edit outside labour"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleOutsideLabourDelete(ol.id)}
+                                className="p-1.5 bg-zinc-50 border border-zinc-200 text-rose-500 hover:text-rose-900 rounded-lg hover:bg-rose-50 transition-colors"
+                                title="Remove outside labour"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Outside Labour Import Modal */}
+      {isOutsideLabourImportOpen && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-2xl w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+              <h2 className="text-base font-extrabold text-zinc-950 flex items-center gap-1.5">
+                <Upload className="w-5 h-5 text-zinc-600" />
+                <span>Bulk Import Outside Labours (CSV)</span>
+              </h2>
+              <button
+                onClick={() => setIsOutsideLabourImportOpen(false)}
+                className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-500">
+              CSV columns: <span className="font-semibold text-zinc-700">Name, Trade, Phone, Status, Notes</span>.
+              Header row is optional. Status accepts <code className="text-[10px] bg-zinc-100 px-1 rounded">active</code> or <code className="text-[10px] bg-zinc-100 px-1 rounded">inactive</code>.
+            </p>
+
+            {outsideLabourImportError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{outsideLabourImportError}</div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors">
+                <Upload className="w-4 h-4" />
+                <span>Choose CSV File</span>
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleOutsideLabourCsvFileSelect} />
+              </label>
+              <button
+                type="button"
+                onClick={handleDownloadOutsideLabourTemplate}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Template</span>
+              </button>
+            </div>
+
+            {outsideLabourImportRows.length > 0 && (
+              <div className="space-y-3">
+                <div className="hidden sm:grid bg-zinc-50 p-2.5 border rounded-t-xl font-bold text-[10px] text-zinc-400 uppercase tracking-wider grid-cols-5 gap-2">
+                  <div className="col-span-2">Name</div>
+                  <div>Trade</div>
+                  <div>Phone</div>
+                  <div>Status</div>
+                </div>
+                <div className="border rounded-xl sm:rounded-t-none sm:border-t-0 max-h-[280px] overflow-y-auto divide-y">
+                  {outsideLabourImportRows.map((row: CsvOutsideLabourRow, idx: number) => (
+                    <div key={idx} className="p-2.5 sm:grid sm:grid-cols-5 gap-2 text-xs items-center">
+                      <div className="sm:col-span-2 font-bold text-zinc-900">{row.name}</div>
+                      <div className="text-zinc-600">{row.trade}</div>
+                      <div className="text-zinc-500 truncate">{row.phone || '—'}</div>
+                      <div className="text-zinc-600 capitalize">{row.status}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-zinc-400 font-semibold">{outsideLabourImportRows.length} item(s) ready to import. Duplicates will be skipped.</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleOutsideLabourBulkImport}
+              disabled={isOutsideLabourImporting || outsideLabourImportRows.length === 0}
+              className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+            >
+              <BookmarkCheck className="w-4 h-4" />
+              <span>{isOutsideLabourImporting ? 'Importing...' : `Import ${outsideLabourImportRows.length || ''} Outside Labour${outsideLabourImportRows.length === 1 ? '' : 's'}`}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Outside Labour Form Modal */}
+      {isOutsideLabourFormOpen && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border rounded-2xl p-5 sm:p-6 shadow-md max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between border-b pb-3 border-zinc-100">
+              <h2 className="text-base font-extrabold text-zinc-950">
+                {outsideLabourEditId ? 'Edit Outside Labour' : 'Add Outside Labour'}
+              </h2>
+              <button
+                onClick={() => setIsOutsideLabourFormOpen(false)}
+                className="px-2.5 py-1.5 bg-zinc-100 font-bold hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {outsideLabourSubmitError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs">{outsideLabourSubmitError}</div>
+            )}
+
+            <form onSubmit={handleOutsideLabourSubmit} className="space-y-4 text-xs sm:text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Name of labourer or subcontractor"
+                  value={outsideLabourName}
+                  onChange={(e) => setOutsideLabourName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Trade / Role</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Mason, Welder, Supervisor"
+                    value={outsideLabourTrade}
+                    onChange={(e) => setOutsideLabourTrade(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="Optional"
+                    value={outsideLabourPhone}
+                    onChange={(e) => setOutsideLabourPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
+                <select
+                  value={outsideLabourStatus}
+                  onChange={(e) => setOutsideLabourStatus(e.target.value as 'active' | 'inactive')}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Notes</label>
+                <textarea
+                  value={outsideLabourNotes}
+                  onChange={(e) => setOutsideLabourNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Notes about rates, terms, etc."
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-xs"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-900 text-white font-bold rounded-xl transition-colors"
+              >
+                {outsideLabourEditId ? 'Save Changes' : 'Register Outside Labour'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ══════════════════════════════════ CREW OVERVIEW TAB ══════════════════════════════════ */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
@@ -2032,12 +2554,11 @@ export default function AttendancePage() {
                   let endDate: Date;
 
                   if (overviewFilterType === 'weekly') {
-                    // Compute current week matching selectedWeekOffset
+                    // Compute current week matching selectedWeekOffset (Sunday start)
                     const curr = new Date();
                     const dayOffset = curr.getDay(); // 0 (Sun) to 6 (Sat)
-                    // Let's set start of week to Monday
-                    const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
-                    startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+                    const sundayOffset = -dayOffset;
+                    startDate = new Date(curr.setDate(curr.getDate() + sundayOffset + (selectedWeekOffset * 7)));
                     startDate.setHours(0, 0, 0, 0);
                     endDate = new Date(startDate);
                     endDate.setDate(startDate.getDate() + 6);
@@ -2654,8 +3175,8 @@ export default function AttendancePage() {
             if (overviewFilterType === 'weekly') {
               const curr = new Date();
               const dayOffset = curr.getDay();
-              const mondayOffset = dayOffset === 0 ? -6 : 1 - dayOffset;
-              startDate = new Date(curr.setDate(curr.getDate() + mondayOffset + (selectedWeekOffset * 7)));
+              const sundayOffset = -dayOffset;
+              startDate = new Date(curr.setDate(curr.getDate() + sundayOffset + (selectedWeekOffset * 7)));
               startDate.setHours(0, 0, 0, 0);
               endDate = new Date(startDate);
               endDate.setDate(startDate.getDate() + 6);

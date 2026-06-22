@@ -20,6 +20,7 @@ const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest[
   if (cat === 'Labour') return 'Worker';
   if (cat === 'Transport') return 'Transportation';
   if (cat === 'Vendor Payment') return 'Vendor Payment';
+  if (cat === 'Outside Labour') return 'Outside Labour';
   return 'Other';
 };
 
@@ -648,6 +649,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [taskFormName, setTaskFormName] = useState('');
   const [taskFormDesc, setTaskFormDesc] = useState('');
   const [taskFormBudget, setTaskFormBudget] = useState<number | ''>('');
+  const [taskFormLabourBudget, setTaskFormLabourBudget] = useState<number | ''>('');
+  const [taskFormMaterialsBudget, setTaskFormMaterialsBudget] = useState<number | ''>('');
   const [taskFormStartDate, setTaskFormStartDate] = useState('');
   const [taskFormEndDate, setTaskFormEndDate] = useState('');
   const [taskFormProgress, setTaskFormProgress] = useState<number>(0);
@@ -701,6 +704,20 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
   const [quickVendorPhone, setQuickVendorPhone] = useState('');
   const [quickVendorError, setQuickVendorError] = useState<string | null>(null);
   const [isSavingQuickVendor, setIsSavingQuickVendor] = useState(false);
+
+  // Outside Labour states
+  const [outsideLaboursList, setOutsideLaboursList] = useState<any[]>([]);
+  const [isOutsideLabourDropdownOpen, setIsOutsideLabourDropdownOpen] = useState(false);
+  const [outsideLabourSearchQuery, setOutsideLabourSearchQuery] = useState('');
+  const [showExpenseOutsideLabourSuggestions, setShowExpenseOutsideLabourSuggestions] = useState(false);
+
+  // Quick Add Outside Labour states
+  const [isQuickAddOutsideLabourOpen, setIsQuickAddOutsideLabourOpen] = useState(false);
+  const [quickOutsideLabourName, setQuickOutsideLabourName] = useState('');
+  const [quickOutsideLabourTrade, setQuickOutsideLabourTrade] = useState('Labourer');
+  const [quickOutsideLabourPhone, setQuickOutsideLabourPhone] = useState('');
+  const [quickOutsideLabourError, setQuickOutsideLabourError] = useState<string | null>(null);
+  const [isSavingQuickOutsideLabour, setIsSavingQuickOutsideLabour] = useState(false);
 
   // Receipt Preview
   const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
@@ -769,14 +786,16 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     try {
       if (!hasLoaded) setLoading(true);
       setError(null);
-      const [res, crewRes, vendorsRes] = await Promise.all([
+      const [res, crewRes, vendorsRes, outsideLaboursRes] = await Promise.all([
         api.getProjects(),
         api.getCrew('active').catch(() => ({ crew: [] })),
-        api.getVendors('active').catch(() => ({ vendors: [] }))
+        api.getVendors('active').catch(() => ({ vendors: [] })),
+        api.getOutsideLabours('active').catch(() => ({ outsideLabours: [] }))
       ]);
       setProjects(res.projects || []);
       setCrewSuggestions((crewRes.crew || []).map((c: any) => c.name));
       setVendorsList(vendorsRes.vendors || []);
+      setOutsideLaboursList(outsideLaboursRes.outsideLabours || []);
       setHasLoaded(true);
     } catch (err: any) {
       const message = err?.message || 'Failed to download projects tracker data.';
@@ -936,6 +955,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setTaskFormName('');
     setTaskFormDesc('');
     setTaskFormBudget('');
+    setTaskFormLabourBudget('');
+    setTaskFormMaterialsBudget('');
     setTaskAssignedStaffList([]);
     setTaskMemberInput('');
     setShowTaskSuggestions(false);
@@ -953,6 +974,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setTaskFormName(task.taskName);
     setTaskFormDesc(task.description || '');
     setTaskFormBudget(task.assignedBudget === 0 ? '' : task.assignedBudget);
+    setTaskFormLabourBudget(task.labourBudget !== undefined && task.labourBudget !== null ? task.labourBudget : '');
+    setTaskFormMaterialsBudget(task.materialsBudget !== undefined && task.materialsBudget !== null ? task.materialsBudget : '');
 
     const parsedStaff = task.assignedStaff
       ? task.assignedStaff.split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -982,6 +1005,8 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       taskName: taskFormName,
       description: taskFormDesc,
       assignedBudget: Number(taskFormBudget),
+      labourBudget: taskFormLabourBudget !== '' ? Number(taskFormLabourBudget) : undefined,
+      materialsBudget: taskFormMaterialsBudget !== '' ? Number(taskFormMaterialsBudget) : undefined,
       assignedStaff: taskAssignedStaffList.join(', '),
       startDate: taskFormStartDate,
       endDate: taskFormEndDate,
@@ -1120,6 +1145,9 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setShowExpenseCrewSuggestions(false);
     setIsVendorDropdownOpen(false);
     setVendorSearchQuery('');
+    setShowExpenseOutsideLabourSuggestions(false);
+    setIsOutsideLabourDropdownOpen(false);
+    setOutsideLabourSearchQuery('');
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
   };
@@ -1172,6 +1200,9 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setShowExpenseCrewSuggestions(false);
     setIsVendorDropdownOpen(false);
     setVendorSearchQuery('');
+    setShowExpenseOutsideLabourSuggestions(false);
+    setIsOutsideLabourDropdownOpen(false);
+    setOutsideLabourSearchQuery('');
     setIsExpenseFormOpen(true);
     refreshOfficeBalance();
   };
@@ -1182,6 +1213,48 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     setQuickVendorPhone('');
     setQuickVendorError(null);
     setIsQuickAddVendorOpen(true);
+  };
+
+  const handleOpenAddOutsideLabourQuick = (initialName: string) => {
+    setQuickOutsideLabourName(initialName);
+    setQuickOutsideLabourTrade('Labourer');
+    setQuickOutsideLabourPhone('');
+    setQuickOutsideLabourError(null);
+    setIsQuickAddOutsideLabourOpen(true);
+  };
+
+  const handleQuickOutsideLabourSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickOutsideLabourName.trim()) {
+      setQuickOutsideLabourError('Name is required.');
+      return;
+    }
+    setIsSavingQuickOutsideLabour(true);
+    setQuickOutsideLabourError(null);
+    try {
+      const payload = {
+        name: quickOutsideLabourName.trim(),
+        trade: quickOutsideLabourTrade.trim() || 'Labourer',
+        phone: quickOutsideLabourPhone.trim(),
+        status: 'active',
+        notes: 'Added quickly from record expense form'
+      };
+      await api.createOutsideLabour(payload);
+      notify.success(`Outside labour "${payload.name}" registered.`);
+
+      const olRes = await api.getOutsideLabours('active').catch(() => ({ outsideLabours: [] }));
+      const updatedList = olRes.outsideLabours || [];
+      setOutsideLaboursList(updatedList);
+
+      setExpensePaidTo(payload.name);
+      setIsOutsideLabourDropdownOpen(false);
+      setOutsideLabourSearchQuery('');
+      setIsQuickAddOutsideLabourOpen(false);
+    } catch (err: any) {
+      setQuickOutsideLabourError(err?.message || 'Failed to register new outside labour.');
+    } finally {
+      setIsSavingQuickOutsideLabour(false);
+    }
   };
 
   const handleQuickVendorSubmit = async (e: React.FormEvent) => {
@@ -1914,21 +1987,35 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                           )}
 
                           {userRole !== 'manager' && (
-                            <div className="grid grid-cols-4 gap-1 sm:gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-bold border border-zinc-100">
+                            <div className="grid grid-cols-6 gap-1 sm:gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-bold border border-zinc-100">
                               <div>
                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
                                 <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
                               </div>
                               <div>
+                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Materials</span>
+                                <span className="text-zinc-900 block">{formatCur((t.materialCost || 0) + (t.pendingMaterialCost || 0))}</span>
+                                {(t.pendingMaterialCost || 0) > 0 && (
+                                  <span className="text-[9px] text-amber-600 block">({formatCur(t.pendingMaterialCost)} pending)</span>
+                                )}
+                              </div>
+                              <div>
                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Expenses</span>
-                                <span className="text-zinc-900 block">{formatCur((t.directExpenses || 0) + (t.pendingExpenses || 0))}</span>
-                                {(t.pendingExpenses || 0) > 0 && (
-                                  <span className="text-[9px] text-amber-600 block">({formatCur(t.pendingExpenses)} pending)</span>
+                                <span className="text-zinc-900 block">{formatCur(((t.directExpenses || 0) + (t.pendingExpenses || 0)) - ((t.materialCost || 0) + (t.pendingMaterialCost || 0)))}</span>
+                                {((t.pendingExpenses || 0) - (t.pendingMaterialCost || 0)) > 0 && (
+                                  <span className="text-[9px] text-amber-600 block">({formatCur((t.pendingExpenses || 0) - (t.pendingMaterialCost || 0))} pending)</span>
                                 )}
                               </div>
                               <div>
                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Labour</span>
                                 <span className="text-zinc-900 block">{formatCur(t.labourCost || 0)}</span>
+                              </div>
+                              <div>
+                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Out. Labour</span>
+                                <span className="text-zinc-900 block">{formatCur((t.outsideLabourCost || 0) + (t.pendingOutsideLabourCost || 0))}</span>
+                                {(t.pendingOutsideLabourCost || 0) > 0 && (
+                                  <span className="text-[9px] text-amber-600 block">({formatCur(t.pendingOutsideLabourCost)} pending)</span>
+                                )}
                               </div>
                               <div>
                                 <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
@@ -2025,6 +2112,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     <option value="Labour">Labour</option>
                     <option value="Transport">Transport</option>
                     <option value="Tools">Tools</option>
+                    <option value="Outside Labour">Outside Labour</option>
                     <option value="Company Payment">Company Payment</option>
                     <option value="Other">Other</option>
                   </select>
@@ -2190,28 +2278,44 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             {/* Quick stats specific to this active task */}
             {userRole !== 'manager' && (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100/50">
                   <div>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase block">Budget</span>
                     <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.assignedBudget)}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Expenses</span>
-                    <span className="text-base font-bold text-zinc-950 block">{formatCur((activeTask.directExpenses || 0) + (activeTask.pendingExpenses || 0))}</span>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Labour Budget</span>
+                    <span className="text-base font-bold text-zinc-950 block">
+                      {activeTask.labourBudget !== undefined && activeTask.labourBudget !== null ? formatCur(activeTask.labourBudget) : 'N/A'}
+                    </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Labour</span>
-                    <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.labourCost || 0)}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Pending</span>
-                    <span className="text-base font-bold text-amber-600 block">{formatCur(activeTask.pendingExpenses || 0)}</span>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Materials Budget</span>
+                    <span className="text-base font-bold text-zinc-950 block">
+                      {activeTask.materialsBudget !== undefined && activeTask.materialsBudget !== null ? formatCur(activeTask.materialsBudget) : 'N/A'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase block">Difference</span>
                     <span className={`text-base font-bold block ${(activeTask.assignedBudget - (activeTask.totalCommitted || activeTask.totalExpenses || 0)) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                       {formatCur(activeTask.assignedBudget - (activeTask.totalCommitted || activeTask.totalExpenses || 0))}
                     </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Materials</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur((activeTask.materialCost || 0) + (activeTask.pendingMaterialCost || 0))}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Labour</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur(activeTask.labourCost || 0)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Out. Labour</span>
+                    <span className="text-base font-bold text-zinc-950 block">{formatCur((activeTask.outsideLabourCost || 0) + (activeTask.pendingOutsideLabourCost || 0))}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Pending</span>
+                    <span className="text-base font-bold text-amber-600 block">{formatCur((activeTask.pendingExpenses || 0) + (activeTask.pendingOutsideLabourCost || 0))}</span>
                   </div>
                 </div>
 
@@ -2229,19 +2333,6 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              {userRole !== 'manager' && (
-                <div className="p-3 bg-zinc-950 text-white rounded-xl flex items-center justify-between">
-                  <div>
-                    <span className="block text-[8.5px] text-zinc-400 font-bold uppercase tracking-wider">Sub-Contract Margin</span>
-                    <span className="text-sm font-bold block">{formatCur(activeTask.assignedBudget - (activeTask.totalCommitted || activeTask.totalExpenses || 0))}</span>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold text-zinc-900 ${(activeTask.assignedBudget - (activeTask.totalCommitted || activeTask.totalExpenses || 0)) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
-                    }`}>
-                    {(activeTask.assignedBudget - (activeTask.totalCommitted || activeTask.totalExpenses || 0)) >= 0 ? 'Profitable' : 'Deficit'}
-                  </span>
-                </div>
-              )}
-
               <div className="p-3 bg-zinc-100 border border-zinc-200/40 rounded-xl flex items-center justify-between">
                 <div>
                   <span className="block text-[8.5px] text-zinc-400 font-bold uppercase tracking-wider font-semibold">Scheduled Range</span>
@@ -2519,17 +2610,43 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Target Budget (₹)</label>
-                <input
-                  type="number"
-                  required
-                  min={0}
-                  placeholder="e.g. 50000"
-                  value={taskFormBudget}
-                  onChange={(e) => setTaskFormBudget(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Target Budget (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    placeholder="e.g. 50000"
+                    value={taskFormBudget}
+                    onChange={(e) => setTaskFormBudget(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Labour Budget (₹, Opt)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="e.g. 20000"
+                    value={taskFormLabourBudget}
+                    onChange={(e) => setTaskFormLabourBudget(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Materials Budget (₹, Opt)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="e.g. 25000"
+                    value={taskFormMaterialsBudget}
+                    onChange={(e) => setTaskFormMaterialsBudget(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2790,6 +2907,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     <option value="Material">Material</option>
                     <option value="Transport">Transport</option>
                     <option value="Tools">Tools</option>
+                    <option value="Outside Labour">Outside Labour</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -3003,7 +3121,9 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Vendor</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                    {expenseCategory === 'Outside Labour' ? 'Outside Labour' : 'Vendor'}
+                  </label>
                   <input
                     type="text"
                     required
@@ -3012,16 +3132,24 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     className="absolute opacity-0 pointer-events-none w-0 h-0"
                   />
                   <div
-                    onClick={() => setIsVendorDropdownOpen(!isVendorDropdownOpen)}
+                    onClick={() => {
+                      if (expenseCategory === 'Outside Labour') {
+                        setIsOutsideLabourDropdownOpen(!isOutsideLabourDropdownOpen);
+                        setIsVendorDropdownOpen(false);
+                      } else {
+                        setIsVendorDropdownOpen(!isVendorDropdownOpen);
+                        setIsOutsideLabourDropdownOpen(false);
+                      }
+                    }}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 flex items-center justify-between text-xs min-h-[38px] cursor-pointer"
                   >
                     <span className={expensePaidTo ? "text-zinc-950 font-medium" : "text-zinc-400"}>
-                      {expensePaidTo || "Select Vendor..."}
+                      {expensePaidTo || (expenseCategory === 'Outside Labour' ? "Select Outside Labour..." : "Select Vendor...")}
                     </span>
                     <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
                   </div>
 
-                  {isVendorDropdownOpen && (
+                  {expenseCategory !== 'Outside Labour' && isVendorDropdownOpen && (
                     <>
                       <div
                         className="fixed inset-0 z-40 cursor-default"
@@ -3103,6 +3231,97 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                   className="w-full py-1.5 bg-zinc-950 hover:bg-zinc-800 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
                                 >
                                   + Add &quot;{vendorSearchQuery}&quot;
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {expenseCategory === 'Outside Labour' && isOutsideLabourDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40 cursor-default"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsOutsideLabourDropdownOpen(false);
+                        }}
+                      />
+                      <div className="absolute left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg z-50 text-xs flex flex-col max-h-60 overflow-hidden">
+                        <div className="p-2 border-b border-zinc-100 flex items-center gap-2 bg-zinc-50">
+                          <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <input
+                            type="text"
+                            placeholder="Search outside labour..."
+                            value={outsideLabourSearchQuery}
+                            onChange={(e) => setOutsideLabourSearchQuery(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const filtered = outsideLaboursList.filter(ol =>
+                                  ol.name.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) ||
+                                  ol.trade.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase())
+                                );
+                                if (filtered.length > 0) {
+                                  setExpensePaidTo(filtered[0].name);
+                                  setOutsideLabourSearchQuery('');
+                                  setIsOutsideLabourDropdownOpen(false);
+                                }
+                              }
+                            }}
+                            className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 focus:outline-none text-zinc-900"
+                            autoFocus
+                          />
+                          {outsideLabourSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOutsideLabourSearchQuery('');
+                              }}
+                              className="text-zinc-400 hover:text-zinc-600 font-bold px-1 text-sm"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        <div className="overflow-y-auto divide-y divide-zinc-100 max-h-48">
+                          {outsideLaboursList
+                            .filter(ol => ol.name.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) || ol.trade.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()))
+                            .map(ol => (
+                              <button
+                                key={ol.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpensePaidTo(ol.name);
+                                  setOutsideLabourSearchQuery('');
+                                  setIsOutsideLabourDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-zinc-100 text-zinc-800 transition-colors flex items-center justify-between font-semibold"
+                              >
+                                <span>{ol.name}</span>
+                                <span className="text-[9px] text-zinc-400 font-bold uppercase">{ol.trade}</span>
+                              </button>
+                            ))
+                          }
+                          {outsideLaboursList.filter(ol => ol.name.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase()) || ol.trade.toLowerCase().includes(outsideLabourSearchQuery.toLowerCase())).length === 0 && (
+                            <div className="p-3 text-zinc-400 text-center font-medium flex flex-col gap-2">
+                              <span>No outside labours found</span>
+                              {outsideLabourSearchQuery.trim() && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenAddOutsideLabourQuick(outsideLabourSearchQuery);
+                                  }}
+                                  className="w-full py-1.5 bg-zinc-950 hover:bg-zinc-800 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                                >
+                                  + Add &quot;{outsideLabourSearchQuery}&quot;
                                 </button>
                               )}
                             </div>
@@ -3307,6 +3526,72 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isSavingQuickVendor ? "Registering..." : "Register Vendor"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK ADD OUTSIDE LABOUR MODAL */}
+      {isQuickAddOutsideLabourOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b pb-2 border-zinc-100">
+              <h4 className="text-sm font-extrabold text-zinc-950">Add Outside Labour</h4>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddOutsideLabourOpen(false)}
+                className="text-zinc-400 hover:text-zinc-655 font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {quickOutsideLabourError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-600 rounded-lg p-2.5 text-xs">
+                {quickOutsideLabourError}
+              </div>
+            )}
+
+            <form onSubmit={handleQuickOutsideLabourSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-505 uppercase tracking-wider mb-1">Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Raj"
+                  value={quickOutsideLabourName}
+                  onChange={(e) => setQuickOutsideLabourName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-505 uppercase tracking-wider mb-1">Trade/Role</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Mason"
+                  value={quickOutsideLabourTrade}
+                  onChange={(e) => setQuickOutsideLabourTrade(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 text-xs focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-505 uppercase tracking-wider mb-1">Phone (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 9876543210"
+                  value={quickOutsideLabourPhone}
+                  onChange={(e) => setQuickOutsideLabourPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 text-xs focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSavingQuickOutsideLabour}
+                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSavingQuickOutsideLabour ? "Registering..." : "Register Outside Labour"}
               </button>
             </form>
           </div>

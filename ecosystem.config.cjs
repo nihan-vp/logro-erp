@@ -3,6 +3,7 @@
 module.exports = {
   apps: [{
     name: "logro-server",
-    script: "server.ts",
+    script: "dist/server.js",
   }]
 };
+

@@ -27,6 +27,7 @@ const REQUEST_TO_EXPENSE_CATEGORY: Record<string, ExpenseCategory> = {
   Transportation: 'Transport',
   'Vendor Payment': 'Vendor Payment',
   Purchase: 'Material',
+  'Outside Labour': 'Outside Labour',
   Other: 'Other',
 };
 
@@ -36,6 +37,7 @@ function expenseCategoryToRequestCategory(category: ExpenseCategory | string): P
   if (category === 'Labour') return 'Worker';
   if (category === 'Transport') return 'Transportation';
   if (category === 'Vendor Payment') return 'Vendor Payment';
+  if (category === 'Outside Labour') return 'Outside Labour';
   return 'Other';
 }
 
@@ -97,14 +99,33 @@ async function calculateMetrics(companyName: string) {
 
   // 2. Task regular expenses
   const taskToExpensesCost: Record<string, number> = {};
+  const taskToOutsideLabourCost: Record<string, number> = {};
+  const taskToMaterialCost: Record<string, number> = {};
   expenses.forEach((exp: any) => {
-    taskToExpensesCost[exp.taskId] = (taskToExpensesCost[exp.taskId] || 0) + exp.amount;
+    if (exp.category === 'Outside Labour') {
+      taskToOutsideLabourCost[exp.taskId] = (taskToOutsideLabourCost[exp.taskId] || 0) + exp.amount;
+    } else {
+      taskToExpensesCost[exp.taskId] = (taskToExpensesCost[exp.taskId] || 0) + exp.amount;
+      if (exp.category === 'Material') {
+        taskToMaterialCost[exp.taskId] = (taskToMaterialCost[exp.taskId] || 0) + exp.amount;
+      }
+    }
   });
 
   // 2b. Pending & Draft payment requests
   const taskToPendingExpenseCost: Record<string, number> = {};
+  const taskToPendingOutsideLabourCost: Record<string, number> = {};
+  const taskToPendingMaterialCost: Record<string, number> = {};
   paymentRequests.filter((pr: any) => pr.status === 'Pending' || pr.status === 'Draft').forEach((pr: any) => {
-    taskToPendingExpenseCost[pr.taskId] = (taskToPendingExpenseCost[pr.taskId] || 0) + pr.amount;
+    const resolvedCat = REQUEST_TO_EXPENSE_CATEGORY[pr.category] || 'Other';
+    if (resolvedCat === 'Outside Labour') {
+      taskToPendingOutsideLabourCost[pr.taskId] = (taskToPendingOutsideLabourCost[pr.taskId] || 0) + pr.amount;
+    } else {
+      taskToPendingExpenseCost[pr.taskId] = (taskToPendingExpenseCost[pr.taskId] || 0) + pr.amount;
+      if (resolvedCat === 'Material') {
+        taskToPendingMaterialCost[pr.taskId] = (taskToPendingMaterialCost[pr.taskId] || 0) + pr.amount;
+      }
+    }
   });
 
   // 3. Task payments made
@@ -118,7 +139,11 @@ async function calculateMetrics(companyName: string) {
   return {
     taskToLabourCost,
     taskToExpensesCost,
+    taskToOutsideLabourCost,
+    taskToMaterialCost,
     taskToPendingExpenseCost,
+    taskToPendingOutsideLabourCost,
+    taskToPendingMaterialCost,
     taskToPaymentsMade
   };
 }
@@ -209,7 +234,8 @@ router.get('/projects', async (req: any, res) => {
 
     // Total expenses of this project layout
     const projectExpenses = expenses.filter((e: any) => e.projectId === prj.id);
-    const regularExpenseAmt = projectExpenses.reduce((acc: number, e: any) => acc + e.amount, 0);
+    const regularExpenseAmt = projectExpenses.filter((e: any) => e.category !== 'Outside Labour').reduce((acc: number, e: any) => acc + e.amount, 0);
+    const outsideLabourExpenseAmt = projectExpenses.filter((e: any) => e.category === 'Outside Labour').reduce((acc: number, e: any) => acc + e.amount, 0);
 
     // Project labour cost
     const projectAttendance = attendance.filter((a: any) => a.projectId === prj.id);
@@ -222,7 +248,7 @@ router.get('/projects', async (req: any, res) => {
       .filter((pr: any) => pr.projectId === prj.id && (pr.status === 'Pending' || pr.status === 'Draft'))
       .reduce((acc: number, pr: any) => acc + pr.amount, 0);
 
-    const totalActualExpense = regularExpenseAmt + labourCostAmt;
+    const totalActualExpense = regularExpenseAmt + labourCostAmt + outsideLabourExpenseAmt;
     const totalCommittedExpense = totalActualExpense + pendingRequestAmt;
 
     // Total payments of this project
@@ -328,20 +354,23 @@ router.get('/tasks', async (req: any, res) => {
     const projects = await tenantDb.collection('projects').find({}).toArray();
 
     // Calculate task statistics
-    const { taskToLabourCost, taskToExpensesCost, taskToPendingExpenseCost, taskToPaymentsMade } = await calculateMetrics(req.user.companyName);
+    const { taskToLabourCost, taskToExpensesCost, taskToOutsideLabourCost, taskToMaterialCost, taskToPendingExpenseCost, taskToPendingOutsideLabourCost, taskToPendingMaterialCost, taskToPaymentsMade } = await calculateMetrics(req.user.companyName);
 
     const tasksWithStats = tasks.map((tsk: any) => {
       const labourCost = taskToLabourCost[tsk.id] || 0;
       const directExpenses = taskToExpensesCost[tsk.id] || 0;
+      const outsideLabourCost = taskToOutsideLabourCost[tsk.id] || 0;
+      const materialCost = taskToMaterialCost[tsk.id] || 0;
       const pendingExpenses = taskToPendingExpenseCost[tsk.id] || 0;
-      const totalExpenses = directExpenses + labourCost;
-      const totalCommitted = totalExpenses + pendingExpenses;
+      const pendingOutsideLabourCost = taskToPendingOutsideLabourCost[tsk.id] || 0;
+      const pendingMaterialCost = taskToPendingMaterialCost[tsk.id] || 0;
+      const totalExpenses = directExpenses + labourCost + outsideLabourCost;
+      const totalCommitted = totalExpenses + pendingExpenses + pendingOutsideLabourCost;
       const paymentsPaid = taskToPaymentsMade[tsk.id] || 0;
       const remainingBudget = tsk.assignedBudget - totalCommitted;
       const profitLoss = tsk.assignedBudget - totalCommitted;
       const isOverBudget = totalCommitted > tsk.assignedBudget;
 
-      // Find matching project details
       const prj = projects.find((p: any) => p.id === tsk.projectId);
 
       return {
@@ -349,7 +378,11 @@ router.get('/tasks', async (req: any, res) => {
         projectName: prj ? prj.projectName : 'Unknown Project',
         labourCost,
         directExpenses,
+        outsideLabourCost,
+        materialCost,
         pendingExpenses,
+        pendingOutsideLabourCost,
+        pendingMaterialCost,
         totalExpenses,
         totalCommitted,
         paymentsPaid,
@@ -367,7 +400,7 @@ router.get('/tasks', async (req: any, res) => {
 });
 
 router.post('/tasks', async (req: any, res) => {
-  const { projectId, taskName, description, assignedBudget, assignedStaff, startDate, endDate, progress, status, notes } = req.body;
+  const { projectId, taskName, description, assignedBudget, labourBudget, materialsBudget, assignedStaff, startDate, endDate, progress, status, notes } = req.body;
   if (!projectId || !taskName || assignedBudget === undefined || !startDate || !endDate) {
     return res.status(400).json({ error: 'Project, Task Name, Budget, Start Date, and End Date are required' });
   }
@@ -379,6 +412,8 @@ router.post('/tasks', async (req: any, res) => {
     taskName,
     description,
     assignedBudget: Number(assignedBudget),
+    labourBudget: labourBudget !== undefined && labourBudget !== null && labourBudget !== '' ? Number(labourBudget) : undefined,
+    materialsBudget: materialsBudget !== undefined && materialsBudget !== null && materialsBudget !== '' ? Number(materialsBudget) : undefined,
     assignedStaff,
     startDate,
     endDate,
@@ -392,7 +427,7 @@ router.post('/tasks', async (req: any, res) => {
 });
 
 router.put('/tasks/:id', async (req: any, res) => {
-  const { taskName, description, assignedBudget, assignedStaff, startDate, endDate, progress, status, notes } = req.body;
+  const { taskName, description, assignedBudget, labourBudget, materialsBudget, assignedStaff, startDate, endDate, progress, status, notes } = req.body;
   if (!taskName || assignedBudget === undefined || !startDate || !endDate) {
     return res.status(400).json({ error: 'Task Name, Budget, Start and End dates are required' });
   }
@@ -405,6 +440,8 @@ router.put('/tasks/:id', async (req: any, res) => {
         taskName,
         description,
         assignedBudget: Number(assignedBudget),
+        labourBudget: labourBudget !== undefined && labourBudget !== null && labourBudget !== '' ? Number(labourBudget) : undefined,
+        materialsBudget: materialsBudget !== undefined && materialsBudget !== null && materialsBudget !== '' ? Number(materialsBudget) : undefined,
         assignedStaff,
         startDate,
         endDate,
@@ -824,6 +861,129 @@ router.post('/vendors/bulk', async (req: any, res) => {
 
     await vendorCol.insertOne(newVendor);
     added.push(newVendor);
+  }
+
+  res.status(201).json({ success: true, added: added.length, errors });
+});
+
+// 5.c Outside Labours registry routes
+router.get('/outside-labours', async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const { status } = req.query;
+
+  const query: any = {};
+  if (status === 'active' || status === 'inactive') {
+    query.status = status;
+  }
+
+  const outsideLabours = await tenantDb.collection('outsideLabours').find(query).sort({ name: 1 }).toArray();
+  res.json({ outsideLabours });
+});
+
+router.post('/outside-labours', async (req: any, res) => {
+  const { name, trade, phone, status, notes } = req.body;
+  if (!name || !trade) {
+    return res.status(400).json({ error: 'Name and trade/role are required' });
+  }
+
+  const tenantDb = await getTenantDb(req.user.companyName);
+
+  const duplicate = await tenantDb.collection('outsideLabours').findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+  if (duplicate) {
+    return res.status(400).json({ error: 'An outside labour with this name already exists' });
+  }
+
+  const newLabour = {
+    id: 'ol_' + Date.now(),
+    name: String(name).trim(),
+    trade: String(trade).trim(),
+    phone: phone || '',
+    status: (status || 'active'),
+    notes: notes || '',
+    createdAt: new Date().toISOString()
+  };
+
+  await tenantDb.collection('outsideLabours').insertOne(newLabour);
+  res.status(201).json(newLabour);
+});
+
+router.put('/outside-labours/:id', async (req: any, res) => {
+  const { name, trade, phone, status, notes } = req.body;
+  if (!name || !trade) {
+    return res.status(400).json({ error: 'Name and trade/role are required' });
+  }
+
+  const tenantDb = await getTenantDb(req.user.companyName);
+
+  const duplicate = await tenantDb.collection('outsideLabours').findOne({
+    id: { $ne: req.params.id },
+    name: { $regex: new RegExp(`^${name}$`, 'i') }
+  });
+  if (duplicate) {
+    return res.status(400).json({ error: 'An outside labour with this name already exists' });
+  }
+
+  const result = await tenantDb.collection('outsideLabours').findOneAndUpdate(
+    { id: req.params.id },
+    {
+      $set: {
+        name: String(name).trim(),
+        trade: String(trade).trim(),
+        phone: phone || '',
+        status,
+        notes: notes || ''
+      }
+    },
+    { returnDocument: 'after' }
+  );
+
+  if (!result) return res.status(404).json({ error: 'Outside labour not found' });
+  res.json(result);
+});
+
+router.delete('/outside-labours/:id', async (req: any, res) => {
+  const tenantDb = await getTenantDb(req.user.companyName);
+
+  const result = await tenantDb.collection('outsideLabours').deleteOne({ id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: 'Outside labour not found' });
+
+  res.json({ success: true, message: 'Outside labour removed' });
+});
+
+router.post('/outside-labours/bulk', async (req: any, res) => {
+  const { outsideLabours } = req.body;
+  if (!Array.isArray(outsideLabours) || outsideLabours.length === 0) {
+    return res.status(400).json({ error: 'A non-empty outsideLabours array is required' });
+  }
+
+  const tenantDb = await getTenantDb(req.user.companyName);
+  const olCol = tenantDb.collection('outsideLabours');
+
+  const added: any[] = [];
+  const errors: string[] = [];
+
+  for (const [idx, ol] of outsideLabours.entries()) {
+    const name = String(ol.name || '').trim();
+    if (!name) {
+      errors.push(`Row ${idx + 1}: name is required`);
+      continue;
+    }
+
+    const duplicate = await olCol.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+    if (duplicate) continue;
+
+    const newLabour = {
+      id: 'ol_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      name,
+      trade: ol.trade || 'Other labour',
+      phone: ol.phone ? String(ol.phone).trim() : '',
+      status: ol.status === 'inactive' ? 'inactive' : 'active',
+      notes: ol.notes ? String(ol.notes).trim() : '',
+      createdAt: new Date().toISOString()
+    };
+
+    await olCol.insertOne(newLabour);
+    added.push(newLabour);
   }
 
   res.status(201).json({ success: true, added: added.length, errors });

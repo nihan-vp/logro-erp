@@ -37,6 +37,8 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
   const [taskName, setTaskName] = useState('');
   const [description, setDescription] = useState('');
   const [assignedBudget, setAssignedBudget] = useState<number>(0);
+  const [labourBudget, setLabourBudget] = useState<number | ''>('');
+  const [materialsBudget, setMaterialsBudget] = useState<number | ''>('');
   const [assignedStaff, setAssignedStaff] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -93,6 +95,8 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
     setTaskName('');
     setDescription('');
     setAssignedBudget(0);
+    setLabourBudget('');
+    setMaterialsBudget('');
     setAssignedStaff('');
     setAssignedStaffList([]);
     setMemberInput('');
@@ -112,6 +116,8 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
     setTaskName(t.taskName);
     setDescription(t.description || '');
     setAssignedBudget(t.assignedBudget);
+    setLabourBudget(t.labourBudget !== undefined && t.labourBudget !== null ? t.labourBudget : '');
+    setMaterialsBudget(t.materialsBudget !== undefined && t.materialsBudget !== null ? t.materialsBudget : '');
     setAssignedStaff(t.assignedStaff || '');
 
     const parsedStaff = t.assignedStaff
@@ -178,6 +184,8 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
       taskName,
       description,
       assignedBudget: Number(assignedBudget),
+      labourBudget: labourBudget !== '' ? Number(labourBudget) : undefined,
+      materialsBudget: materialsBudget !== '' ? Number(materialsBudget) : undefined,
       assignedStaff: assignedStaffList.join(', '),
       startDate,
       endDate,
@@ -359,7 +367,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredTasks.map((t) => {
-                const totalExpenses = (t.directExpenses || 0) + (t.labourCost || 0) + (t.pendingExpenses || 0);
+                const totalExpenses = (t.directExpenses || 0) + (t.labourCost || 0) + (t.outsideLabourCost || 0) + (t.pendingExpenses || 0) + (t.pendingOutsideLabourCost || 0);
                 const isOver = totalExpenses > t.assignedBudget;
                 const isNearing = !isOver && (totalExpenses / t.assignedBudget) > 0.85;
 
@@ -419,18 +427,26 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
 
                       {/* Cost Details bar */}
                       {userRole !== 'manager' && (
-                        <div className="grid grid-cols-4 gap-1 sm:gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-semibold border border-zinc-100">
+                        <div className="grid grid-cols-6 gap-1 sm:gap-2 bg-zinc-50 p-2.5 rounded-xl text-[10px] font-semibold border border-zinc-100">
                           <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Est Budget</span>
                             <span className="text-zinc-900 block">{formatCur(t.assignedBudget)}</span>
                           </div>
                           <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Materials</span>
+                            <span className="text-zinc-900 block">{formatCur((t.materialCost || 0) + (t.pendingMaterialCost || 0))}</span>
+                          </div>
+                          <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Expenses</span>
-                            <span className="text-zinc-900 block">{formatCur((t.directExpenses || 0) + (t.pendingExpenses || 0))}</span>
+                            <span className="text-zinc-900 block">{formatCur(((t.directExpenses || 0) + (t.pendingExpenses || 0)) - ((t.materialCost || 0) + (t.pendingMaterialCost || 0)))}</span>
                           </div>
                           <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Labour</span>
                             <span className="text-zinc-900 block">{formatCur(t.labourCost || 0)}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Out. Labour</span>
+                            <span className="text-zinc-900 block">{formatCur((t.outsideLabourCost || 0) + (t.pendingOutsideLabourCost || 0))}</span>
                           </div>
                           <div>
                             <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Balance</span>
@@ -516,26 +532,42 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             </div>
 
             {userRole !== 'manager' && (
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
                 <div>
                   <span className="text-[10px] text-zinc-400 font-bold uppercase block">Scoped Budget</span>
-                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.assignedBudget)}</span>
+                  <span className="text-sm sm:text-base font-bold text-zinc-950 block">{formatCur(selectedTask.assignedBudget)}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Materials & Tools</span>
-                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.directExpenses || 0)}</span>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Labour Budget</span>
+                  <span className="text-sm sm:text-base font-bold text-zinc-950 block">
+                    {selectedTask.labourBudget !== undefined && selectedTask.labourBudget !== null ? formatCur(selectedTask.labourBudget) : 'N/A'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Site Attendance Cost</span>
-                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.labourCost || 0)}</span>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Materials Budget</span>
+                  <span className="text-sm sm:text-base font-bold text-zinc-950 block">
+                    {selectedTask.materialsBudget !== undefined && selectedTask.materialsBudget !== null ? formatCur(selectedTask.materialsBudget) : 'N/A'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Pending</span>
-                  <span className="text-base font-bold text-amber-600 block">{formatCur(selectedTask.pendingExpenses || 0)}</span>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments Paid</span>
+                  <span className="text-sm sm:text-base font-bold text-zinc-950 block">{formatCur(selectedTask.paymentsPaid || 0)}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Payments</span>
-                  <span className="text-base font-bold text-zinc-950 block">{formatCur(selectedTask.paymentsPaid || 0)}</span>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Materials Cost</span>
+                  <span className="text-sm sm:text-base font-bold text-zinc-950 block">{formatCur((selectedTask.materialCost || 0) + (selectedTask.pendingMaterialCost || 0))}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Labour Cost</span>
+                  <span className="text-sm sm:text-base font-bold text-zinc-950 block">{formatCur(selectedTask.labourCost || 0)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Outside Labour Cost</span>
+                  <span className="text-sm sm:text-base font-bold text-zinc-950 block">{formatCur((selectedTask.outsideLabourCost || 0) + (selectedTask.pendingOutsideLabourCost || 0))}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">Pending Cost</span>
+                  <span className="text-sm sm:text-base font-bold text-amber-600 block">{formatCur((selectedTask.pendingExpenses || 0) + (selectedTask.pendingOutsideLabourCost || 0))}</span>
                 </div>
               </div>
             )}
@@ -546,12 +578,12 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                   <div>
                     <span className="block text-[9px] text-zinc-400 uppercase tracking-wider font-bold">Task Profit / Loss</span>
                     <span className="text-sm sm:text-base font-bold">
-                      {formatCur(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.pendingExpenses || 0)))}
+                      {formatCur(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.outsideLabourCost || 0) + (selectedTask.pendingExpenses || 0) + (selectedTask.pendingOutsideLabourCost || 0)))}
                     </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold text-zinc-900 ${(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.pendingExpenses || 0))) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
+                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold text-zinc-900 ${(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.outsideLabourCost || 0) + (selectedTask.pendingExpenses || 0) + (selectedTask.pendingOutsideLabourCost || 0))) >= 0 ? 'bg-emerald-400' : 'bg-red-400'
                     }`}>
-                    {(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.pendingExpenses || 0))) >= 0 ? 'Profitable' : 'Deficit'}
+                    {(selectedTask.assignedBudget - ((selectedTask.directExpenses || 0) + (selectedTask.labourCost || 0) + (selectedTask.outsideLabourCost || 0) + (selectedTask.pendingExpenses || 0) + (selectedTask.pendingOutsideLabourCost || 0))) >= 0 ? 'Profitable' : 'Deficit'}
                   </span>
                 </div>
               )}
@@ -687,21 +719,50 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                Target Assigned Budget (₹)
-              </label>
-              <input
-                type="number"
-                required
-                min={0}
-                placeholder="e.g. 45000"
-                value={assignedBudget}
-                onChange={(e) => setAssignedBudget(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                  Target Budget (₹)
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={0}
+                  placeholder="e.g. 45000"
+                  value={assignedBudget === 0 ? '' : assignedBudget}
+                  onChange={(e) => setAssignedBudget(e.target.value === '' ? 0 : Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
+                />
+              </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                  Labour Budget (₹, Opt)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 20000"
+                  value={labourBudget}
+                  onChange={(e) => setLabourBudget(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
+                  Materials Budget (₹, Opt)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 25000"
+                  value={materialsBudget}
+                  onChange={(e) => setMaterialsBudget(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-955 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="relative">
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
