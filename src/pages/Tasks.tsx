@@ -751,7 +751,7 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
-                  Materials Budget (₹, Opt)
+                  Materials Budget (₹)
                 </label>
                 <input
                   type="number"

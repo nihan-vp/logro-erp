@@ -2625,7 +2625,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Labour Budget (₹, Opt)</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Labour Budget (₹)</label>
                   <input
                     type="number"
                     min={0}
@@ -2637,7 +2637,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Materials Budget (₹, Opt)</label>
+                  <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Materials Budget (₹)</label>
                   <input
                     type="number"
                     min={0}
