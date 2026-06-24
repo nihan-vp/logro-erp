@@ -2038,7 +2038,7 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                                 )}
                               </div>
                               <div>
-                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Expenses</span>
+                                <span className="text-zinc-400 block text-[9px] uppercase tracking-wider">Other Exp</span>
                                 <span className="text-zinc-900 block">{formatCur(((t.directExpenses || 0) + (t.pendingExpenses || 0)) - ((t.materialCost || 0) + (t.pendingMaterialCost || 0)))}</span>
                                 {((t.pendingExpenses || 0) - (t.pendingMaterialCost || 0)) > 0 && (
                                   <span className="text-[9px] text-amber-600 block">({formatCur((t.pendingExpenses || 0) - (t.pendingMaterialCost || 0))} pending)</span>
@@ -2350,6 +2350,12 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                   <div>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase block">Out. Labour</span>
                     <span className="text-base font-bold text-zinc-950 block">{formatCur((activeTask.outsideLabourCost || 0) + (activeTask.pendingOutsideLabourCost || 0))}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Other Exp</span>
+                    <span className="text-base font-bold text-zinc-950 block">
+                      {formatCur(((activeTask.directExpenses || 0) + (activeTask.pendingExpenses || 0)) - ((activeTask.materialCost || 0) + (activeTask.pendingMaterialCost || 0)))}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase block">Pending</span>
