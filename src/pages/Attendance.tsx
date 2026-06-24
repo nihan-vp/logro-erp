@@ -515,26 +515,64 @@ export default function AttendancePage() {
         )
       );
 
-      // Create a consolidated payment request for the selected worker and period
-      const firstLog = selectedLogs[0] || attendanceLogs.find(l => l.workerName === worker.name);
-      const attendanceIds = selectedLogs.map(log => log.id);
+      // Group logs by project & task if not explicitly consolidating
+      const logsByGroup: Record<string, { projectId: string; taskId: string; logs: any[]; groupTotal: number }> = {};
+      if (payWagesProjectId) {
+        const key = `${payWagesProjectId}_${payWagesTaskId || ''}`;
+        logsByGroup[key] = {
+          projectId: payWagesProjectId,
+          taskId: payWagesTaskId || '',
+          logs: selectedLogs,
+          groupTotal: totalSelectedAmount
+        };
+      } else {
+        selectedLogs.forEach(log => {
+          const pid = log.projectId || '';
+          const tid = log.taskId || '';
+          const key = `${pid}_${tid}`;
+          if (!logsByGroup[key]) {
+            logsByGroup[key] = { projectId: pid, taskId: tid, logs: [], groupTotal: 0 };
+          }
+          const item = logsByGroup[key];
+          item.logs.push(log);
+          let rate = 0;
+          if (log.status === 'Present') rate = log.dailyWage || worker.dailyWage;
+          else if (log.status === 'Half Day') rate = (log.dailyWage || worker.dailyWage) * 0.5;
+          item.groupTotal += rate + (log.overtimeAmount || 0);
+        });
+      }
 
-      await api.createPaymentRequest({
-        projectId: payWagesProjectId || firstLog?.projectId || '',
-        taskId: payWagesTaskId || firstLog?.taskId || '',
-        payeeName: worker.name,
-        category: 'Worker',
-        amount: amt,
-        description: `Wages payment request for ${worker.name} (${overviewFilterType} view: ${firstLog ? firstLog.date : formatLocalDate(new Date())} onwards)`,
-        dueDate: firstLog ? firstLog.date : formatLocalDate(new Date()),
-        priority: 'Medium',
-        paymentMethod: 'Bank Transfer',
-        status: 'Pending',
-        createdAt: new Date().toISOString(),
-        attendanceIds
+      const groupItems = Object.values(logsByGroup);
+      let allocatedSum = 0;
+      const groupAllocations = groupItems.map((item, idx) => {
+        if (idx === groupItems.length - 1) {
+          return { ...item, allocatedAmount: amt - allocatedSum };
+        }
+        const allocated = Math.round((item.groupTotal / totalSelectedAmount) * amt);
+        allocatedSum += allocated;
+        return { ...item, allocatedAmount: allocated };
       });
 
-      notify.success(`Submitted payment request of ${formatCur(amt)} for ${worker.name}.`);
+      for (const group of groupAllocations) {
+        if (group.allocatedAmount <= 0) continue;
+        const firstLog = group.logs[0];
+        await api.createPaymentRequest({
+          projectId: group.projectId,
+          taskId: group.taskId,
+          payeeName: worker.name,
+          category: 'Worker',
+          amount: group.allocatedAmount,
+          description: `Wages payment request for ${worker.name} (${overviewFilterType} view: ${firstLog ? firstLog.date : formatLocalDate(new Date())} onwards)`,
+          dueDate: firstLog ? firstLog.date : formatLocalDate(new Date()),
+          priority: 'Medium',
+          paymentMethod: 'Bank Transfer',
+          status: 'Pending',
+          createdAt: new Date().toISOString(),
+          attendanceIds: group.logs.map(log => log.id)
+        });
+      }
+
+      notify.success(`Submitted payment requests totaling ${formatCur(amt)} for ${worker.name}.`);
       setIsPayWagesOpen(false);
       setPayWagesAmount('');
       fetchOverviewLogs();
@@ -1081,46 +1119,59 @@ export default function AttendancePage() {
 
         if (selectedLogs.length === 0) continue;
 
-        const totalAmount = selectedLogs.reduce((sum, log) => {
-          let rate = 0;
-          if (log.status === 'Present') rate = log.dailyWage || worker.dailyWage;
-          else if (log.status === 'Half Day') rate = (log.dailyWage || worker.dailyWage) * 0.5;
-          return sum + rate + (log.overtimeAmount || 0);
-        }, 0);
-
-        // Update logs
-        await Promise.all(
-          selectedLogs.map(log =>
-            api.updateAttendance(log.id, {
-              workerName: log.workerName,
-              status: log.status,
-              dailyWage: log.dailyWage,
-              overtimeAmount: log.overtimeAmount,
-              paymentStatus: 'Pending'
-            })
-          )
-        );
-
-        // Create Payment Request
-        const firstLog = selectedLogs[0];
-        await api.createPaymentRequest({
-          projectId: wageProjectFilter !== 'All' ? wageProjectFilter : (firstLog.projectId || ''),
-          taskId: wageTaskFilter !== 'All' ? wageTaskFilter : (firstLog.taskId || ''),
-          payeeName: worker.name,
-          category: 'Worker',
-          amount: totalAmount,
-          description: `Bulk wages payment for ${worker.name} (${overviewFilterType} period)`,
-          dueDate: selectedLogs[selectedLogs.length - 1].date,
-          priority: 'Medium',
-          paymentMethod: 'Bank Transfer',
-          status: 'Pending',
-          createdAt: new Date().toISOString(),
-          attendanceIds: selectedLogs.map(log => log.id)
+        // Group selected logs by project & task
+        const logsByGroup: Record<string, { projectId: string; taskId: string; logs: any[] }> = {};
+        selectedLogs.forEach(log => {
+          const pid = log.projectId || '';
+          const tid = log.taskId || '';
+          const key = `${pid}_${tid}`;
+          if (!logsByGroup[key]) {
+            logsByGroup[key] = { projectId: pid, taskId: tid, logs: [] };
+          }
+          logsByGroup[key].logs.push(log);
         });
-        requestsCreated++;
+
+        for (const { projectId, taskId, logs: groupLogs } of Object.values(logsByGroup)) {
+          const totalAmount = groupLogs.reduce((sum, log) => {
+            let rate = 0;
+            if (log.status === 'Present') rate = log.dailyWage || worker.dailyWage;
+            else if (log.status === 'Half Day') rate = (log.dailyWage || worker.dailyWage) * 0.5;
+            return sum + rate + (log.overtimeAmount || 0);
+          }, 0);
+
+          // Update logs
+          await Promise.all(
+            groupLogs.map(log =>
+              api.updateAttendance(log.id, {
+                workerName: log.workerName,
+                status: log.status,
+                dailyWage: log.dailyWage,
+                overtimeAmount: log.overtimeAmount,
+                paymentStatus: 'Pending'
+              })
+            )
+          );
+
+          // Create Payment Request
+          await api.createPaymentRequest({
+            projectId: wageProjectFilter !== 'All' ? wageProjectFilter : projectId,
+            taskId: wageTaskFilter !== 'All' ? wageTaskFilter : taskId,
+            payeeName: worker.name,
+            category: 'Worker',
+            amount: totalAmount,
+            description: `Bulk wages payment for ${worker.name} (${overviewFilterType} period)`,
+            dueDate: groupLogs[groupLogs.length - 1].date,
+            priority: 'Medium',
+            paymentMethod: 'Bank Transfer',
+            status: 'Pending',
+            createdAt: new Date().toISOString(),
+            attendanceIds: groupLogs.map(log => log.id)
+          });
+          requestsCreated++;
+        }
       }
 
-      notify.success(`Bulk payment requests initiated for ${requestsCreated} workers.`);
+      notify.success(`Bulk payment requests initiated: ${requestsCreated} requests created.`);
       setSelectedWorkersForPayment([]);
       fetchOverviewLogs();
     } catch (err: any) {
@@ -1161,44 +1212,57 @@ export default function AttendancePage() {
         const worker = crew.find(c => c.name === workerName);
         const dailyWage = worker?.dailyWage || 200;
 
-        const totalAmount = logs.reduce((sum, log) => {
-          let rate = 0;
-          if (log.status === 'Present') rate = log.dailyWage || dailyWage;
-          else if (log.status === 'Half Day') rate = (log.dailyWage || dailyWage) * 0.5;
-          return sum + rate + (log.overtimeAmount || 0);
-        }, 0);
-
-        await Promise.all(
-          logs.map(log =>
-            api.updateAttendance(log.id, {
-              workerName: log.workerName,
-              status: log.status,
-              dailyWage: log.dailyWage,
-              overtimeAmount: log.overtimeAmount,
-              paymentStatus: 'Pending'
-            })
-          )
-        );
-
-        const firstLog = logs[0];
-        await api.createPaymentRequest({
-          projectId: firstLog.projectId || '',
-          taskId: firstLog.taskId || '',
-          payeeName: workerName,
-          category: 'Worker',
-          amount: totalAmount,
-          description: `Consolidated wages payout request for ${workerName} (Ledger view: ${logs.length} day(s))`,
-          dueDate: logs[logs.length - 1].date,
-          priority: 'Medium',
-          paymentMethod: 'Bank Transfer',
-          status: 'Pending',
-          createdAt: new Date().toISOString(),
-          attendanceIds: logs.map(log => log.id)
+        // Group selected logs by project & task
+        const logsByGroup: Record<string, { projectId: string; taskId: string; logs: any[] }> = {};
+        logs.forEach(log => {
+          const pid = log.projectId || '';
+          const tid = log.taskId || '';
+          const key = `${pid}_${tid}`;
+          if (!logsByGroup[key]) {
+            logsByGroup[key] = { projectId: pid, taskId: tid, logs: [] };
+          }
+          logsByGroup[key].logs.push(log);
         });
-        requestsCreated++;
+
+        for (const { projectId, taskId, logs: groupLogs } of Object.values(logsByGroup)) {
+          const totalAmount = groupLogs.reduce((sum, log) => {
+            let rate = 0;
+            if (log.status === 'Present') rate = log.dailyWage || dailyWage;
+            else if (log.status === 'Half Day') rate = (log.dailyWage || dailyWage) * 0.5;
+            return sum + rate + (log.overtimeAmount || 0);
+          }, 0);
+
+          await Promise.all(
+            groupLogs.map(log =>
+              api.updateAttendance(log.id, {
+                workerName: log.workerName,
+                status: log.status,
+                dailyWage: log.dailyWage,
+                overtimeAmount: log.overtimeAmount,
+                paymentStatus: 'Pending'
+              })
+            )
+          );
+
+          await api.createPaymentRequest({
+            projectId,
+            taskId,
+            payeeName: workerName,
+            category: 'Worker',
+            amount: totalAmount,
+            description: `Consolidated wages payout request for ${workerName} (Ledger view: ${groupLogs.length} day(s))`,
+            dueDate: groupLogs[groupLogs.length - 1].date,
+            priority: 'Medium',
+            paymentMethod: 'Bank Transfer',
+            status: 'Pending',
+            createdAt: new Date().toISOString(),
+            attendanceIds: groupLogs.map(log => log.id)
+          });
+          requestsCreated++;
+        }
       }
 
-      notify.success(`Consolidated payment requests created for ${requestsCreated} workers.`);
+      notify.success(`Consolidated payment requests created: ${requestsCreated} requests created.`);
       setSelectedLedgerLogs([]);
       fetchOverviewLogs();
     } catch (err: any) {

@@ -623,6 +623,29 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
       return;
     }
 
+    const task = tasks.find(t => t.id === reqTaskId);
+    const currentSpent = task ? (task.totalCommitted ?? task.totalExpenses ?? 0) : 0;
+    const newExpenseAmt = (reqCategory === 'Material' || reqCategory === 'Tools')
+      ? reqPurchaseItems.reduce((s, it) => s + it.total, 0)
+      : Number(reqAmount);
+
+    let oldAmt = 0;
+    if (reqEditId) {
+      const oldReq = requests.find(r => r.id === reqEditId);
+      oldAmt = oldReq ? oldReq.amount : 0;
+    }
+    const prospectiveSpent = currentSpent - oldAmt + newExpenseAmt;
+
+    if (task && task.assignedBudget > 0 && prospectiveSpent > task.assignedBudget) {
+      const proceed = await confirm({
+        title: 'Task Budget Exceeded Warning',
+        message: `Logging this expense of ₹${newExpenseAmt.toLocaleString('en-IN')} will bring the total spent/committed for task "${task.taskName}" to ₹${prospectiveSpent.toLocaleString('en-IN')}, which exceeds the task's budget of ₹${task.assignedBudget.toLocaleString('en-IN')}. Do you want to proceed?`,
+        confirmLabel: 'Proceed anyway',
+        variant: 'warning',
+      });
+      if (!proceed) return;
+    }
+
     const amountLabel = formatCur(Number(reqAmount));
     const titleText = isEditingPaidExpense
       ? 'Submit edit approval request?'
@@ -1119,6 +1142,38 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 </div>
               </div>
             )}
+
+            {(() => {
+              const task = tasks.find(t => t.id === reqTaskId);
+              const currentSpent = task ? (task.totalCommitted ?? task.totalExpenses ?? 0) : 0;
+              const newExpenseAmt = (reqCategory === 'Material' || reqCategory === 'Tools')
+                ? reqPurchaseItems.reduce((s, it) => s + it.total, 0)
+                : Number(reqAmount);
+
+              let oldAmt = 0;
+              if (reqEditId) {
+                const oldReq = requests.find(r => r.id === reqEditId);
+                oldAmt = oldReq ? oldReq.amount : 0;
+              }
+              const prospectiveSpent = currentSpent - oldAmt + newExpenseAmt;
+
+              if (task && task.assignedBudget > 0 && prospectiveSpent > task.assignedBudget) {
+                return (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 text-amber-600" />
+                    <div>
+                      <p className="font-bold">Task budget limit exceeded</p>
+                      <p className="mt-0.5 font-medium leading-relaxed">
+                        Task "{task.taskName}" has an assigned budget of <span className="font-bold">{formatCur(task.assignedBudget)}</span>.
+                        Currently spent/committed: <span className="font-bold">{formatCur(currentSpent - oldAmt)}</span>.
+                        This request is for <span className="font-bold">{formatCur(newExpenseAmt)}</span>, bringing the total to <span className="font-bold">{formatCur(prospectiveSpent)}</span> which exceeds the budget by <span className="font-bold">{formatCur(prospectiveSpent - task.assignedBudget)}</span>.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <form onSubmit={handleRequestSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

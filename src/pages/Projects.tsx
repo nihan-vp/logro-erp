@@ -1000,6 +1000,21 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
       return;
     }
 
+    const otherTasksBudgetSum = projectTasks
+      .filter(t => t.id !== taskEditId)
+      .reduce((sum, t) => sum + (t.assignedBudget || 0), 0);
+    const newTotalBudget = otherTasksBudgetSum + Number(taskFormBudget);
+
+    if (selectedProject.contractBudget > 0 && newTotalBudget > selectedProject.contractBudget) {
+      const proceed = await confirm({
+        title: 'Project Budget Exceeded Warning',
+        message: `Allocating ₹${Number(taskFormBudget).toLocaleString('en-IN')} to this task will bring the total allocated budget for all tasks to ₹${newTotalBudget.toLocaleString('en-IN')}, which exceeds the project's contract budget of ₹${selectedProject.contractBudget.toLocaleString('en-IN')}. Do you want to proceed?`,
+        confirmLabel: 'Proceed anyway',
+        variant: 'warning',
+      });
+      if (!proceed) return;
+    }
+
     const payload = {
       projectId: selectedProject.id,
       taskName: taskFormName,
@@ -1313,6 +1328,29 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
     } else if (expenseAmount === '' || expenseAmount <= 0) {
       notify.warning('Spent amount must be greater than 0.');
       return;
+    }
+
+    const task = projectTasks.find(t => t.id === expenseTaskId);
+    const currentSpent = task ? (task.totalCommitted ?? task.totalExpenses ?? 0) : 0;
+    const newExpenseAmt = (expenseCategory === 'Material' || expenseCategory === 'Tools')
+      ? expensePurchaseItems.reduce((s, it) => s + it.total, 0)
+      : Number(expenseAmount);
+
+    let oldAmt = 0;
+    if (expenseEditId) {
+      const oldExpense = projectExpenses.find(e => e.id === expenseEditId);
+      oldAmt = oldExpense ? oldExpense.amount : 0;
+    }
+    const prospectiveSpent = currentSpent - oldAmt + newExpenseAmt;
+
+    if (task && task.assignedBudget > 0 && prospectiveSpent > task.assignedBudget) {
+      const proceed = await confirm({
+        title: 'Task Budget Exceeded Warning',
+        message: `Logging this expense of ₹${newExpenseAmt.toLocaleString('en-IN')} will bring the total spent/committed for task "${task.taskName}" to ₹${prospectiveSpent.toLocaleString('en-IN')}, which exceeds the task's budget of ₹${task.assignedBudget.toLocaleString('en-IN')}. Do you want to proceed?`,
+        confirmLabel: 'Proceed anyway',
+        variant: 'warning',
+      });
+      if (!proceed) return;
     }
 
     const titleText = isEditingPaidExpense
@@ -2597,6 +2635,29 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               </div>
             )}
 
+            {(() => {
+              const otherTasksBudgetSum = projectTasks
+                .filter(t => t.id !== taskEditId)
+                .reduce((sum, t) => sum + (t.assignedBudget || 0), 0);
+              const newTotalBudget = otherTasksBudgetSum + Number(taskFormBudget);
+
+              if (selectedProject.contractBudget > 0 && newTotalBudget > selectedProject.contractBudget) {
+                return (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 text-amber-600" />
+                    <div>
+                      <p className="font-bold">Project budget limit exceeded</p>
+                      <p className="mt-0.5 font-medium leading-relaxed">
+                        Project contract budget is <span className="font-bold">{formatCur(selectedProject.contractBudget)}</span>.
+                        Allocating <span className="font-bold">{formatCur(Number(taskFormBudget))}</span> to this task will bring the total allocated budget for all tasks to <span className="font-bold">{formatCur(newTotalBudget)}</span>, which exceeds the contract budget by <span className="font-bold">{formatCur(newTotalBudget - selectedProject.contractBudget)}</span>.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <form onSubmit={handleTaskSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Task Name</label>
@@ -2869,6 +2930,38 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                 </div>
               </div>
             )}
+
+            {(() => {
+              const task = projectTasks.find(t => t.id === expenseTaskId);
+              const currentSpent = task ? (task.totalCommitted ?? task.totalExpenses ?? 0) : 0;
+              const newExpenseAmt = (expenseCategory === 'Material' || expenseCategory === 'Tools')
+                ? expensePurchaseItems.reduce((s, it) => s + it.total, 0)
+                : Number(expenseAmount);
+
+              let oldAmt = 0;
+              if (expenseEditId) {
+                const oldExpense = projectExpenses.find(e => e.id === expenseEditId);
+                oldAmt = oldExpense ? oldExpense.amount : 0;
+              }
+              const prospectiveSpent = currentSpent - oldAmt + newExpenseAmt;
+
+              if (task && task.assignedBudget > 0 && prospectiveSpent > task.assignedBudget) {
+                return (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 text-amber-600" />
+                    <div>
+                      <p className="font-bold">Task budget limit exceeded</p>
+                      <p className="mt-0.5 font-medium leading-relaxed">
+                        Task "{task.taskName}" has an assigned budget of <span className="font-bold">{formatCur(task.assignedBudget)}</span>.
+                        Currently spent/committed: <span className="font-bold">{formatCur(currentSpent - oldAmt)}</span>.
+                        This request is for <span className="font-bold">{formatCur(newExpenseAmt)}</span>, bringing the total to <span className="font-bold">{formatCur(prospectiveSpent)}</span> which exceeds the budget by <span className="font-bold">{formatCur(prospectiveSpent - task.assignedBudget)}</span>.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <form onSubmit={handleExpenseSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

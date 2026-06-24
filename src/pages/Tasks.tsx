@@ -179,6 +179,22 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
       return;
     }
 
+    const selectedProj = projects.find(p => p.id === projectId);
+    const otherTasksBudgetSum = tasks
+      .filter(t => t.projectId === projectId && t.id !== editId)
+      .reduce((sum, t) => sum + (t.assignedBudget || 0), 0);
+    const newTotalBudget = otherTasksBudgetSum + Number(assignedBudget);
+
+    if (selectedProj && selectedProj.contractBudget > 0 && newTotalBudget > selectedProj.contractBudget) {
+      const proceed = await confirm({
+        title: 'Project Budget Exceeded Warning',
+        message: `Allocating ₹${Number(assignedBudget).toLocaleString('en-IN')} to this task will bring the total allocated budget for all tasks to ₹${newTotalBudget.toLocaleString('en-IN')}, which exceeds the project's contract budget of ₹${selectedProj.contractBudget.toLocaleString('en-IN')}. Do you want to proceed?`,
+        confirmLabel: 'Proceed anyway',
+        variant: 'warning',
+      });
+      if (!proceed) return;
+    }
+
     const payload = {
       projectId,
       taskName,
@@ -682,6 +698,31 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
               {submitError}
             </div>
           )}
+
+          {(() => {
+            const selectedProj = projects.find(p => p.id === projectId);
+            if (!selectedProj) return null;
+            const otherTasksBudgetSum = tasks
+              .filter(t => t.projectId === projectId && t.id !== editId)
+              .reduce((sum, t) => sum + (t.assignedBudget || 0), 0);
+            const newTotalBudget = otherTasksBudgetSum + Number(assignedBudget);
+
+            if (selectedProj.contractBudget > 0 && newTotalBudget > selectedProj.contractBudget) {
+              return (
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 text-amber-600" />
+                  <div>
+                    <p className="font-bold">Project budget limit exceeded</p>
+                    <p className="mt-0.5 font-medium leading-relaxed">
+                      Project contract budget is <span className="font-bold">{formatCur(selectedProj.contractBudget)}</span>.
+                      Allocating <span className="font-bold">{formatCur(Number(assignedBudget))}</span> to this task will bring the total allocated budget for all tasks to <span className="font-bold">{formatCur(newTotalBudget)}</span>, which exceeds the contract budget by <span className="font-bold">{formatCur(newTotalBudget - selectedProj.contractBudget)}</span>.
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
 
