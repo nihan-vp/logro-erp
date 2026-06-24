@@ -724,6 +724,18 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             return null;
           })()}
 
+          {Number(assignedBudget) > 0 && (Number(labourBudget || 0) + Number(materialsBudget || 0)) > Number(assignedBudget) && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+              <div>
+                <p className="font-bold">Task allocation warning</p>
+                <p className="mt-0.5 font-medium leading-relaxed">
+                  The combined Labour Budget (₹{(Number(labourBudget || 0)).toLocaleString('en-IN')}) and Materials Budget (₹{(Number(materialsBudget || 0)).toLocaleString('en-IN')}) is ₹{(Number(labourBudget || 0) + Number(materialsBudget || 0)).toLocaleString('en-IN')}, which exceeds the task's Target Budget of ₹{Number(assignedBudget).toLocaleString('en-IN')}.
+                </p>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
 
             {/* If creating fresh, require parenting project selection */}

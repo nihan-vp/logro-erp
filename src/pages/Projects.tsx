@@ -2658,6 +2658,18 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               return null;
             })()}
 
+            {Number(taskFormBudget) > 0 && (Number(taskFormLabourBudget || 0) + Number(taskFormMaterialsBudget || 0)) > Number(taskFormBudget) && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs sm:text-sm flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                <div>
+                  <p className="font-bold">Task allocation warning</p>
+                  <p className="mt-0.5 font-medium leading-relaxed">
+                    The combined Labour Budget (₹{(Number(taskFormLabourBudget || 0)).toLocaleString('en-IN')}) and Materials Budget (₹{(Number(taskFormMaterialsBudget || 0)).toLocaleString('en-IN')}) is ₹{(Number(taskFormLabourBudget || 0) + Number(taskFormMaterialsBudget || 0)).toLocaleString('en-IN')}, which exceeds the task's Target Budget of ₹{Number(taskFormBudget).toLocaleString('en-IN')}.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleTaskSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Task Name</label>
