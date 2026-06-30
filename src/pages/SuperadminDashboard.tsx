@@ -9,6 +9,8 @@ import { api } from '../api/client';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
 import BackupSection from '../components/BackupSection';
+import DatePicker from '../components/DatePicker';
+import Select from '../components/Select';
 
 export default function SuperadminDashboard() {
   const confirm = useConfirm();
@@ -993,10 +995,9 @@ export default function SuperadminDashboard() {
                   </div>
 
                   {useCustomDate ? (
-                    <input
-                      type="date"
+                    <DatePicker
                       value={newCompanyCustomDate}
-                      onChange={e => setNewCompanyCustomDate(e.target.value)}
+                      onChange={val => setNewCompanyCustomDate(val)}
                       min={new Date().toISOString().split('T')[0]}
                       className="w-full p-2 bg-white border border-zinc-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-zinc-950"
                       required
@@ -1578,15 +1579,16 @@ export default function SuperadminDashboard() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500 block">System Role *</label>
-                      <select
+                      <Select
                         value={newUserRole}
-                        onChange={e => setNewUserRole(e.target.value as any)}
+                        onChange={(val) => setNewUserRole(val as any)}
                         className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-zinc-950 transition-all cursor-pointer"
-                      >
-                        <option value="admin">Administrator (Admin)</option>
-                        <option value="accountant">Financial Accountant</option>
-                        <option value="manager">Site Manager</option>
-                      </select>
+                        options={[
+                          { value: 'admin', label: 'Administrator (Admin)' },
+                          { value: 'accountant', label: 'Financial Accountant' },
+                          { value: 'manager', label: 'Site Manager' }
+                        ]}
+                      />
                     </div>
                   </div>
 

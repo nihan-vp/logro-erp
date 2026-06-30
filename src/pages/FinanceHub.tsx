@@ -8,6 +8,7 @@ import { ExpenseCategory, PaymentRequest, PurchaseLineItem } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
 import { onRequestsUpdate, offRequestsUpdate } from '../api/socket';
+import Select from '../components/Select';
 
 type EnrichedPaymentRequest = PaymentRequest & { projectName: string; taskName: string };
 
@@ -877,30 +878,46 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-semibold text-zinc-600">
           <div>
             <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5">Project</label>
-            <select value={reqProjectFilter} onChange={(e) => { setReqProjectFilter(e.target.value); setReqTaskFilter('All'); }} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700">
-              <option value="All">All Projects</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}
-            </select>
+            <Select
+              value={reqProjectFilter}
+              onChange={(val) => { setReqProjectFilter(val); setReqTaskFilter('All'); }}
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700 font-semibold"
+              options={[
+                { value: 'All', label: 'All Projects' },
+                ...projects.map(p => ({ value: p.id, label: p.projectName }))
+              ]}
+            />
           </div>
           <div>
             <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5">Category</label>
-            <select value={reqCategoryFilter} onChange={(e) => setReqCategoryFilter(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700">
-              <option value="All">All Categories</option>
-              {Array.from(new Set(requests.map(r => r.category))).filter(Boolean).sort().map(cat => (
-                <option key={cat} value={cat}>{paymentCategoryToExpenseCategory(cat)}</option>
-              ))}
-            </select>
+            <Select
+              value={reqCategoryFilter}
+              onChange={(val) => setReqCategoryFilter(val)}
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700 font-semibold"
+              options={[
+                { value: 'All', label: 'All Categories' },
+                ...Array.from(new Set(requests.map(r => r.category))).filter(Boolean).sort().map(cat => ({
+                  value: cat,
+                  label: paymentCategoryToExpenseCategory(cat)
+                }))
+              ]}
+            />
           </div>
           <div>
             <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5">Status</label>
-            <select value={reqStatusFilter} onChange={(e) => setReqStatusFilter(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700">
-              <option value="All">All Statuses</option>
-              <option value="Draft">Draft</option>
-              <option value="Pending">Pending</option>
-              <option value="Paid">Paid</option>
-              <option value="Partially Paid">Partially Paid</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+            <Select
+              value={reqStatusFilter}
+              onChange={(val) => setReqStatusFilter(val)}
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 outline-none text-zinc-700 font-semibold"
+              options={[
+                { value: 'All', label: 'All Statuses' },
+                { value: 'Draft', label: 'Draft' },
+                { value: 'Pending', label: 'Pending' },
+                { value: 'Paid', label: 'Paid' },
+                { value: 'Partially Paid', label: 'Partially Paid' },
+                { value: 'Cancelled', label: 'Cancelled' }
+              ]}
+            />
           </div>
           <div className="flex flex-col justify-end">
             <label className="block text-[9px] font-bold text-zinc-400 uppercase mb-0.5 invisible select-none" aria-hidden="true">Reset</label>
@@ -1065,16 +1082,12 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                 <label htmlFor="rows-per-page" className="text-[10px] font-bold text-zinc-400 uppercase whitespace-nowrap">
                   Rows per page
                 </label>
-                <select
-                  id="rows-per-page"
+                <Select
                   value={rowsPerPage}
-                  onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                  className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
-                >
-                  {ROWS_PER_PAGE_OPTIONS.map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setRowsPerPage(Number(val))}
+                  className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none"
+                  options={ROWS_PER_PAGE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
+                />
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -1179,41 +1192,35 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Project</label>
-                  <select
+                  <Select
                     required
                     value={reqProjectId}
-                    onChange={(e) => setReqProjectId(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-950"
-                  >
-                    <option value="" disabled>Select project...</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={p.id}>{p.projectName}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setReqProjectId(val)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-955 text-xs sm:text-sm"
+                    placeholder="Select project..."
+                    options={projects.map(p => ({ value: p.id, label: p.projectName }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Under Specified Task Scope</label>
-                  <select
+                  <Select
                     required
                     value={reqTaskId}
-                    onChange={(e) => setReqTaskId(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-950"
-                  >
-                    <option value="" disabled>Select task scope...</option>
-                    {tasks.map(t => (
-                      <option key={t.id} value={t.id}>{t.taskName}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setReqTaskId(val)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-955 text-xs sm:text-sm"
+                    placeholder="Select task scope..."
+                    options={tasks.map(t => ({ value: t.id, label: t.taskName }))}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Expense Category</label>
-                  <select
+                  <Select
                     value={reqCategory}
-                    onChange={(e) => {
-                      const newCat = e.target.value as ExpenseCategory;
+                    onChange={(val) => {
+                      const newCat = val as ExpenseCategory;
                       setReqCategory(newCat);
                       if (newCat === 'Material' || newCat === 'Tools') {
                         const grandTotal = reqPurchaseItems.reduce((s, it) => s + it.total, 0);
@@ -1223,26 +1230,28 @@ export default function FinanceHub({ initialProjectId, initialTaskId, userRole, 
                         setReqAmount(reqVendorTotalToPay);
                       }
                     }}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none"
-                  >
-                    <option value="Material">Material</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Tools">Tools</option>
-                    <option value="Outside Labour">Outside Labour</option>
-                    <option value="Other">Other</option>
-                  </select>
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-xs sm:text-sm"
+                    options={[
+                      { value: 'Material', label: 'Material' },
+                      { value: 'Transport', label: 'Transport' },
+                      { value: 'Tools', label: 'Tools' },
+                      { value: 'Outside Labour', label: 'Outside Labour' },
+                      { value: 'Other', label: 'Other' }
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Priority</label>
-                  <select
+                  <Select
                     value={reqPriority}
-                    onChange={(e) => setReqPriority(e.target.value as PaymentRequest['priority'])}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none"
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </select>
+                    onChange={(val) => setReqPriority(val as PaymentRequest['priority'])}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-xs sm:text-sm"
+                    options={[
+                      { value: 'Low', label: 'Low' },
+                      { value: 'Medium', label: 'Medium' },
+                      { value: 'High', label: 'High' }
+                    ]}
+                  />
                 </div>
               </div>
 

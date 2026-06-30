@@ -5,6 +5,8 @@ import {
   Building2, ClipboardList, Users, Coins, TrendingUp
 } from 'lucide-react';
 import { api } from '../api/client';
+import DatePicker from '../components/DatePicker';
+import Select from '../components/Select';
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<'project' | 'task_expense' | 'labour' | 'payouts' | 'profit_loss' | 'pending' | 'monthly' | 'vendor_worker'>('project');
@@ -205,34 +207,31 @@ export default function ReportsPage() {
       <div className="bg-white border rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-0.5">Focus Project</label>
-          <select
+          <Select
             value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
+            onChange={(val) => setProjectFilter(val)}
             className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
-          >
-            <option value="All">All Projects</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>{p.projectName}</option>
-            ))}
-          </select>
+            options={[
+              { value: 'All', label: 'All Projects' },
+              ...projects.map(p => ({ value: p.id, label: p.projectName }))
+            ]}
+          />
         </div>
 
         <div>
           <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-0.5">Start Date Limit</label>
-          <input
-            type="date"
+          <DatePicker
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(val) => setStartDate(val)}
             className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none text-zinc-950"
           />
         </div>
 
         <div>
           <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-0.5">End Date Limit</label>
-          <input
-            type="date"
+          <DatePicker
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(val) => setEndDate(val)}
             className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2 text-xs font-semibold text-zinc-700 outline-none text-zinc-950"
           />
         </div>

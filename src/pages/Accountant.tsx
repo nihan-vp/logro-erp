@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { Wallet, Send, ClipboardList, PlusCircle, X } from 'lucide-react';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
+import Select from '../components/Select';
 
 export default function AccountantPage() {
   const confirm = useConfirm();
@@ -127,16 +128,17 @@ export default function AccountantPage() {
                     <input type="number" placeholder="Amount (₹)" className="w-full border p-2 rounded-lg" value={inflowAmount} onChange={e => setInflowAmount(e.target.value)} required />
                     <div className="space-y-1">
                         <label className="text-xs font-semibold text-zinc-650 block">Inflow Type</label>
-                        <select 
+                        <Select 
                             value={inflowType} 
-                            onChange={e => setInflowType(e.target.value)} 
-                            className="w-full border p-2 rounded-lg bg-white"
+                            onChange={(val) => setInflowType(val)} 
+                            className="w-full border p-2 rounded-lg bg-white text-xs font-semibold text-zinc-700 outline-none"
                             required
-                        >
-                            <option value="client payment">Client Payment</option>
-                            <option value="credit">Credit</option>
-                            <option value="custom">Custom</option>
-                        </select>
+                            options={[
+                                { value: 'client payment', label: 'Client Payment' },
+                                { value: 'credit', label: 'Credit' },
+                                { value: 'custom', label: 'Custom' }
+                            ]}
+                        />
                     </div>
                     <input type="text" placeholder="Description" className="w-full border p-2 rounded-lg" value={inflowDesc} onChange={e => setInflowDesc(e.target.value)} required />
                     <button type="submit" className="w-full bg-emerald-600 text-white p-2 rounded-lg font-semibold">Submit</button>

@@ -9,6 +9,7 @@ import {
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
 import { OfficeTransaction, PaymentRequest, Project, Task } from '../types';
+import Select from '../components/Select';
 
 type EnrichedPaymentRequest = PaymentRequest & { projectName: string; taskName: string };
 
@@ -74,16 +75,12 @@ function TablePagination({
           <label htmlFor={`${idPrefix}-rows-per-page`} className="text-[10px] font-bold text-zinc-400 uppercase whitespace-nowrap">
             Rows per page
           </label>
-          <select
-            id={`${idPrefix}-rows-per-page`}
+          <Select
             value={rowsPerPage}
-            onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
-            className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
-          >
-            {ROWS_PER_PAGE_OPTIONS.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+            onChange={(val) => onRowsPerPageChange(Number(val))}
+            className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none"
+            options={ROWS_PER_PAGE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
+          />
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -848,10 +845,9 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                 </div>
                 <div>
                   <label className={labelClass}>Inflow Type</label>
-                  <select
+                  <Select
                     value={inflowType}
-                    onChange={e => {
-                      const val = e.target.value;
+                    onChange={(val) => {
                       setInflowType(val);
                       if (val === 'credit') {
                         setInflowProject('');
@@ -859,11 +855,12 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
                     }}
                     required
                     className={inputClass}
-                  >
-                    <option value="client payment">Client Payment</option>
-                    <option value="credit">Credit</option>
-                    <option value="custom">Other</option>
-                  </select>
+                    options={[
+                      { value: 'client payment', label: 'Client Payment' },
+                      { value: 'credit', label: 'Credit' },
+                      { value: 'custom', label: 'Other' }
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -894,17 +891,18 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass}>Method</label>
-                  <select
+                  <Select
                     value={inflowMethod}
-                    onChange={e => setInflowMethod(e.target.value)}
+                    onChange={(val) => setInflowMethod(val)}
                     required
                     className={inputClass}
-                  >
-                    <option value="">Select...</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Cheque">Cheque</option>
-                  </select>
+                    placeholder="Select..."
+                    options={[
+                      { value: 'Bank Transfer', label: 'Bank Transfer' },
+                      { value: 'Cash', label: 'Cash' },
+                      { value: 'Cheque', label: 'Cheque' }
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Ref / Cheque #</label>
@@ -932,17 +930,14 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
               {inflowType !== 'credit' && (
                 <div>
                   <label className={labelClass}>Project</label>
-                  <select
+                  <Select
                     value={inflowProject}
-                    onChange={e => setInflowProject(e.target.value)}
+                    onChange={(val) => setInflowProject(val)}
                     required
                     className={inputClass}
-                  >
-                    <option value="">Select project...</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={p.id}>{p.projectName}</option>
-                    ))}
-                  </select>
+                    placeholder="Select project..."
+                    options={projects.map(p => ({ value: p.id, label: p.projectName }))}
+                  />
                 </div>
               )}
 
@@ -1020,16 +1015,17 @@ export default function AccountantDashboard({ onNavigate }: { onNavigate: (tab: 
 
                 <div>
                   <label className={labelClass}>Payment Method</label>
-                  <select
+                  <Select
                     value={payNowMethod}
-                    onChange={e => setPayNowMethod(e.target.value)}
+                    onChange={(val) => setPayNowMethod(val)}
                     required
                     className={inputClass}
-                  >
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Cheque">Cheque</option>
-                  </select>
+                    options={[
+                      { value: 'Bank Transfer', label: 'Bank Transfer' },
+                      { value: 'Cash', label: 'Cash' },
+                      { value: 'Cheque', label: 'Cheque' }
+                    ]}
+                  />
                 </div>
 
                 <div>

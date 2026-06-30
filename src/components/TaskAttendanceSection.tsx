@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { AttendanceStatus, CrewMember } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
+import DatePicker from './DatePicker';
 
 interface WorkerAttendanceRow {
   workerName: string;
@@ -240,12 +241,11 @@ export default function TaskAttendanceSection({
           <span>Worker Attendance ({assignedWorkers.length})</span>
         </span>
         <div className="flex items-center gap-1.5">
-          <Calendar className="w-3 h-3 text-zinc-400" />
-          <input
-            type="date"
+          <DatePicker
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="text-[10px] font-semibold bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 outline-none"
+            onChange={(val) => setDate(val)}
+            align="right"
+            className="text-[10px] font-bold bg-zinc-50 border border-zinc-200 rounded-lg pl-2 pr-7 py-1 outline-none w-28 text-center"
           />
         </div>
       </div>

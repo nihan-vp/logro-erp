@@ -9,6 +9,8 @@ import { Task, TaskStatus } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
 import TaskAttendanceSection from '../components/TaskAttendanceSection';
+import DatePicker from '../components/DatePicker';
+import Select from '../components/Select';
 
 interface TasksProps {
   onNavigate: (page: string, params?: any) => void;
@@ -332,31 +334,31 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Filter Project</label>
-                <select
+                <Select
                   value={projectFilter}
-                  onChange={(e) => setProjectFilter(e.target.value)}
+                  onChange={(val) => setProjectFilter(val)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none"
-                >
-                  <option value="All">All Projects</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.projectName}</option>
-                  ))}
-                </select>
+                  options={[
+                    { value: 'All', label: 'All Projects' },
+                    ...projects.map(p => ({ value: p.id, label: p.projectName }))
+                  ]}
+                />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Task Status</label>
-                <select
+                <Select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(val) => setStatusFilter(val)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-zinc-700 outline-none"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="On Hold">On Hold</option>
-                </select>
+                  options={[
+                    { value: 'All', label: 'All Statuses' },
+                    { value: 'Pending', label: 'Pending' },
+                    { value: 'In Progress', label: 'In Progress' },
+                    { value: 'Completed', label: 'Completed' },
+                    { value: 'On Hold', label: 'On Hold' }
+                  ]}
+                />
               </div>
             </div>
           </div>
@@ -405,19 +407,20 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                         </div>
 
                         {/* Status Select dropdown directly for swift quick modifications */}
-                        <select
+                        <Select
                           value={t.status}
-                          onChange={(e) => handleQuickStatusUpdate(t, e.target.value as TaskStatus)}
+                          onChange={(val) => handleQuickStatusUpdate(t, val as TaskStatus)}
                           className={`text-[10px] font-semibold px-2 py-1 rounded-full outline-none border cursor-pointer ${t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                             t.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border-zinc-200' :
                               t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-50 text-zinc-500 border-zinc-200'
-                            }`}
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="In Progress">In Progress</option>
-                          <option value="Completed">Completed</option>
-                          <option value="On Hold">On Hold</option>
-                        </select>
+                          }`}
+                          options={[
+                            { value: 'Pending', label: 'Pending' },
+                            { value: 'In Progress', label: 'In Progress' },
+                            { value: 'Completed', label: 'Completed' },
+                            { value: 'On Hold', label: 'On Hold' }
+                          ]}
+                        />
                       </div>
 
                       {t.description && (
@@ -744,17 +747,14 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
                   Parent Project Contract
                 </label>
-                <select
+                <Select
                   required
                   value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
-                >
-                  <option value="" disabled>Select parent Project...</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.projectName}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setProjectId(val)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-955 focus:outline-none"
+                  placeholder="Select parent Project..."
+                  options={projects.map(p => ({ value: p.id, label: p.projectName }))}
+                />
               </div>
             )}
 
@@ -951,10 +951,10 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
                   Task Current Status
                 </label>
-                <select
+                <Select
                   value={status}
-                  onChange={(e) => {
-                    const newStatus = e.target.value as TaskStatus;
+                  onChange={(val) => {
+                    const newStatus = val as TaskStatus;
                     setStatus(newStatus);
                     if (newStatus === 'Completed') {
                       setProgress(100);
@@ -962,13 +962,14 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                       setProgress(90);
                     }
                   }}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
-                >
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="On Hold">On Hold</option>
-                </select>
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-955 focus:outline-none"
+                  options={[
+                    { value: 'Pending', label: 'Pending' },
+                    { value: 'In Progress', label: 'In Progress' },
+                    { value: 'Completed', label: 'Completed' },
+                    { value: 'On Hold', label: 'On Hold' }
+                  ]}
+                />
               </div>
             </div>
 
@@ -977,11 +978,10 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
                   Scheduled Start Date
                 </label>
-                <input
-                  type="date"
+                <DatePicker
                   required
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(val) => setStartDate(val)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
                 />
               </div>
@@ -990,11 +990,10 @@ export default function Tasks({ onNavigate, userRole, initialProjectId }: TasksP
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">
                   Target Finish Date
                 </label>
-                <input
-                  type="date"
+                <DatePicker
                   required
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  onChange={(val) => setEndDate(val)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
                 />
               </div>

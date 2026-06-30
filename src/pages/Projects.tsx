@@ -13,6 +13,8 @@ import { Project, ProjectStatus, Task, TaskStatus, Expense, ExpenseCategory, Pay
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
 import TaskAttendanceSection from '../components/TaskAttendanceSection';
+import DatePicker from '../components/DatePicker';
+import Select from '../components/Select';
 
 const expenseCategoryToPaymentCategory = (cat: ExpenseCategory): PaymentRequest['category'] => {
   if (cat === 'Material') return 'Purchase';
@@ -349,18 +351,15 @@ function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUp
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-zinc-200/60 bg-zinc-50 select-none">
             <div className="flex items-center gap-2 text-zinc-500 font-semibold text-xs">
               <span>Rows:</span>
-              <select
+              <Select
                 value={rowsPerPage}
-                onChange={(e) => {
-                  setRowsPerPage(Number(e.target.value));
+                onChange={(val) => {
+                  setRowsPerPage(Number(val));
                   setCurrentPage(1);
                 }}
-                className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-zinc-700 outline-none focus:border-zinc-400 text-xs"
-              >
-                {ROWS_PER_PAGE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+                className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-zinc-700 outline-none text-xs"
+                options={ROWS_PER_PAGE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
+              />
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -426,31 +425,29 @@ function DocumentsTab({ projectId, documents, setDocuments, isUploading, setIsUp
 
               <div>
                 <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Project Link (Optional)</label>
-                <select
+                <Select
                   value={uploadProjectId}
-                  onChange={(e) => setUploadProjectId(e.target.value)}
+                  onChange={(val) => setUploadProjectId(val)}
                   className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-950 text-xs sm:text-sm"
-                >
-                  <option value="">Select Project...</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.projectName}</option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: 'Select Project...' },
+                    ...projects.map(p => ({ value: p.id, label: p.projectName }))
+                  ]}
+                />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Task Link (Optional)</label>
-                <select
+                <Select
                   value={uploadTaskId}
-                  onChange={(e) => setUploadTaskId(e.target.value)}
+                  onChange={(val) => setUploadTaskId(val)}
                   disabled={!uploadProjectId}
-                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-950 text-xs sm:text-sm disabled:opacity-50"
-                >
-                  <option value="">Select Task Scope...</option>
-                  {uploadTasksList.map(t => (
-                    <option key={t.id} value={t.id}>{t.taskName}</option>
-                  ))}
-                </select>
+                  className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-955 text-xs sm:text-sm disabled:opacity-50"
+                  options={[
+                    { value: '', label: 'Select Task Scope...' },
+                    ...uploadTasksList.map(t => ({ value: t.id, label: t.taskName }))
+                  ]}
+                />
               </div>
 
               <div>
@@ -1600,17 +1597,18 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-zinc-400 font-bold whitespace-nowrap">Status:</span>
-              <select
+              <Select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-white border border-zinc-200 rounded-xl px-3 py-1.5 text-xs font-bold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
-              >
-                <option value="All">All Projects</option>
-                <option value="Pending">Pending</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Completed">Completed</option>
-                <option value="On Hold">On Hold</option>
-              </select>
+                onChange={(val) => setStatusFilter(val)}
+                className="bg-white border border-zinc-200 rounded-xl px-3 py-1.5 text-xs font-bold text-zinc-700 outline-none"
+                options={[
+                  { value: 'All', label: 'All Projects' },
+                  { value: 'Pending', label: 'Pending' },
+                  { value: 'In Progress', label: 'In Progress' },
+                  { value: 'Completed', label: 'Completed' },
+                  { value: 'On Hold', label: 'On Hold' }
+                ]}
+              />
             </div>
           </div>
 
@@ -1759,16 +1757,12 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                     <label htmlFor="proj-rows-per-page" className="text-[10px] font-bold text-zinc-400 uppercase whitespace-nowrap">
                       Rows per page
                     </label>
-                    <select
-                      id="proj-rows-per-page"
+                    <Select
                       value={projRowsPerPage}
-                      onChange={(e) => setProjRowsPerPage(Number(e.target.value))}
-                      className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
-                    >
-                      {PROJ_ROWS_PER_PAGE_OPTIONS.map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
+                      onChange={(val) => setProjRowsPerPage(Number(val))}
+                      className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-700 outline-none"
+                      options={PROJ_ROWS_PER_PAGE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
+                    />
                   </div>
                   <div className="flex items-center gap-1 select-none">
                     <button
@@ -1937,17 +1931,18 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-zinc-200 rounded-xl focus:outline-none"
                     />
                   </div>
-                  <select
+                  <Select
                     value={tasksStatus}
-                    onChange={(e) => setTasksStatus(e.target.value)}
+                    onChange={(val) => setTasksStatus(val)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="Pending">Pending</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                    <option value="On Hold">On Hold</option>
-                  </select>
+                    options={[
+                      { value: 'All', label: 'All Statuses' },
+                      { value: 'Pending', label: 'Pending' },
+                      { value: 'In Progress', label: 'In Progress' },
+                      { value: 'Completed', label: 'Completed' },
+                      { value: 'On Hold', label: 'On Hold' }
+                    ]}
+                  />
                 </div>
 
                 {userRole === 'admin' && (
@@ -1989,19 +1984,20 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                               </h3>
                               <p className="text-[10px] text-zinc-400 font-medium">Workers assigned: {t.assignedStaff || 'None Assigned'}</p>
                             </div>
-                            <select
+                            <Select
                               value={t.status}
-                              onChange={(e) => handleQuickStatusUpdate(t, e.target.value as TaskStatus)}
+                              onChange={(val) => handleQuickStatusUpdate(t, val as TaskStatus)}
                               className={`text-[10px] font-bold px-2 py-0.5 rounded-full outline-none border cursor-pointer ${t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                 t.status === 'In Progress' ? 'bg-zinc-100 text-zinc-800 border-zinc-200' :
                                   t.status === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-100 text-zinc-500 border-zinc-200'
-                                }`}
-                            >
-                              <option value="Pending">Pending</option>
-                              <option value="In Progress">In Progress</option>
-                              <option value="Completed">Completed</option>
-                              <option value="On Hold">On Hold</option>
-                            </select>
+                              }`}
+                              options={[
+                                { value: 'Pending', label: 'Pending' },
+                                { value: 'In Progress', label: 'In Progress' },
+                                { value: 'Completed', label: 'Completed' },
+                                { value: 'On Hold', label: 'On Hold' }
+                              ]}
+                            />
                           </div>
 
                           {t.description && (
@@ -2140,30 +2136,32 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                       className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-zinc-200 rounded-xl focus:outline-none"
                     />
                   </div>
-                  <select
+                  <Select
                     value={expensesCategory}
-                    onChange={(e) => setExpensesCategory(e.target.value)}
+                    onChange={(val) => setExpensesCategory(val)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
-                  >
-                    <option value="All">All Categories</option>
-                    <option value="Material">Material</option>
-                    <option value="Labour">Labour</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Tools">Tools</option>
-                    <option value="Outside Labour">Outside Labour</option>
-                    <option value="Company Payment">Company Payment</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <select
+                    options={[
+                      { value: 'All', label: 'All Categories' },
+                      { value: 'Material', label: 'Material' },
+                      { value: 'Labour', label: 'Labour' },
+                      { value: 'Transport', label: 'Transport' },
+                      { value: 'Tools', label: 'Tools' },
+                      { value: 'Outside Labour', label: 'Outside Labour' },
+                      { value: 'Company Payment', label: 'Company Payment' },
+                      { value: 'Other', label: 'Other' }
+                    ]}
+                  />
+                  <Select
                     value={expensesPayMethod}
-                    onChange={(e) => setExpensesPayMethod(e.target.value)}
+                    onChange={(val) => setExpensesPayMethod(val)}
                     className="bg-white border rounded-xl px-2 py-1 text-xs outline-none"
-                  >
-                    <option value="All">All Methods</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Cash">Cash</option>
-                  </select>
+                    options={[
+                      { value: 'All', label: 'All Methods' },
+                      { value: 'Bank Transfer', label: 'Bank Transfer' },
+                      { value: 'Cheque', label: 'Cheque' },
+                      { value: 'Cash', label: 'Cash' }
+                    ]}
+                  />
                 </div>
 
                 <div className="flex gap-2">
@@ -2545,23 +2543,21 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Start Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     required
                     value={projStartDate}
-                    onChange={(e) => setProjStartDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    onChange={(val) => setProjStartDate(val)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">End Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     required
                     value={projEndDate}
-                    onChange={(e) => setProjEndDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
+                    onChange={(val) => setProjEndDate(val)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none"
                   />
                 </div>
               </div>
@@ -2569,16 +2565,17 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Current Status</label>
-                  <select
+                  <Select
                     value={projStatus}
-                    onChange={(e) => setProjStatus(e.target.value as ProjectStatus)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-950 focus:outline-none"
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                    <option value="On Hold">On Hold</option>
-                  </select>
+                    onChange={(val) => setProjStatus(val as ProjectStatus)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none"
+                    options={[
+                      { value: 'Pending', label: 'Pending' },
+                      { value: 'In Progress', label: 'In Progress' },
+                      { value: 'Completed', label: 'Completed' },
+                      { value: 'On Hold', label: 'On Hold' }
+                    ]}
+                  />
                 </div>
 
                 <div>
@@ -2824,45 +2821,44 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Workflow Status</label>
-                  <select
+                  <Select
                     value={taskFormStatus}
-                    onChange={(e) => {
-                      const st = e.target.value as TaskStatus;
+                    onChange={(val) => {
+                      const st = val as TaskStatus;
                       setTaskFormStatus(st);
                       if (st === 'Completed') {
                         setTaskFormProgress(100);
                       }
                     }}
                     className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none"
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                    <option value="On Hold">On Hold</option>
-                  </select>
+                    options={[
+                      { value: 'Pending', label: 'Pending' },
+                      { value: 'In Progress', label: 'In Progress' },
+                      { value: 'Completed', label: 'Completed' },
+                      { value: 'On Hold', label: 'On Hold' }
+                    ]}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Scheduled Start</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     required
                     value={taskFormStartDate}
-                    onChange={(e) => setTaskFormStartDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none"
+                    onChange={(val) => setTaskFormStartDate(val)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-355 rounded-xl text-zinc-955 focus:outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Milestone Finish</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     required
                     value={taskFormEndDate}
-                    onChange={(e) => setTaskFormEndDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl text-zinc-955 focus:outline-none"
+                    onChange={(val) => setTaskFormEndDate(val)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-355 rounded-xl text-zinc-955 focus:outline-none"
                   />
                 </div>
               </div>
@@ -2985,25 +2981,22 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Under Specified Task Scope</label>
-                  <select
+                  <Select
                     required
                     value={expenseTaskId}
-                    onChange={(e) => setExpenseTaskId(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-950"
-                  >
-                    <option value="" disabled>Select task scope...</option>
-                    {projectTasks.map(t => (
-                      <option key={t.id} value={t.id}>{t.taskName}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setExpenseTaskId(val)}
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-zinc-955 text-xs sm:text-sm"
+                    placeholder="Select task scope..."
+                    options={projectTasks.map(t => ({ value: t.id, label: t.taskName }))}
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Expense Category</label>
-                  <select
+                  <Select
                     value={expenseCategory}
-                    onChange={(e) => {
-                      const newCat = e.target.value as ExpenseCategory;
+                    onChange={(val) => {
+                      const newCat = val as ExpenseCategory;
                       setExpenseCategory(newCat);
                       if (newCat === 'Material' || newCat === 'Tools') {
                         const grandTotal = expensePurchaseItems.reduce((s, it) => s + it.total, 0);
@@ -3013,14 +3006,15 @@ export default function Projects({ onNavigate, userRole, initialParams }: Projec
                         setExpenseAmount(expenseVendorTotalToPay);
                       }
                     }}
-                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none"
-                  >
-                    <option value="Material">Material</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Tools">Tools</option>
-                    <option value="Outside Labour">Outside Labour</option>
-                    <option value="Other">Other</option>
-                  </select>
+                    className="w-full px-3 py-2 bg-white border border-zinc-350 rounded-xl focus:outline-none text-xs sm:text-sm"
+                    options={[
+                      { value: 'Material', label: 'Material' },
+                      { value: 'Transport', label: 'Transport' },
+                      { value: 'Tools', label: 'Tools' },
+                      { value: 'Outside Labour', label: 'Outside Labour' },
+                      { value: 'Other', label: 'Other' }
+                    ]}
+                  />
                 </div>
               </div>
 

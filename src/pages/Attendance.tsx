@@ -9,6 +9,8 @@ import { generateAllWorkersAttendancePdf, generateSingleWorkerAttendancePdf } fr
 import { CrewMember, CrewTrade, CrewMemberStatus } from '../types';
 import { notify } from '../utils/toast';
 import { useConfirm } from '../context/ConfirmContext';
+import DatePicker from '../components/DatePicker';
+import Select from '../components/Select';
 const formatLocalDate = (d: Date) => {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -1536,15 +1538,16 @@ export default function AttendancePage() {
               />
             </div>
             <div>
-              <select
+              <Select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'All' | CrewMemberStatus)}
+                onChange={(val) => setStatusFilter(val as 'All' | CrewMemberStatus)}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
-              >
-                <option value="All">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+                options={[
+                  { value: 'All', label: 'All Statuses' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' }
+                ]}
+              />
             </div>
           </div>
 
@@ -1652,19 +1655,15 @@ export default function AttendancePage() {
                           <label htmlFor="roster-rows-per-page" className="text-[10px] font-bold text-zinc-400 uppercase whitespace-nowrap">
                             Rows per page
                           </label>
-                          <select
-                            id="roster-rows-per-page"
+                          <Select
                             value={rosterRowsPerPage}
-                            onChange={(e) => {
-                              setRosterRowsPerPage(Number(e.target.value));
+                            onChange={(val) => {
+                              setRosterRowsPerPage(Number(val));
                               setRosterPage(1);
                             }}
-                            className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs font-semibold text-zinc-700 outline-none focus:ring-1 focus:ring-zinc-900"
-                          >
-                            {[5, 10, 25, 50].map((n) => (
-                              <option key={n} value={n}>{n}</option>
-                            ))}
-                          </select>
+                            className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs font-semibold text-zinc-700 outline-none"
+                            options={[5, 10, 25, 50].map((n) => ({ value: n, label: String(n) }))}
+                          />
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -1813,15 +1812,12 @@ export default function AttendancePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Trade / Role</label>
-                  <select
+                  <Select
                     value={trade}
-                    onChange={(e) => setTrade(e.target.value as CrewTrade)}
+                    onChange={(val) => setTrade(val as CrewTrade)}
                     className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
-                  >
-                    {TRADE_OPTIONS.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    options={TRADE_OPTIONS.map(t => ({ value: t, label: t }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Daily Wage (₹)</label>
@@ -1849,14 +1845,15 @@ export default function AttendancePage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
-                  <select
+                  <Select
                     value={memberStatus}
-                    onChange={(e) => setMemberStatus(e.target.value as CrewMemberStatus)}
+                    onChange={(val) => setMemberStatus(val as CrewMemberStatus)}
                     className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' }
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -1933,15 +1930,16 @@ export default function AttendancePage() {
               />
             </div>
             <div>
-              <select
+              <Select
                 value={vendorStatusFilter}
-                onChange={(e) => setVendorStatusFilter(e.target.value as 'All' | 'active' | 'inactive')}
+                onChange={(val) => setVendorStatusFilter(val as 'All' | 'active' | 'inactive')}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
-              >
-                <option value="All">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+                options={[
+                  { value: 'All', label: 'All Statuses' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' }
+                ]}
+              />
             </div>
           </div>
 
@@ -2153,14 +2151,15 @@ export default function AttendancePage() {
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
-                <select
+                <Select
                   value={vendorStatus}
-                  onChange={(e) => setVendorStatus(e.target.value as 'active' | 'inactive')}
+                  onChange={(val) => setVendorStatus(val as 'active' | 'inactive')}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                  options={[
+                    { value: 'active', label: 'Active' },
+                    { value: 'inactive', label: 'Inactive' }
+                  ]}
+                />
               </div>
 
               <div>
@@ -2236,15 +2235,16 @@ export default function AttendancePage() {
               />
             </div>
             <div>
-              <select
+              <Select
                 value={outsideLabourStatusFilter}
-                onChange={(e) => setOutsideLabourStatusFilter(e.target.value as 'All' | 'active' | 'inactive')}
+                onChange={(val) => setOutsideLabourStatusFilter(val as 'All' | 'active' | 'inactive')}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs font-semibold text-zinc-700 outline-none"
-              >
-                <option value="All">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+                options={[
+                  { value: 'All', label: 'All Statuses' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' }
+                ]}
+              />
             </div>
           </div>
 
@@ -2456,14 +2456,15 @@ export default function AttendancePage() {
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1">Status</label>
-                <select
+                <Select
                   value={outsideLabourStatus}
-                  onChange={(e) => setOutsideLabourStatus(e.target.value as 'active' | 'inactive')}
+                  onChange={(val) => setOutsideLabourStatus(val as 'active' | 'inactive')}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                  options={[
+                    { value: 'active', label: 'Active' },
+                    { value: 'inactive', label: 'Inactive' }
+                  ]}
+                />
               </div>
 
               <div>
@@ -2795,24 +2796,18 @@ export default function AttendancePage() {
 
                           {overviewFilterType === 'monthly' ? (
                             <div className="flex items-center gap-2">
-                              <select
+                              <Select
                                 value={selectedMonthVal}
-                                onChange={e => setSelectedMonthVal(Number(e.target.value))}
+                                onChange={val => setSelectedMonthVal(Number(val))}
                                 className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none"
-                              >
-                                {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => (
-                                  <option key={idx} value={idx}>{m}</option>
-                                ))}
-                              </select>
-                              <select
+                                options={['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => ({ value: idx, label: m }))}
+                              />
+                              <Select
                                 value={selectedYearVal}
-                                onChange={e => setSelectedYearVal(Number(e.target.value))}
+                                onChange={val => setSelectedYearVal(Number(val))}
                                 className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none"
-                              >
-                                {[2024, 2025, 2026, 2027, 2028].map(y => (
-                                  <option key={y} value={y}>{y}</option>
-                                ))}
-                              </select>
+                                options={[2024, 2025, 2026, 2027, 2028].map(y => ({ value: y, label: String(y) }))}
+                              />
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5">
@@ -2841,32 +2836,30 @@ export default function AttendancePage() {
                         {/* Row 2: Project & Task scope + Export actions */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-zinc-100">
                           <div className="flex flex-wrap items-center gap-2">
-                            <select
+                            <Select
                               value={wageProjectFilter}
-                              onChange={e => {
-                                setWageProjectFilter(e.target.value);
+                              onChange={val => {
+                                setWageProjectFilter(val);
                                 setWageTaskFilter('All');
                               }}
                               className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none min-w-[140px]"
-                            >
-                              <option value="All">All Projects</option>
-                              {projects.map(p => (
-                                <option key={p.id} value={p.id}>{p.projectName}</option>
-                              ))}
-                            </select>
-                            <select
+                              options={[
+                                { value: 'All', label: 'All Projects' },
+                                ...projects.map(p => ({ value: p.id, label: p.projectName }))
+                              ]}
+                            />
+                            <Select
                               value={wageTaskFilter}
-                              onChange={e => setWageTaskFilter(e.target.value)}
+                              onChange={val => setWageTaskFilter(val)}
                               disabled={wageProjectFilter === 'All'}
                               className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 outline-none min-w-[140px] disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <option value="All">All Tasks</option>
-                              {tasks
-                                .filter(t => t.projectId === wageProjectFilter)
-                                .map(t => (
-                                  <option key={t.id} value={t.id}>{t.taskName}</option>
-                                ))}
-                            </select>
+                              options={[
+                                { value: 'All', label: 'All Tasks' },
+                                ...tasks
+                                  .filter(t => t.projectId === wageProjectFilter)
+                                  .map(t => ({ value: t.id, label: t.taskName }))
+                              ]}
+                            />
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
@@ -3028,18 +3021,15 @@ export default function AttendancePage() {
                                     <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto sm:justify-end">
                                       <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-semibold">
                                         <span>Rows:</span>
-                                        <select
+                                        <Select
                                           value={unpaidWorkersRowsPerPage}
-                                          onChange={(e) => {
-                                            setUnpaidWorkersRowsPerPage(Number(e.target.value));
+                                          onChange={(val) => {
+                                            setUnpaidWorkersRowsPerPage(Number(val));
                                             setUnpaidWorkersPage(1);
                                           }}
                                           className="bg-white border rounded px-1.5 py-0.5 outline-none font-bold text-zinc-700"
-                                        >
-                                          {[5, 10, 25, 50].map(val => (
-                                            <option key={val} value={val}>{val}</option>
-                                          ))}
-                                        </select>
+                                          options={[5, 10, 25, 50].map(val => ({ value: String(val), label: String(val) }))}
+                                        />
                                       </div>
 
                                       <div className="flex items-center gap-1.5">
@@ -3182,18 +3172,15 @@ export default function AttendancePage() {
                                   </span>
                                   <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-semibold">
                                     <span>Rows:</span>
-                                    <select
+                                    <Select
                                       value={overviewRowsPerPage}
-                                      onChange={(e) => {
-                                        setOverviewRowsPerPage(Number(e.target.value));
+                                      onChange={(val) => {
+                                        setOverviewRowsPerPage(Number(val));
                                         setOverviewPage(1);
                                       }}
                                       className="bg-white border rounded px-1.5 py-0.5 outline-none font-bold text-zinc-700"
-                                    >
-                                      {[5, 10, 25, 50].map(val => (
-                                        <option key={val} value={val}>{val}</option>
-                                      ))}
-                                    </select>
+                                      options={[5, 10, 25, 50].map(val => ({ value: String(val), label: String(val) }))}
+                                    />
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1.5">
@@ -3479,36 +3466,33 @@ export default function AttendancePage() {
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Project Scope</label>
-                              <select
+                              <Select
                                 value={payWagesProjectId}
-                                onChange={(e) => {
-                                  const val = e.target.value;
+                                onChange={(val) => {
                                   setPayWagesProjectId(val);
                                   setPayWagesTaskId('');
                                 }}
-                                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none"
-                              >
-                                <option value="">-- Consolidate to Site --</option>
-                                {projects.map(p => (
-                                  <option key={p.id} value={p.id}>{p.projectName}</option>
-                                ))}
-                              </select>
+                                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-955 text-xs focus:ring-1 focus:ring-zinc-950 outline-none"
+                                options={[
+                                  { value: '', label: '-- Consolidate to Site --' },
+                                  ...projects.map(p => ({ value: p.id, label: p.projectName }))
+                                ]}
+                              />
                             </div>
                             <div>
                               <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Task Scope</label>
-                              <select
+                              <Select
                                 value={payWagesTaskId}
-                                onChange={(e) => setPayWagesTaskId(e.target.value)}
+                                onChange={(val) => setPayWagesTaskId(val)}
                                 disabled={!payWagesProjectId}
-                                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 text-xs focus:ring-1 focus:ring-zinc-950 outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
-                              >
-                                <option value="">-- Consolidate to Task --</option>
-                                {tasks
-                                  .filter(t => t.projectId === payWagesProjectId)
-                                  .map(t => (
-                                    <option key={t.id} value={t.id}>{t.taskName}</option>
-                                  ))}
-                              </select>
+                                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-955 text-xs focus:ring-1 focus:ring-zinc-955 outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
+                                options={[
+                                  { value: '', label: '-- Consolidate to Task --' },
+                                  ...tasks
+                                    .filter(t => t.projectId === payWagesProjectId)
+                                    .map(t => ({ value: t.id, label: t.taskName }))
+                                ]}
+                              />
                             </div>
                           </div>
 
@@ -3679,20 +3663,18 @@ export default function AttendancePage() {
             <div className="space-y-4 font-sans">
               <div className="space-y-1.5">
                 <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Start Date</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={pdfStartDate}
-                  onChange={(e) => setPdfStartDate(e.target.value)}
+                  onChange={(val) => setPdfStartDate(val)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 font-bold text-sm outline-none focus:ring-1 focus:ring-zinc-950"
                 />
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">End Date</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={pdfEndDate}
-                  onChange={(e) => setPdfEndDate(e.target.value)}
+                  onChange={(val) => setPdfEndDate(val)}
                   className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-xl text-zinc-950 font-bold text-sm outline-none focus:ring-1 focus:ring-zinc-950"
                 />
               </div>
